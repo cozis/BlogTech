@@ -576,7 +576,7 @@ void respond(Request request, ResponseBuilder *b)
 		return;
 	}
 
-	if (serve_file_or_dir(b, LIT("/"), LIT("docroot/"), request.path, NULLSTR, false))
+	if (serve_file_or_dir(b, LIT(""), LIT("docroot"), request.path, NULLSTR, false))
 		return;
 
 	status_line(b, 404);
@@ -1885,10 +1885,50 @@ string mimetype_from_filename(string name)
 	return NULLSTR;
 }
 
+void serve_file(string path, size_t size, string mime, ResponseBuilder *b)
+{
+	int fd;
+	do
+		fd = open(path.data, O_RDONLY);
+	while (fd < 0 && errno == EINTR);
+
+	if (fd < 0) {
+		status_line(b, 500);
+		close(fd);
+		return;
+	}
+
+	status_line(b, 200);
+
+	if (mime.size == 0) mime = mimetype_from_filename(path);
+	if (mime.size > 0) add_header_f(b, "Content-Type: %.*s", (int) mime.size, mime.data);
+
+	string dst = append_content_start(b, size);
+	if (dst.size == 0) {
+		status_line(b, 500);
+		close(fd);
+		return;
+	}
+	assert(dst.size >= size);
+
+	size_t copied = 0;
+	while (copied < size) {
+		int num = read(fd, dst.data + copied, size - copied);
+		if (num <= 0) {
+			if (num < 0)
+				log_format("Failed reading from '%.*s'\n", (int) path.size, path.data);
+			break;
+		}
+		copied += num;
+	}
+
+	append_content_end(b, copied);
+	close(fd);
+}
+
 bool serve_file_or_dir(ResponseBuilder *b, string prefix, string docroot,
 	string reqpath, string mime, bool enable_dir_listing)
 {
-
 	// Sanitize the request path
 	char pathmem[1<<10];
 	string path;
@@ -1927,77 +1967,66 @@ bool serve_file_or_dir(ResponseBuilder *b, string prefix, string docroot,
 		return true;
 	}
 
-	if (S_ISREG(buf.st_mode)) {
+	if (S_ISDIR(buf.st_mode)) {
 
-		int fd;
-		do
-			fd = open(path.data, O_RDONLY);
-		while (fd < 0 && errno == EINTR);
+		if (enable_dir_listing) {
 
-		if (fd < 0) {
-			status_line(b, 500);
-			close(fd);
-			return true;
-		}
-
-		status_line(b, 200);
-
-		if (mime.size == 0) mime = mimetype_from_filename(path);
-		if (mime.size > 0) add_header_f(b, "Content-Type: %.*s", (int) mime.size, mime.data);
-
-		string dst = append_content_start(b, (size_t) buf.st_size);
-		if (dst.size == 0) {
-			status_line(b, 500);
-			close(fd);
-			return true;
-		}
-		assert(dst.size >= (size_t) buf.st_size);
-
-		size_t copied = 0;
-		while (copied < (size_t) buf.st_size) {
-			int num = read(fd, dst.data + copied, (size_t) buf.st_size - copied);
-			if (num <= 0) {
-				if (num < 0)
-					log_format("Failed reading from '%.*s'\n", (int) path.size, path.data);
-				break;
+			DIR *d = opendir(path.data);
+			if (d == NULL) {
+				status_line(b, 500);
+				return true;
 			}
-			copied += num;
-		}
 
-		append_content_end(b, copied);
-		close(fd);
+			status_line(b, 200);
+			append_content_s(b, LIT(
+				"<html>\n"
+				"    <head>\n"
+				"    </head>\n"
+				"    <body>\n"
+				"        <ul>\n"
+				"            <li><a href=\"\">(parent)</a></li>")); // TODO: Add links
+
+			struct dirent *dir;
+			while ((dir = readdir(d))) {
+				if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
+					continue;
+				append_content_f(b, "<li><a href=\"\">%s</a></li>\n", dir->d_name); // TODO: Add links
+			}
+
+			append_content_s(b, LIT(
+				"        </ul>\n"
+				"    </body>\n"
+				"</html>\n"));
+			closedir(d);
+		} else {
+
+			// Append /index.html to the path
+			if (path.size + SIZEOF("/index.html")-1 >= sizeof(pathmem)) {
+				status_line(b, 500);
+				return true;
+			}
+			memcpy(path.data + path.size, "/index.html", SIZEOF("/index.html")-1);
+			path.size += SIZEOF("/index.html")-1;
+			path.data[path.size] = '\0';
+
+			if (stat(path.data, &buf)) {
+				if (errno == ENOENT)
+					return false;
+				status_line(b, 500);
+				return true;
+			}
+			if (!S_ISREG(buf.st_mode)) {
+				status_line(b, 500);
+				return true;
+			}
+
+			serve_file(path, (size_t) buf.st_size, mime, b);
+		}
 		return true;
 	}
 
-	if (enable_dir_listing && S_ISDIR(buf.st_mode)) {
-
-		DIR *d = opendir(path.data);
-		if (d == NULL) {
-			status_line(b, 500);
-			return true;
-		}
-
-		status_line(b, 200);
-		append_content_s(b, LIT(
-			"<html>\n"
-			"    <head>\n"
-			"    </head>\n"
-			"    <body>\n"
-			"        <ul>\n"
-			"            <li><a href=\"\">(parent)</a></li>")); // TODO: Add links
-
-		struct dirent *dir;
-		while ((dir = readdir(d))) {
-			if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
-				continue;
-			append_content_f(b, "<li><a href=\"\">%s</a></li>\n", dir->d_name); // TODO: Add links
-		}
-
-		append_content_s(b, LIT(
-			"        </ul>\n"
-			"    </body>\n"
-			"</html>\n"));
-		closedir(d);
+	if (S_ISREG(buf.st_mode)) {
+		serve_file(path, (size_t) buf.st_size, mime, b);
 		return true;
 	}
 
