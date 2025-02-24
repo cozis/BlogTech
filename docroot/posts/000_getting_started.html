@@ -1,0 +1,86 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - Getting Started - Part 0</h1>
+<p>
+In this series, Id'd like to show how web applications work by building one from the ground up. We will be using the C programming language, since itd's low level enough to do everything efficiently and is relatively unopinionated (which helps since we want to build everything ourselves). By the end, wed'll have a fully functional web application that can stand the test of real users!
+
+While wed'll be building most components ourselves, wed'll take a practical approach by using external libraries for encryption (TLS) and the database. For TLS, wed'll be using BearSSL, while for the database wed'll be using SQLite.
+
+The application will be a social network website, featuring followers, publishing posts, and maybe private chats!
+
+</p>
+<h2>Prerequisites</h2>
+<p>To follow this series, youd'll need a good grasp of basic programming constructs and lower level ones like pointers, static allocation, dynamic allocation. It will probably be helpful to have a rough understanding of how the web works.
+
+</p>
+<h2>Environment Setup</h2>
+<p>Our setup wond't be very fancy. Wed'll use a regular code editor and the terminal to compile and debug our project. All of the code will work on both Linux and Windows.
+
+On Linux, you must install gcc and make (you probably know how to do it). I also strongly advise you install gdb and valgrind for debugging.
+
+On Windows, you have two options:</p>
+
+<ol>
+<li>Use WSL to simulate a Linux environment</li>
+<li>Go native</li>
+</ol>
+<p>Linux tooling is easier to use, but youd'll need to set up WSL. If you do, all of the considerations I make for Linux will apply to you.
+
+If you want to go native, then you should download w64devkit, made by the awesome skeeto, author of nullprogram. This is a unix-like development environment for Windows. It contains gcc, gdb, make and some other utilities.
+
+</p>
+<h2>Components of a web app</h2>
+<p>First, letd's get an overview of the various parts that make up a web app:
+</p>
+
+<ul>
+<li>TCP Layer: This is where the application establishes and manages connections with clients. Most of the work happens in the operating system, so we only need "sockets" to indicate which interface and port wed're listening on. The system then will notify us when new connections arrive or data is received. At this level, we only deal with stream of bytes (there is no concept of higher-level messages like requests or responses).</li>
+<li>TLS Layer: This is the encryption layer, which sits on top of TCP. Every byte sent is first encrypted using TLS.</li>
+<li>HTTP Layer: This creates the request-response model that web developers are familiar with. Clients establish TCP/TLS connections, send requests for specific resources (endpoints), and receive a response from the server. The connection can then be reused or closed. The endpoints will allow us to implement different features of our application.</li>
+<li>Front-end: The application presents content to the user through web pages. These pages include forms that send requests back to the server based on user actions. We wond't be using any fancy frameworks here.</li>
+<li>Business Logic: Here we implement handlers for all the various endpoints our application needs. Most handlers will either store user data into the database or return database data to the user.</li>
+<li>Database: This is where we define the format of the data wed'll be storing and the rules the database must enforce to make sure it is always consistent.</li>
+</ul>
+
+			</article>
+		</main>
+	</body>
+</html>

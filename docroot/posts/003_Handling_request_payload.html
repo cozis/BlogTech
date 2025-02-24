@@ -1,0 +1,319 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - Handling request payload - Part 3</h1>
+<p>
+Our server can now receive requests and inspect their data, then send a response based on that data. That's pretty much all we need to get a simple website going, even with dynamic content and everything! There is one thing missing though. At the moment we are ignoring the request payload. This is necessary when the user want to send us information such as login data or a post's content.
+
+At the moment, our server receives the request in a 4Kb buffer, hoping it is large enough to hold its head. We continue reading bytes into the buffer until we find the <code>\r\n\r\n</code> token which signifies the end of the request head and the start of the body, if present. It is also possible that our buffer reads over the request head limit and into the body.
+
+Once we receive the head (and some bytes of the body, potentially), we can parse it and read the <code>Content-Length</code> header, which will tell us how many bytes we still need to read after the head.
+
+Lets make a function that detects the payload length given the parsed request:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">NULLSTR</span> ((<span class="c2h-identifier">string</span>) {<span class="c2h-identifier">NULL</span>, <span class="c2h-val-int">0</span>})</td></tr>
+      <tr><td>2</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">S</span>(<span class="c2h-identifier">x</span>) ((<span class="c2h-identifier">string</span>) {(<span class="c2h-identifier">x</span>), (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">x</span>)<span class="c2h-operator">-</span><span class="c2h-val-int">1</span>})</td></tr>
+      <tr><td>3</td><td></td></tr>
+      <tr><td>4</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_digit</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>5</td><td>{</td></tr>
+      <tr><td>6</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'0'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'9'</span>;</td></tr>
+      <tr><td>7</td><td>}</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td><span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier c2h-fdeclname">to_lower</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>10</td><td>{</td></tr>
+      <tr><td>11</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'Z'</span>)</td></tr>
+      <tr><td>12</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">-</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">+</span> <span class="c2h-val-char">'a'</span>;</td></tr>
+      <tr><td>13</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span>;</td></tr>
+      <tr><td>14</td><td>}</td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">streq_case_insensitive</span>(<span class="c2h-identifier">string</span> <span class="c2h-identifier">s1</span>, <span class="c2h-identifier">string</span> <span class="c2h-identifier">s2</span>)</td></tr>
+      <tr><td>17</td><td>{</td></tr>
+      <tr><td>18</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s1</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">!=</span> <span class="c2h-identifier">s2</span>.<span class="c2h-identifier">size</span>)</td></tr>
+      <tr><td>19</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>20</td><td>  <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s1</span>.<span class="c2h-identifier">size</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
+      <tr><td>21</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">to_lower</span>(<span class="c2h-identifier">s1</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">i</span>]) <span class="c2h-operator">!=</span> <span class="c2h-identifier c2h-fcallname">to_lower</span>(<span class="c2h-identifier">s2</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">i</span>]))</td></tr>
+      <tr><td>22</td><td>      <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>23</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">true</span>;</td></tr>
+      <tr><td>24</td><td>}</td></tr>
+      <tr><td>25</td><td></td></tr>
+      <tr><td>26</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">get_content_length</span>(<span class="c2h-identifier">HTTPRequest</span> <span class="c2h-operator">*</span><span class="c2h-identifier">request</span>)</td></tr>
+      <tr><td>27</td><td>{</td></tr>
+      <tr><td>28</td><td>  <span class="c2h-identifier">string</span> <span class="c2h-identifier">content_length_value</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">NULLSTR</span>;</td></tr>
+      <tr><td>29</td><td>  <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">request</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">num_headers</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>) {</td></tr>
+      <tr><td>30</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">streq_case_insensitive</span>(<span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"Content-Length"</span>), <span class="c2h-identifier">request</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">headers</span>[<span class="c2h-identifier">i</span>].<span class="c2h-identifier">name</span>)) {</td></tr>
+      <tr><td>31</td><td>      <span class="c2h-identifier">content_length_value</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">request</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">headers</span>[<span class="c2h-identifier">i</span>].<span class="c2h-identifier">value</span>;</td></tr>
+      <tr><td>32</td><td>      <span class="c2h-kword c2h-kword-break">break</span>;</td></tr>
+      <tr><td>33</td><td>    }</td></tr>
+      <tr><td>34</td><td>  }</td></tr>
+      <tr><td>35</td><td>  <span class="c2h-comment">// If we didn't find the header, then the value is set to the empty string, which works too</span></td></tr>
+      <tr><td>36</td><td></td></tr>
+      <tr><td>37</td><td>  <span class="c2h-comment">// The number may be preceded by spaces</span></td></tr>
+      <tr><td>38</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">cur</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>39</td><td></td></tr>
+      <tr><td>40</td><td>  <span class="c2h-comment">// Move cursor over the initial spaces</span></td></tr>
+      <tr><td>41</td><td>  <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span>)</td></tr>
+      <tr><td>42</td><td>    <span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>43</td><td></td></tr>
+      <tr><td>44</td><td>  <span class="c2h-comment">// Check that the cursor now points to a number</span></td></tr>
+      <tr><td>45</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">size</span>)</td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>; <span class="c2h-comment">// Empty or missing Content-Length</span></td></tr>
+      <tr><td>47</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">is_digit</span>(<span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>48</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>; <span class="c2h-comment">// Invalid char</span></td></tr>
+      <tr><td>49</td><td> </td></tr>
+      <tr><td>50</td><td>  <span class="c2h-comment">// Parse the number for text to integer form</span></td></tr>
+      <tr><td>51</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">content_length</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>52</td><td>  <span class="c2h-kword c2h-kword-do">do</span> {</td></tr>
+      <tr><td>53</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">n</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>] <span class="c2h-operator">-</span> <span class="c2h-val-char">'0'</span>;</td></tr>
+      <tr><td>54</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">content_length</span> <span class="c2h-operator">&gt;</span> (<span class="c2h-identifier">INT_MAX</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">n</span>) <span class="c2h-operator">/</span> <span class="c2h-val-int">10</span>)</td></tr>
+      <tr><td>55</td><td>      <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>; <span class="c2h-comment">// The parsed integer can't be represented by an "int"</span></td></tr>
+      <tr><td>56</td><td>    <span class="c2h-identifier">content_length</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">content_length</span> <span class="c2h-operator">*</span> <span class="c2h-val-int">10</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">n</span>;</td></tr>
+      <tr><td>57</td><td>  } <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier c2h-fcallname">is_digit</span>(<span class="c2h-identifier">content_length_value</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">cur</span>]));</td></tr>
+      <tr><td>58</td><td></td></tr>
+      <tr><td>59</td><td>  <span class="c2h-comment">// We ignore anything that comes after the integer</span></td></tr>
+      <tr><td>60</td><td></td></tr>
+      <tr><td>61</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">content_length</span>;</td></tr>
+      <tr><td>62</td><td>}</td></tr>
+      <tr><td>63</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+This function returns the payload length or -1 if anything bad happened.
+
+After parsing the head, we read the content length and then call <code>recv</code> until we get that many bytes. We also need to handle partial reads, so we implement a <code>recv_all</code> analogous to the <code>send_all</code> we used some time ago
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">recv_all</span>(<span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">sock</span>, <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">dst</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">received</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>4</td><td>  <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">received</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">num</span>) {</td></tr>
+      <tr><td>5</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">just_received</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv</span>(<span class="c2h-identifier">sock</span>, <span class="c2h-identifier">dst</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">received</span>, <span class="c2h-identifier">num</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">received</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>6</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">just_received</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>7</td><td>      <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>8</td><td>    <span class="c2h-identifier">received</span> <span class="c2h-operator">+=</span> <span class="c2h-identifier">just_received</span>;</td></tr>
+      <tr><td>9</td><td>  }</td></tr>
+      <tr><td>10</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">received</span>;</td></tr>
+      <tr><td>11</td><td>}</td></tr>
+      <tr><td>12</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+this function won't return until exactly num bytes are read, or an error occurres.
+
+This is how the program looks now:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdio.h&gt;</span> <span class="c2h-comment">// printf</span></td></tr>
+      <tr><td>2</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdbool.h&gt;</span> <span class="c2h-comment">// bool, true, false</span></td></tr>
+      <tr><td>3</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdlib.h&gt;</span> <span class="c2h-comment">// malloc, free</span></td></tr>
+      <tr><td>4</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;string.h&gt;</span> <span class="c2h-comment">// memcpy</span></td></tr>
+      <tr><td>5</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;limits.h&gt;</span> <span class="c2h-comment">// INT_MAX</span></td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td><span class="c2h-directive">#ifdef</span> <span class="c2h-identifier">_WIN32</span></td></tr>
+      <tr><td>8</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;winsock2.h&gt;</span></td></tr>
+      <tr><td>9</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">SOCKET</span></td></tr>
+      <tr><td>10</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span> <span class="c2h-identifier">INVALID_SOCKET</span></td></tr>
+      <tr><td>11</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">CLOSE_SOCKET</span> <span class="c2h-identifier">closesocket</span></td></tr>
+      <tr><td>12</td><td><span class="c2h-directive">#else</span></td></tr>
+      <tr><td>13</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;unistd.h&gt;</span> <span class="c2h-comment">// close</span></td></tr>
+      <tr><td>14</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;arpa/inet.h&gt;</span> <span class="c2h-comment">// socket, htons, inet_addr, sockaddr_in, bind, listen, accept, recv, send</span></td></tr>
+      <tr><td>15</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-kword c2h-kword-int">int</span></td></tr>
+      <tr><td>16</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span></td></tr>
+      <tr><td>17</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">CLOSE_SOCKET</span> <span class="c2h-identifier">close</span></td></tr>
+      <tr><td>18</td><td><span class="c2h-directive">#endif</span></td></tr>
+      <tr><td>19</td><td></td></tr>
+      <tr><td>20</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> { <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">data</span>; <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">size</span>; } <span class="c2h-identifier">string</span>;</td></tr>
+      <tr><td>21</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">NULLSTR</span> ((<span class="c2h-identifier">string</span>) {<span class="c2h-identifier">NULL</span>, <span class="c2h-val-int">0</span>})</td></tr>
+      <tr><td>22</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">S</span>(<span class="c2h-identifier">x</span>) ((<span class="c2h-identifier">string</span>) {(<span class="c2h-identifier">x</span>), (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">x</span>)<span class="c2h-operator">-</span><span class="c2h-val-int">1</span>})</td></tr>
+      <tr><td>23</td><td></td></tr>
+      <tr><td>24</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_digit</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>25</td><td>{</td></tr>
+      <tr><td>26</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'0'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'9'</span>;</td></tr>
+      <tr><td>27</td><td>}</td></tr>
+      <tr><td>28</td><td></td></tr>
+      <tr><td>29</td><td><span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier c2h-fdeclname">to_lower</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>30</td><td>{</td></tr>
+      <tr><td>31</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'Z'</span>)</td></tr>
+      <tr><td>32</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">-</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">+</span> <span class="c2h-val-char">'a'</span>;</td></tr>
+      <tr><td>33</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span>;</td></tr>
+      <tr><td>34</td><td>}</td></tr>
+      <tr><td>35</td><td></td></tr>
+      <tr><td>36</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">streq_case_insensitive</span>(<span class="c2h-identifier">string</span> <span class="c2h-identifier">s1</span>, <span class="c2h-identifier">string</span> <span class="c2h-identifier">s2</span>)</td></tr>
+      <tr><td>37</td><td>{</td></tr>
+      <tr><td>38</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s1</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">!=</span> <span class="c2h-identifier">s2</span>.<span class="c2h-identifier">size</span>)</td></tr>
+      <tr><td>39</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>40</td><td>  <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s1</span>.<span class="c2h-identifier">size</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
+      <tr><td>41</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">to_lower</span>(<span class="c2h-identifier">s1</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">i</span>]) <span class="c2h-operator">!=</span> <span class="c2h-identifier c2h-fcallname">to_lower</span>(<span class="c2h-identifier">s2</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">i</span>]))</td></tr>
+      <tr><td>42</td><td>      <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>43</td><td>  <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">true</span>;</td></tr>
+      <tr><td>44</td><td>}</td></tr>
+      <tr><td>45</td><td></td></tr>
+      <tr><td>46</td><td><span class="c2h-comment">// ... definitions for HTTPRequest, HTTPVersion, HTTPHeader, HTTPMethod ...</span></td></tr>
+      <tr><td>47</td><td></td></tr>
+      <tr><td>48</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">parse_request</span>(<span class="c2h-identifier">string</span> <span class="c2h-identifier">src</span>, <span class="c2h-identifier">HTTPRequest</span> <span class="c2h-operator">*</span><span class="c2h-identifier">dst</span>)</td></tr>
+      <tr><td>49</td><td>{</td></tr>
+      <tr><td>50</td><td>  <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>51</td><td>}</td></tr>
+      <tr><td>52</td><td></td></tr>
+      <tr><td>53</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">get_content_length</span>(<span class="c2h-identifier">HTTPRequest</span> <span class="c2h-operator">*</span><span class="c2h-identifier">request</span>)</td></tr>
+      <tr><td>54</td><td>{</td></tr>
+      <tr><td>55</td><td>  <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>56</td><td>}</td></tr>
+      <tr><td>57</td><td></td></tr>
+      <tr><td>58</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">send_all</span>(<span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">sock</span>, <span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-operator">*</span><span class="c2h-identifier">src</span>, <span class="c2h-identifier">size_t</span> <span class="c2h-identifier">num</span>)</td></tr>
+      <tr><td>59</td><td>{</td></tr>
+      <tr><td>60</td><td>  <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>61</td><td>}</td></tr>
+      <tr><td>62</td><td></td></tr>
+      <tr><td>63</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">recv_all</span>(<span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">sock</span>, <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">dst</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num</span>)</td></tr>
+      <tr><td>64</td><td>{</td></tr>
+      <tr><td>65</td><td>  <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>66</td><td>}</td></tr>
+      <tr><td>67</td><td></td></tr>
+      <tr><td>68</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">recv_request_head</span>(<span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">sock</span>, <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">dst</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">max</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-operator">*</span><span class="c2h-identifier">head_len</span>)</td></tr>
+      <tr><td>69</td><td>{</td></tr>
+      <tr><td>70</td><td>  <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>71</td><td>}</td></tr>
+      <tr><td>72</td><td></td></tr>
+      <tr><td>73</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>()</td></tr>
+      <tr><td>74</td><td>{</td></tr>
+      <tr><td>75</td><td>  <span class="c2h-comment">// .. socket, bind, listen ...</span></td></tr>
+      <tr><td>76</td><td></td></tr>
+      <tr><td>77</td><td>  <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>78</td><td>    <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">client_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>79</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">client_socket</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span>) {</td></tr>
+      <tr><td>80</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"accept failed\n"</span>);</td></tr>
+      <tr><td>81</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>82</td><td>    }</td></tr>
+      <tr><td>83</td><td></td></tr>
+      <tr><td>84</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">request_buffer</span>[<span class="c2h-val-int">1024</span>];</td></tr>
+      <tr><td>85</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">received_total</span>, <span class="c2h-identifier">head_len</span>;</td></tr>
+      <tr><td>86</td><td>    <span class="c2h-identifier">received_total</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv_request_head</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">request_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">request_buffer</span>), <span class="c2h-operator">&</span><span class="c2h-identifier">head_len</span>);</td></tr>
+      <tr><td>87</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">received_total</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>88</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"recv_request_head failed\n"</span>);</td></tr>
+      <tr><td>89</td><td>      <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>90</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>91</td><td>    }</td></tr>
+      <tr><td>92</td><td>    <span class="c2h-identifier">string</span> <span class="c2h-identifier">request_head</span> <span class="c2h-operator">=</span> {<span class="c2h-identifier">request_buffer</span>, <span class="c2h-identifier">head_len</span>};</td></tr>
+      <tr><td>93</td><td></td></tr>
+      <tr><td>94</td><td>    <span class="c2h-identifier">HTTPRequest</span> <span class="c2h-identifier">parsed_request</span>;</td></tr>
+      <tr><td>95</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">parse_request</span>(<span class="c2h-identifier">request_head</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">parsed_request</span>)) {</td></tr>
+      <tr><td>96</td><td>      <span class="c2h-comment">// Parsing failed</span></td></tr>
+      <tr><td>97</td><td>      <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>98</td><td>        <span class="c2h-val-str">"HTTP/1.0 400 Bad Request\r\n"</span></td></tr>
+      <tr><td>99</td><td>        <span class="c2h-val-str">"Content-Length: 0\r\n"</span></td></tr>
+      <tr><td>100</td><td>        <span class="c2h-val-str">"\r\n"</span>;</td></tr>
+      <tr><td>101</td><td>      <span class="c2h-identifier c2h-fcallname">send_all</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>));</td></tr>
+      <tr><td>102</td><td>      <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>103</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>104</td><td>    }</td></tr>
+      <tr><td>105</td><td></td></tr>
+      <tr><td>106</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">content_length</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">get_content_length</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">parsed_request</span>);</td></tr>
+      <tr><td>107</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">content_length</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>108</td><td>      <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>109</td><td>        <span class="c2h-val-str">"HTTP/1.0 400 Bad Request\r\n"</span></td></tr>
+      <tr><td>110</td><td>        <span class="c2h-val-str">"Content-Length: 0\r\n"</span></td></tr>
+      <tr><td>111</td><td>        <span class="c2h-val-str">"\r\n"</span>;</td></tr>
+      <tr><td>112</td><td>      <span class="c2h-identifier c2h-fcallname">send_all</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>));</td></tr>
+      <tr><td>113</td><td>      <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>114</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>115</td><td>    }</td></tr>
+      <tr><td>116</td><td></td></tr>
+      <tr><td>117</td><td>    <span class="c2h-identifier">string</span> <span class="c2h-identifier">content</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">NULLSTR</span>;</td></tr>
+      <tr><td>118</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">content_length</span> <span class="c2h-operator">&gt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>119</td><td>      <span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">malloc</span>(<span class="c2h-identifier">content_length</span><span class="c2h-operator">+</span><span class="c2h-val-int">1</span>);</td></tr>
+      <tr><td>120</td><td>      <span class="c2h-identifier">content</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">content_length</span>;</td></tr>
+      <tr><td>121</td><td></td></tr>
+      <tr><td>122</td><td>      <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">received_body</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">received_total</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">head_len</span>;</td></tr>
+      <tr><td>123</td><td>      <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">received_body</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">content_length</span>)</td></tr>
+      <tr><td>124</td><td>        <span class="c2h-identifier">received_body</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">content_length</span>;</td></tr>
+      <tr><td>125</td><td></td></tr>
+      <tr><td>126</td><td>      <span class="c2h-identifier c2h-fcallname">memcpy</span>(<span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span>, <span class="c2h-identifier">request_buffer</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">head_len</span>, <span class="c2h-identifier">received_body</span>);</td></tr>
+      <tr><td>127</td><td></td></tr>
+      <tr><td>128</td><td>      <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">received_body</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">content_length</span>) {</td></tr>
+      <tr><td>129</td><td>        <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">result</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv_all</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">received_body</span>, <span class="c2h-identifier">content</span>.<span class="c2h-identifier">size</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">received_body</span>);</td></tr>
+      <tr><td>130</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">result</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>131</td><td>          <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>132</td><td>          <span class="c2h-identifier c2h-fcallname">free</span>(<span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span>);</td></tr>
+      <tr><td>133</td><td>          <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>134</td><td>        }</td></tr>
+      <tr><td>135</td><td>      }</td></tr>
+      <tr><td>136</td><td>      <span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span>[<span class="c2h-identifier">content</span>.<span class="c2h-identifier">size</span>] <span class="c2h-operator">=</span> <span class="c2h-val-char">'\0'</span>;</td></tr>
+      <tr><td>137</td><td>    }</td></tr>
+      <tr><td>138</td><td></td></tr>
+      <tr><td>139</td><td>    <span class="c2h-comment">// The request payload is in the "content" string</span></td></tr>
+      <tr><td>140</td><td></td></tr>
+      <tr><td>141</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>142</td><td>      <span class="c2h-val-str">"HTTP/1.0 200 OK\r\n"</span></td></tr>
+      <tr><td>143</td><td>      <span class="c2h-val-str">"Content-Length: 13\r\n"</span></td></tr>
+      <tr><td>144</td><td>      <span class="c2h-val-str">"Content-Type: text/plain\r\n"</span></td></tr>
+      <tr><td>145</td><td>      <span class="c2h-val-str">"\r\n"</span></td></tr>
+      <tr><td>146</td><td>      <span class="c2h-val-str">"Hello, world!"</span>;</td></tr>
+      <tr><td>147</td><td>    <span class="c2h-identifier c2h-fcallname">send_all</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>));</td></tr>
+      <tr><td>148</td><td></td></tr>
+      <tr><td>149</td><td>    <span class="c2h-comment">// Free the dynamic buffer</span></td></tr>
+      <tr><td>150</td><td>    <span class="c2h-identifier c2h-fcallname">free</span>(<span class="c2h-identifier">content</span>.<span class="c2h-identifier">data</span>);</td></tr>
+      <tr><td>151</td><td></td></tr>
+      <tr><td>152</td><td>    <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>153</td><td>  }</td></tr>
+      <tr><td>154</td><td>  <span class="c2h-comment">// This point will never be reached</span></td></tr>
+      <tr><td>155</td><td>}</td></tr>
+      <tr><td>156</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Once the content length is known, we allocate a buffer of the appropriate size with <code>malloc</code>. We then receive the body into this buffer with <code>recv_all</code>. We ignore the request head and body for now since we always return the usual “Hello, world!” message. We also need to return the memory allocated with <code>malloc</code> to the system by calling <code>free</code> at the end.</p>
+
+			</article>
+		</main>
+	</body>
+</html>

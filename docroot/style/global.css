@@ -1,0 +1,152 @@
+main {
+	max-width: 700px;
+	margin: auto;
+}
+header span#cozis-text {
+	font-family: "SF Pro Display",-apple-system-headline, system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+	font-size: 1.7rem;
+	font-weight: bold;
+}
+a[href] {
+	color: #478fd2;
+}
+article h1,
+article h2,
+article h3,
+article h4,
+article h5 {
+	font-family: "SF Pro Display",-apple-system-headline, system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+	color: rgb(54,55,55);
+	margin: 30px 0 20px 0;
+}
+article h1 {
+	font-size: 36px;
+}
+article h3 {
+	font-size: 1.625em;
+}
+article a,
+article p,
+article li {
+	font-family: -apple-system-ui-serif, ui-serif, "Spectral", "Georgia", serif;
+	font-size: 19px;
+	line-height: 1.6em;
+	color: rgb(54,55,55);
+}
+article ul {
+	margin: 0;
+	padding: 0
+}
+article li {
+	margin: 8px 32px;
+}
+code {
+	padding: 1px 3px;
+	background: #eee;
+	border-radius: 3px;
+	font-family: monospace;
+	color: #404040;
+}
+pre code {
+	display: inline-block;
+	width: calc(100% - 20px);
+	padding: 10px;
+	font-size: 16px;
+	overflow: auto;
+}
+
+div.c2h-code {
+    padding: 10px;
+    border-radius: 3px;
+
+    font-family: monospace;
+    font-size: 16px;
+
+    color: #383a42;
+    background: #f8f9fa;
+
+    overflow: auto;
+}
+
+div.c2h-code table {
+    border-collapse: collapse;
+    font-size: inherit;
+}
+
+div.c2h-code table td {
+
+    /* The vertical align is nice because for lines that 
+     * are broken in more lines, this makes the line     
+     * number align to the first line.                   
+     */
+    vertical-align: top;
+}
+
+div.c2h-code table td:first-child {
+    
+    /* Disabling the selection of the line numbers is 
+     * necessary to be able to only select the code.  
+     */
+    user-select: none;
+
+    text-align: right;
+    padding: 0 10px;
+    color: hsla(210, 13%, 40%, 0.7);
+}
+
+div.c2h-code table td:last-child {
+    /* This field is suuper important. By default HTML   
+     * collapses sequences of whitespace into one space. 
+     * This isn't good to display code since it removed  
+     * indentation. By applying this attribute to the    
+     * second column of the table (which contains the    
+     * code), the whitespace is preserved.               
+     * NOTE: 'pre' stands for preserve.                  
+     */
+    white-space: pre;
+}
+
+/* The rest is just defining the colors for each
+ * type of token.
+ */
+
+.c2h-comment {
+    color: #a0a1a7;
+}
+
+.c2h-val-int,
+.c2h-val-flt {
+    color: #986801;
+}
+
+.c2h-val-str,
+.c2h-val-char {
+    color: #50a14f;
+}
+
+.c2h-directive,
+.c2h-kword {
+    color: #a626a4;
+}
+
+.c2h-kword-static,
+.c2h-kword-const {
+    color: #a626a4;
+}
+
+.c2h-operator {
+    color: #0184bc;
+}
+
+.c2h-identifier {
+	color: #383a42;
+    /*color: hsl(219, 28%, 88%);*/
+}
+
+.c2h-fdeclname {
+    color: #4078f2;
+}
+
+.c2h-fcallname {
+    color: #4078f2;
+}

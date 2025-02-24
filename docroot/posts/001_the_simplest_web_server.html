@@ -1,0 +1,310 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - The Simplest Web Server - Part 1</h1>
+<p>
+As we mentioned in the last post, the first layer of our web application is the TCP layer. Here we'll start by listening for new client connections and handle incoming data, which is in the form of a byte stream. Later, we'll use this raw communication layer to create the HTTP request-response abstraction.
+
+We will first start with the Linux code, and then adapt it to work on Windows. Also, don't worry if you're missing some details, I'll add the complete program at the end!
+
+To handle these connections we need to create a "socket". We use a socket to define which interface we are listening on, and one extra socket per client connection. Sockets are just the way we tell the OS how we want to manage things. First, we start from the listening socket:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-comment">// Create the listening socket</span></td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>3</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) { <span class="c2h-comment">/* error */</span> }</td></tr>
+      <tr><td>4</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+now, we specify which interface we want to listen on. We do this by filling the <code>struct sockaddr_in</code> structure and associating it to the socket with the <code>bind</code> call
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buffer</span>;</td></tr>
+      <tr><td>2</td><td><span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>3</td><td><span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_port</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">htons</span>(<span class="c2h-val-int">8080</span>);</td></tr>
+      <tr><td>4</td><td><span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_addr</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">inet_addr</span>(<span class="c2h-val-str">"127.0.0.1"</span>);</td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fdeclname">bind</span>(<span class="c2h-identifier">listen_socket</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buffer</span>))) {</td></tr>
+      <tr><td>7</td><td>  <span class="c2h-comment">/* error */</span></td></tr>
+      <tr><td>8</td><td>}</td></tr>
+      <tr><td>9</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+this tells the system we want to listen on interface 127.0.0.1 and port 8080. The 127.0.0.1 refers to the loopback interface, which is used by processes to talk to other processes. In other words this allows us to test the server without being open to the local network. When we put the server online, this will need to change. The port used by HTTP is 80, and the one used by HTTPS is 443. We'll have to change that too later.
+
+Now we tell the system to actually use the socket and listen for connections:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fdeclname">listen</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-val-int">32</span>)) { <span class="c2h-comment">/* error */</span> }</td></tr>
+      <tr><td>2</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+the second argument is the size of the backlog. When connection requests first arrive to the system, they are inserted in a queue. Our process will then use the <code>accept</code> function to get a connection from that queue. The backlog parameters tells the system how long we want that queue. This parameter is important because when the queue is full other incoming connections will be rejected. But in general this isn't much of a problem since the server easily keeps up.
+
+Now comes the main loop of the server, where the great majority of its time will be spent. Each iteration will accept a connection, receive a request, then send a response. Lets see:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>2</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">client_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>3</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">client_socket</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) { <span class="c2h-comment">/* error */</span> }</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td>  <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">request_buffer</span>[<span class="c2h-val-int">4096</span>];</td></tr>
+      <tr><td>6</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">len</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">request_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">request_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>7</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">len</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) { <span class="c2h-comment">/* error */</span> }</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>  <span class="c2h-comment">// We ignore the request contents for now and always</span></td></tr>
+      <tr><td>10</td><td>  <span class="c2h-comment">// respond with the same message</span></td></tr>
+      <tr><td>11</td><td>  <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>12</td><td>    <span class="c2h-val-str">"HTTP/1.0 200 OK\r\n"</span></td></tr>
+      <tr><td>13</td><td>    <span class="c2h-val-str">"Content-Length: 13\r\n"</span></td></tr>
+      <tr><td>14</td><td>    <span class="c2h-val-str">"Content-Type: text/plain\r\n"</span></td></tr>
+      <tr><td>15</td><td>    <span class="c2h-val-str">"\r\n"</span></td></tr>
+      <tr><td>16</td><td>    <span class="c2h-val-str">"Hello, world!"</span>;</td></tr>
+      <tr><td>17</td><td>  <span class="c2h-identifier c2h-fcallname">send</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>), <span class="c2h-val-int">0</span>);  </td></tr>
+      <tr><td>18</td><td></td></tr>
+      <tr><td>19</td><td>  <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>20</td><td>}</td></tr>
+      <tr><td>21</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Perfect! This is extremely bare-bones but should work. Here is the complete version of the program:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdio.h&gt;</span> <span class="c2h-comment">// printf</span></td></tr>
+      <tr><td>2</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;unistd.h&gt;</span> <span class="c2h-comment">// close</span></td></tr>
+      <tr><td>3</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;arpa/inet.h&gt;</span> <span class="c2h-comment">// socket, htons, inet_addr, sockaddr_in, bind, listen, accept, recv, send</span></td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>()</td></tr>
+      <tr><td>6</td><td>{</td></tr>
+      <tr><td>7</td><td>  <span class="c2h-comment">// Create the listening socket</span></td></tr>
+      <tr><td>8</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>9</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>10</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"socket failed\n"</span>);</td></tr>
+      <tr><td>11</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>12</td><td>  }</td></tr>
+      <tr><td>13</td><td></td></tr>
+      <tr><td>14</td><td>  <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buffer</span>;</td></tr>
+      <tr><td>15</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>16</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_port</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">htons</span>(<span class="c2h-val-int">8080</span>);</td></tr>
+      <tr><td>17</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_addr</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">inet_addr</span>(<span class="c2h-val-str">"127.0.0.1"</span>);</td></tr>
+      <tr><td>18</td><td></td></tr>
+      <tr><td>19</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_socket</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buffer</span>))) {</td></tr>
+      <tr><td>20</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"bind failed\n"</span>);</td></tr>
+      <tr><td>21</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>22</td><td>  }</td></tr>
+      <tr><td>23</td><td></td></tr>
+      <tr><td>24</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-val-int">32</span>)) {</td></tr>
+      <tr><td>25</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"listen failed\n"</span>);</td></tr>
+      <tr><td>26</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>27</td><td>  }</td></tr>
+      <tr><td>28</td><td></td></tr>
+      <tr><td>29</td><td>  <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>30</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">client_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>31</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">client_socket</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>32</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"accept failed\n"</span>);</td></tr>
+      <tr><td>33</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>34</td><td>    }</td></tr>
+      <tr><td>35</td><td></td></tr>
+      <tr><td>36</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">request_buffer</span>[<span class="c2h-val-int">4096</span>];</td></tr>
+      <tr><td>37</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">len</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">request_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">request_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>38</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">len</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>39</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"recv failed\n"</span>);</td></tr>
+      <tr><td>40</td><td>      <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>41</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>42</td><td>    }</td></tr>
+      <tr><td>43</td><td></td></tr>
+      <tr><td>44</td><td>    <span class="c2h-comment">// We ignore the request contents for now and always</span></td></tr>
+      <tr><td>45</td><td>    <span class="c2h-comment">// respond with the same message</span></td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>47</td><td>      <span class="c2h-val-str">"HTTP/1.0 200 OK\r\n"</span></td></tr>
+      <tr><td>48</td><td>      <span class="c2h-val-str">"Content-Length: 13\r\n"</span></td></tr>
+      <tr><td>49</td><td>      <span class="c2h-val-str">"Content-Type: text/plain\r\n"</span></td></tr>
+      <tr><td>50</td><td>      <span class="c2h-val-str">"\r\n"</span></td></tr>
+      <tr><td>51</td><td>      <span class="c2h-val-str">"Hello, world!"</span>;</td></tr>
+      <tr><td>52</td><td>    <span class="c2h-identifier c2h-fcallname">send</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>53</td><td></td></tr>
+      <tr><td>54</td><td>    <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>55</td><td>  }</td></tr>
+      <tr><td>56</td><td>  <span class="c2h-comment">// This point will never be reached</span></td></tr>
+      <tr><td>57</td><td>}</td></tr>
+      <tr><td>58</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+For the windows version, there are a number of minor differences:</p>
+
+<ol>
+<li>We must initialize the socket subsystem by calling <code>WSAStartup</code></li>
+<li>The socket type is <code>SOCKET</code> instead of <code>int</code></li>
+<li>The invalid value for a socket is <code>INVALID_SOCKET</code> instead of <code>-1</code></li>
+<li>Instead of <code>close</code> we use <code>closesocket</code></li>
+<li>The headers to include</li>
+</ol>
+<p>
+To make a cross-platform version, we can leverage the compiler's preprocessor. If the <code>_WIN32</code> symbol is defined, we know we are on windows. Here is the cross-platform version:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdio.h&gt;</span> <span class="c2h-comment">// printf</span></td></tr>
+      <tr><td>2</td><td></td></tr>
+      <tr><td>3</td><td><span class="c2h-directive">#ifdef</span> <span class="c2h-identifier">_WIN32</span></td></tr>
+      <tr><td>4</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;winsock2.h&gt;</span></td></tr>
+      <tr><td>5</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">SOCKET</span></td></tr>
+      <tr><td>6</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span> <span class="c2h-identifier">INVALID_SOCKET</span></td></tr>
+      <tr><td>7</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">CLOSE_SOCKET</span> <span class="c2h-identifier">closesocket</span></td></tr>
+      <tr><td>8</td><td><span class="c2h-directive">#else</span></td></tr>
+      <tr><td>9</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;unistd.h&gt;</span> <span class="c2h-comment">// close</span></td></tr>
+      <tr><td>10</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;arpa/inet.h&gt;</span> <span class="c2h-comment">// socket, htons, inet_addr, sockaddr_in, bind, listen, accept, recv, send</span></td></tr>
+      <tr><td>11</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-kword c2h-kword-int">int</span></td></tr>
+      <tr><td>12</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span></td></tr>
+      <tr><td>13</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">CLOSE_SOCKET</span> <span class="c2h-identifier">close</span></td></tr>
+      <tr><td>14</td><td><span class="c2h-directive">#endif</span></td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>()</td></tr>
+      <tr><td>17</td><td>{</td></tr>
+      <tr><td>18</td><td><span class="c2h-directive">#ifdef</span> <span class="c2h-identifier">_WIN32</span></td></tr>
+      <tr><td>19</td><td>  <span class="c2h-identifier">WSADATA</span> <span class="c2h-identifier">wsaData</span>;</td></tr>
+      <tr><td>20</td><td>  <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">err</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">WSAStartup</span>(<span class="c2h-identifier c2h-fcallname">MAKEWORD</span>(<span class="c2h-val-int">2</span>, <span class="c2h-val-int">2</span>), <span class="c2h-operator">&</span><span class="c2h-identifier">wsaData</span>);</td></tr>
+      <tr><td>21</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">err</span> <span class="c2h-operator">!=</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>22</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"WSAStartup failed\n"</span>);</td></tr>
+      <tr><td>23</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>24</td><td>  }</td></tr>
+      <tr><td>25</td><td><span class="c2h-directive">#endif</span></td></tr>
+      <tr><td>26</td><td></td></tr>
+      <tr><td>27</td><td>  <span class="c2h-comment">// Create the listening socket</span></td></tr>
+      <tr><td>28</td><td>  <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>29</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">listen_socket</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span>) {</td></tr>
+      <tr><td>30</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"socket failed\n"</span>);</td></tr>
+      <tr><td>31</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>32</td><td>  }</td></tr>
+      <tr><td>33</td><td></td></tr>
+      <tr><td>34</td><td>  <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buffer</span>;</td></tr>
+      <tr><td>35</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>36</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_port</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">htons</span>(<span class="c2h-val-int">8080</span>);</td></tr>
+      <tr><td>37</td><td>  <span class="c2h-identifier">bind_buffer</span>.<span class="c2h-identifier">sin_addr</span>.<span class="c2h-identifier">s_addr</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">inet_addr</span>(<span class="c2h-val-str">"127.0.0.1"</span>);</td></tr>
+      <tr><td>38</td><td></td></tr>
+      <tr><td>39</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_socket</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buffer</span>))) {</td></tr>
+      <tr><td>40</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"bind failed\n"</span>);</td></tr>
+      <tr><td>41</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>42</td><td>  }</td></tr>
+      <tr><td>43</td><td></td></tr>
+      <tr><td>44</td><td>  <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-val-int">32</span>)) {</td></tr>
+      <tr><td>45</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"listen failed\n"</span>);</td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>47</td><td>  }</td></tr>
+      <tr><td>48</td><td></td></tr>
+      <tr><td>49</td><td>  <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>50</td><td>    <span class="c2h-identifier">SOCKET_TYPE</span> <span class="c2h-identifier">client_socket</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_socket</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>51</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">client_socket</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">INVALID_SOCKET_VALUE</span>) {</td></tr>
+      <tr><td>52</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"accept failed\n"</span>);</td></tr>
+      <tr><td>53</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>54</td><td>    }</td></tr>
+      <tr><td>55</td><td></td></tr>
+      <tr><td>56</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">request_buffer</span>[<span class="c2h-val-int">4096</span>];</td></tr>
+      <tr><td>57</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">len</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">request_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">request_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>58</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">len</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>59</td><td>      <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"recv failed\n"</span>);</td></tr>
+      <tr><td>60</td><td>      <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>61</td><td>      <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>62</td><td>    }</td></tr>
+      <tr><td>63</td><td></td></tr>
+      <tr><td>64</td><td>    <span class="c2h-comment">// We ignore the request contents for now and always</span></td></tr>
+      <tr><td>65</td><td>    <span class="c2h-comment">// respond with the same message</span></td></tr>
+      <tr><td>66</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">response_buffer</span>[] <span class="c2h-operator">=</span></td></tr>
+      <tr><td>67</td><td>      <span class="c2h-val-str">"HTTP/1.0 200 OK\r\n"</span></td></tr>
+      <tr><td>68</td><td>      <span class="c2h-val-str">"Content-Length: 13\r\n"</span></td></tr>
+      <tr><td>69</td><td>      <span class="c2h-val-str">"Content-Type: text/plain\r\n"</span></td></tr>
+      <tr><td>70</td><td>      <span class="c2h-val-str">"\r\n"</span></td></tr>
+      <tr><td>71</td><td>      <span class="c2h-val-str">"Hello, world!"</span>;</td></tr>
+      <tr><td>72</td><td>    <span class="c2h-identifier c2h-fcallname">send</span>(<span class="c2h-identifier">client_socket</span>, <span class="c2h-identifier">response_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">response_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>73</td><td></td></tr>
+      <tr><td>74</td><td>    <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">client_socket</span>);</td></tr>
+      <tr><td>75</td><td>  }</td></tr>
+      <tr><td>76</td><td>  <span class="c2h-comment">// This point will never be reached</span></td></tr>
+      <tr><td>77</td><td>}</td></tr>
+      <tr><td>78</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+it’s a bit ugly, but fortunately we won’t need to do this often. Save this program to a <code>http_server.c</code> file and open a terminal in the same directory, then compile the program by running this on Linux:
+</p>
+<pre><code class="language-sh">gcc http_server.c -o http_server.out
+</code></pre>
+<p>
+
+and this on windows:
+</p>
+<pre><code class="language-sh">gcc http_server.c -o http_server.out -lws2_32
+</code></pre>
+<p>
+
+Now open a browser and visit <a href="http://127.0.0.1:8080/">http://127.0.0.1:8080/</a>. You should be a page saying "Hello, world!".</p>
+
+			</article>
+		</main>
+	</body>
+</html>

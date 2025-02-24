@@ -1,249 +1,75 @@
 <html>
 	<head>
-		<title>Cozis</title>
-		<style>
-
-			h1, h2, h3, p, a {
-				line-height: 160%;
-				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-			}
-/*
-			header {
-				background-color: #c9ffcd;
-				padding: 10px;
-				border-radius: 5px;
-				margin-top: 20px;
-			}
-
-			article {
-				background-color: #eee;
-				padding: 10px;
-				border-radius: 5px;
-				margin-top: 10px;
-			}
-*/
-			div.c2h-code {
-				padding: 10px;
-				border-radius: 3px;
-
-				font-family: monospace;
-				font-size: 13px;
-
-				color: white;
-				background: hsl(210, 15%, 22%);
-			}
-
-			div.c2h-code-inner::-webkit-scrollbar {
-				width: 10px;
-				background: transparent;
-			}
-
-			div.c2h-code-inner::-webkit-scrollbar-thumb {
-				background: hsla(210, 13%, 40%, 0.7);
-			}
-
-			div.c2h-code-inner {
-
-				height: inherit;
-				max-height: inherit;
-				
-				overflow: auto;
-				scrollbar-color: hsla(210, 13%, 40%, 0.7) transparent;
-			}
-
-			div.c2h-code table {
-				border-collapse: collapse;
-				font-size: inherit;
-			}
-
-			div.c2h-code table td {
-				color: white;
-
-				/* The vertical align is nice because for lines that 
-				* are broken in more lines, this makes the line     
-				* number align to the first line.                   
-				*/
-				vertical-align: top;
-			}
-
-			div.c2h-code table td:first-child {
-				
-				/* Disabling the selection of the line numbers is 
-				* necessary to be able to only select the code.  
-				*/
-				user-select: none;
-
-				text-align: right;
-				padding: 0 10px;
-				color: hsla(210, 13%, 40%, 0.7);
-			}
-
-			div.c2h-code table td:last-child {
-				/* This field is suuper important. By default HTML   
-				* collapses sequences of whitespace into one space. 
-				* This isn't good to display code since it removed  
-				* indentation. By applying this attribute to the    
-				* second column of the table (which contains the    
-				* code), the whitespace is preserved.               
-				* NOTE: 'pre' stands for preserve.                  
-				*/
-				white-space: pre;
-			}
-
-			.c2h-comment {
-				color: hsl(221, 12%, 69%);
-			}
-
-			.c2h-val-int,
-			.c2h-val-flt {
-				color: hsl(32, 93%, 66%);
-			}
-
-			.c2h-val-str,
-			.c2h-val-char {
-				color: hsl(114, 31%, 68%);
-			}
-
-			.c2h-directive,
-			.c2h-kword {
-				color: hsl(300, 30%, 68%);
-			}
-
-			.c2h-kword-static,
-			.c2h-kword-const {
-				color: hsl(357, 79%, 65%);
-			}
-
-			.c2h-operator {
-				color: hsl(13, 93%, 66%);
-			}
-
-			.c2h-identifier {
-				color: hsl(219, 28%, 88%);
-			}
-
-			.c2h-fdeclname {
-				color: hsl(180, 36%, 54%);
-			}
-
-			.c2h-fcallname {
-				color: hsl(210, 50%, 60%);
-			}
-		</style>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="style/global.css" />
+		<title>cozis - index</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
 	</head>
-	<body style="width:800px;margin:auto;">
-		<h1>Cozis</h1>
-		<header>
-			<p>
-				Hello! I'm Francesco Cozzuto, a computer programmer from Italy with a strong focus on systems programming, networking, and graphics. Online I usually go by cozis.
-				<br /><br />
-				I have a deep interest in building interpreters, compilers, network stacks, and rendering engines. In the past, I've developed HTTP/1.1 servers (for Linux and Windows), scripting language interpreters, a full userspace network stack, and a physically-based renderer (PBR). My primary language is C, though I occasionally dive into C++ if necessary.
-				<br /><br />
-				Feel free to connect with me on <a href="https://www.linkedin.com/in/cozis/" target="_blank">LinkedIn</a>, check out my projects on <a href="https://github.com/cozis">GitHub</a>, or reach out via Discord (cozisx) or email at francesco.cozzuto [at] gmail.com :)
-				<br /><br />
-				(fun fact: This website is served using <a target="_blank" href="https://github.com/cozis/blogtech">my own web server</a> and all code snippets are highlighted using my own <a target="_blank" href="https://github.com/cozis/c2html">tool</a>)
-			</p>
-		</header>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="index.html">index</a>
+						•
+						<a href="projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
 
-		<article>
-			<h2>Projects</h2>
-
-			<h3><a href="https://github.com/cozis/ray_tracing" target="_blank">Ray Tracer</a></h3>
-			<table>
-				<tr>
-					<td style="vertical-align: text-top;">
-						<p>
-							Ray tracing is a popular algorithm for redering 3D scenes where propagation of light rays is simulated to determine this final color of each pixel. I wrote this to learn about global illumination.
-						</p>
-					</td>
-					<td>
-						<a href="ray_tracing.png" target="_blank"><img width="300px" src="ray_tracing.png" /></a>
-					</td>
-				</tr>
-			</table>
-
-			<h3><a href="https://github.com/cozis/PBR-Demo" target="_blank">PBR Renderer</a></h3>
-			<table>
-				<tr>
-					<td style="vertical-align: text-top;">
-						<p>
-							It's a 3D renderer I built to dive deeper into graphics programming, using as reference the great <a href="https://learnopengl.com/">LearnOpenGL</a> tutorial and <a href="https://google.github.io/filament/Filament.html">Google's Filament</a>. The renderer implements Physically Based Rendering (PBR), a technique that simulates light and shadows to closely mimic real-world behavior. It supports shadow mapping, Image-Based Lighting (IBL), and can load meshes from external files.
-						</p>
-					</td>
-					<td>
-						<a href="chessboard.jpg" target="_blank"><img width="300px" src="chessboard.jpg" /></a>
-					</td>
-				</tr>
-			</table>
-
-			<h3><a href="https://github.com/cozis/microtcp" target="_blank">MicroTCP</a></h3>
-			<p>
-				MicroTCP is a user-space network stack I developed in university to better understand TCP and lower-level protocols like IP, ICMP, and ARP. It provides two interfaces: a blocking, BSD socket-like interface and a non-blocking, epoll-like interface for handling multiple connections efficiently. I tested it by porting xHTTP to it, an HTTP/1.1 implementation I wrote previously. You can also check out a discussion about it on <a href="https://news.ycombinator.com/item?id=38086598">Hacker News</a>.
-			</p>
-
-			<h3><a href="https://github.com/cozis/blogtech" target="_blank">Blogtech</a></h3>
-			<p>
-				This is the web server used to host this blog. I wrote it to see how hard it would be to write services facing the public internet from scratch.
-				<br />
-				<br />
-				After writing the first prototype I hosted it on a small VPS and asked <a target="_blank" href="https://www.reddit.com/r/C_Programming/comments/1falo3b/using_my_c_web_server_to_host_a_blog_you_cant/">Reddit (r/C_Programming)</a> to break it, which helped make the program more robust. One day I woke up and the server wasn't responding anymore. Turns out someone stress tested it so much during the night the log file fille the VPS hard drive. It took 3 hourds to download the 40GB log file to my machine!
-				<br />
-				<br />
-				After implementing log file rotation I went back to <a target="_blank" href="https://www.reddit.com/r/hacking/comments/1fcc5hd/im_using_my_custom_c_webserver_to_host_my_blog_no/">Reddit (r/hacking this time)</a> asking people to break it again! This went better than last time.
-				<br />
-				<br />
-				I took some time adding HTTPS support using BearSSL (and fix some nasty bug that popped up) and posted it on <a target="_blank" href="https://news.ycombinator.com/item?id=41642151">Hacker News</a> where it got quite a bit of interest. The project managed to reach the front page, which is super cool because I got to test the server with higher traffic! The server managed to serve around 70K requests the first day with no issues.
-			</p>
-
-			<h3><a href="https://github.com/cozis/noja" target="_blank">Noja</a></h3>
-			<p>
-				This is the first "serious" project I worked on. It's an interpreter for a high level language I designed from scratch. It taught me how to manage non-trivial codebases and how important it is to keep complexity low.
-
-				The language supports features like multiple return values, default argument values, and closures. It was a great learning experience and helped me understand interpreters deeply. You can find various examples in the examples/ folder of the GitHub repository, including an HTTP server I ported to the language.
-			</p>
-
-			<div class="c2h-code">
-				<div class="c2h-code-inner">
-				<table>
-					<tr><td>1</td><td><span class="c2h-kword">fun</span> <span class="c2h-identifier c2h-fdeclname">loadFile</span>(<span class="c2h-identifier">path</span>: <span class="c2h-identifier">String</span>) {</td></tr>
-					<tr><td>2</td><td></td></tr>
-					<tr><td>3</td><td>    <span class="c2h-comment"># Log the path</span></td></tr>
-					<tr><td>4</td><td>    <span class="c2h-identifier c2h-fcallname">print</span>(<span class="c2h-val-str">"path="</span>, <span class="c2h-identifier">path</span>, <span class="c2h-val-str">"\n"</span>);</td></tr>
-					<tr><td>5</td><td></td></tr>
-					<tr><td>6</td><td>    <span class="c2h-comment"># Open the file</span></td></tr>
-					<tr><td>7</td><td>    <span class="c2h-identifier">stream</span>, <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">files</span>.<span class="c2h-identifier c2h-fcallname">openFile</span>(<span class="c2h-identifier">path</span>, <span class="c2h-identifier">files</span>.<span class="c2h-identifier">READ</span>);</td></tr>
-					<tr><td>8</td><td>    <span class="c2h-kword c2h-kword-if">if</span> <span class="c2h-identifier">error</span> <span class="c2h-operator">!=</span> <span class="c2h-identifier">none</span>:</td></tr>
-					<tr><td>9</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-kword-const">none</span>, <span class="c2h-identifier">error</span>;</td></tr>
-					<tr><td>10</td><td></td></tr>
-					<tr><td>11</td><td>    <span class="c2h-comment"># Copy its contents to a dinamically growing buffer</span></td></tr>
-					<tr><td>12</td><td>    <span class="c2h-identifier">text</span> <span class="c2h-operator">=</span> <span class="c2h-val-str">""</span>;</td></tr>
-					<tr><td>13</td><td>    <span class="c2h-identifier">size</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">512</span>;</td></tr>
-					<tr><td>14</td><td>    <span class="c2h-kword c2h-kword-do">do</span> {</td></tr>
-					<tr><td>15</td><td>        <span class="c2h-identifier">size</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">2</span> <span class="c2h-operator">*</span> <span class="c2h-identifier">size</span>;</td></tr>
-					<tr><td>16</td><td>        <span class="c2h-identifier">data</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">buffer</span>.<span class="c2h-identifier c2h-fcallname">new</span>(<span class="c2h-identifier">size</span>);</td></tr>
-					<tr><td>17</td><td></td></tr>
-					<tr><td>18</td><td>        <span class="c2h-identifier">num_bytes</span>, <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">files</span>.<span class="c2h-identifier c2h-fcallname">read</span>(<span class="c2h-identifier">stream</span>, <span class="c2h-identifier">data</span>);</td></tr>
-					<tr><td>19</td><td>        <span class="c2h-kword c2h-kword-if">if</span> <span class="c2h-identifier">error</span> <span class="c2h-operator">!=</span> <span class="c2h-kword-const">none</span>:</td></tr>
-					<tr><td>20</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-kword-const">none</span>, <span class="c2h-identifier">error</span>;</td></tr>
-					<tr><td>21</td><td></td></tr>
-					<tr><td>22</td><td>        <span class="c2h-identifier">text</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">string</span>.<span class="c2h-identifier c2h-fcallname">cat</span>(<span class="c2h-identifier">text</span>, <span class="c2h-identifier">buffer</span>.<span class="c2h-identifier c2h-fcallname">toString</span>(<span class="c2h-identifier">data</span>));</td></tr>
-					<tr><td>23</td><td></td></tr>
-					<tr><td>24</td><td>    } <span class="c2h-kword c2h-kword-while">while</span> <span class="c2h-identifier">num_bytes</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">size</span>;</td></tr>
-					<tr><td>25</td><td></td></tr>
-					<tr><td>26</td><td>    <span class="c2h-comment"># Close the file handle</span></td></tr>
-					<tr><td>27</td><td>    <span class="c2h-identifier">files</span>.<span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">stream</span>);</td></tr>
-					<tr><td>28</td><td></td></tr>
-					<tr><td>29</td><td>    <span class="c2h-comment"># Return the file contents to the caller</span></td></tr>
-					<tr><td>30</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">text</span>;</td></tr>
-					<tr><td>31</td><td>}</td></tr>
-				</table>
-				</div>
-			</div>
-
-			<h2>Posts</h2>
-			<ul>
-				<li><a href="a_gentle_introduction_to_tcp.html">A Gentle Introduction to TCP - Part 1</a> (20 oct 2024)</li>
-			</ul>
-		</article>
+			<article>
+				<h3>About me</h3>
+				<p>
+					Hello! I'm Francesco Cozzuto, a computer programmer from Italy with a strong focus on systems programming.
+					Online I usually go by cozis. I have a deep interest in building interpreters, compilers, network stacks,
+					and rendering engines.
+				</p>
+				<p>
+					Feel free to connect with me on socials. You can also email me at francesco.cozzuto [at] gmail.com :)
+				</p>
+				<p>
+					(fun fact: This website is served using <a target="_blank" href="https://github.com/cozis/blogtech">my own
+					web server</a>)
+				</p>
+				<h3>Building web apps from scratch</h3>
+				<ul>
+					<li>
+						<a href="posts/000_getting_started.html">Getting Started - Part 0</a>
+					</li>
+					<li>
+						<a href="posts/001_the_simplest_web_server.html">The Simplest Web Server - Part 1</a>
+					</li>
+					<li>
+						<a href="posts/002_request_parsing.html">Request Parsing - Part 2</a>
+					</li>
+					<li>
+						<a href="posts/003_Handling_request_payload.html">Handling request payload - Part 3</a>
+					</li>
+					<li>
+						<a href="posts/004_html_forms_and_cookies.html">HTML Forms and Cookies - Part 4</a>
+					</li>
+				</ul>
+			</article>
+		</main>
 	</body>
 </html>
