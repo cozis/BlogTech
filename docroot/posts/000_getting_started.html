@@ -40,44 +40,59 @@
 			<article>
 				<h1>Building web apps from scratch - Getting Started - Part 0</h1>
 <p>
-In this series, Id'd like to show how web applications work by building one from the ground up. We will be using the C programming language, since itd's low level enough to do everything efficiently and is relatively unopinionated (which helps since we want to build everything ourselves). By the end, wed'll have a fully functional web application that can stand the test of real users!
+I've always been fascinated by how web applications work. After spending the past few years diving how they are build, I thought it would be fun to share what I've learned! In this series of posts, we'll build a social network-like website from scratch. Think of it as a journey where we'll explore how all the pieces fit together. By the end, you'll have a fully functional website ready for real users!
 
-While wed'll be building most components ourselves, wed'll take a practical approach by using external libraries for encryption (TLS) and the database. For TLS, wed'll be using BearSSL, while for the database wed'll be using SQLite.
+This is the first time undertaking such an ambitious project, so I welcome any feedback :)
 
-The application will be a social network website, featuring followers, publishing posts, and maybe private chats!
+We'll be using the C programming language for everything, since it's low level enough to do things efficiently and not very opinionated. The libraries we will use are:</p>
+
+<ul>
+<li><a href="https://bearssl.org/">BearSSL</a> for encryption</li>
+<li><a href="https://www.sqlite.org/">SQLite</a> as database</li>
+</ul>
+<p>but we can worry about that later.
 
 </p>
 <h2>Prerequisites</h2>
-<p>To follow this series, youd'll need a good grasp of basic programming constructs and lower level ones like pointers, static allocation, dynamic allocation. It will probably be helpful to have a rough understanding of how the web works.
+<p>
+To follow along, you will need:</p>
 
+<ul>
+<li>A good grasp of C programming: there is a lot to cover and I won't be able to delve into the details of everything, not at first at least. I plan on accompanying the main posts with secondary posts explaining the things I had to gloss over.</li>
+<li>You should have an idea of how HTTP works: what is a request, a response, and their general syntex.</li>
+</ul>
+<p>
 </p>
 <h2>Environment Setup</h2>
-<p>Our setup wond't be very fancy. Wed'll use a regular code editor and the terminal to compile and debug our project. All of the code will work on both Linux and Windows.
+<p>
+Our setup won't be very fancy. We will use a regular code editor to write our code and a terminal to build it. All of the code will work on both Linux and Windows.
 
-On Linux, you must install gcc and make (you probably know how to do it). I also strongly advise you install gdb and valgrind for debugging.
+On Linux, you must install:</p>
 
+<ul>
+<li><code>gcc</code> and <code>make</code> for building our application</li>
+<li><code>gdb</code>, <code>valgrind</code>, and <code>strace</code> for debugging</li>
+</ul>
+<p>
 On Windows, you have two options:</p>
 
 <ol>
 <li>Use WSL to simulate a Linux environment</li>
 <li>Go native</li>
 </ol>
-<p>Linux tooling is easier to use, but youd'll need to set up WSL. If you do, all of the considerations I make for Linux will apply to you.
+<p>WSL is harder to set up, but you will have access to the tools I listed above. Any considerations made for Linux will also apply to you.
 
-If you want to go native, then you should download w64devkit, made by the awesome skeeto, author of nullprogram. This is a unix-like development environment for Windows. It contains gcc, gdb, make and some other utilities.
+If you still want to go native, then you should download <a href="https://github.com/skeeto/w64devkit">w64devkit</a>, which is is an unix-like environment for Windows built by the awesome author of <a href="https://nullprogram.com/">nullprogram.com</a>. It contains <code>gcc</code>, <code>gdb</code>, <code>make</code> and some other utilities.
 
 </p>
-<h2>Components of a web app</h2>
-<p>First, letd's get an overview of the various parts that make up a web app:
-</p>
+<h2>The Roadmap</h2>
+<p>
+The project will be divided 3 parts:</p>
 
 <ul>
-<li>TCP Layer: This is where the application establishes and manages connections with clients. Most of the work happens in the operating system, so we only need "sockets" to indicate which interface and port wed're listening on. The system then will notify us when new connections arrive or data is received. At this level, we only deal with stream of bytes (there is no concept of higher-level messages like requests or responses).</li>
-<li>TLS Layer: This is the encryption layer, which sits on top of TCP. Every byte sent is first encrypted using TLS.</li>
-<li>HTTP Layer: This creates the request-response model that web developers are familiar with. Clients establish TCP/TLS connections, send requests for specific resources (endpoints), and receive a response from the server. The connection can then be reused or closed. The endpoints will allow us to implement different features of our application.</li>
-<li>Front-end: The application presents content to the user through web pages. These pages include forms that send requests back to the server based on user actions. We wond't be using any fancy frameworks here.</li>
-<li>Business Logic: Here we implement handlers for all the various endpoints our application needs. Most handlers will either store user data into the database or return database data to the user.</li>
-<li>Database: This is where we define the format of the data wed'll be storing and the rules the database must enforce to make sure it is always consistent.</li>
+<li><strong>Part 1</strong>: we will create a simplified yet complete version of our application. This will include a <strong>blocking web server</strong>, the <strong>database</strong>, and <strong>no encryption</strong>.</li>
+<li><strong>Part 2</strong>: we will improve our web server by making it <strong>non-blocking</strong>.</li>
+<li><strong>Part 3</strong>: we will add <strong>encryption</strong>.</li>
 </ul>
 
 			</article>
