@@ -7,6 +7,10 @@ header span#cozis-text {
 	font-size: 1.7rem;
 	font-weight: bold;
 }
+.wip,
+.wip a[href] {
+	color: #ccc
+}
 a[href] {
 	color: #478fd2;
 }

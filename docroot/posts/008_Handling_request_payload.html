@@ -40,6 +40,8 @@
 			<article>
 				<h1>Building web apps from scratch - Handling request payload - Part 3</h1>
 <p>
+<strong>NOTE: This post is still a work in progress!!</strong>
+
 Our server can now receive requests and inspect their data, then send a response based on that data. That's pretty much all we need to get a simple website going, even with dynamic content and everything! There is one thing missing though. At the moment we are ignoring the request payload. This is necessary when the user want to send us information such as login data or a post's content.
 
 At the moment, our server receives the request in a 4Kb buffer, hoping it is large enough to hold its head. We continue reading bytes into the buffer until we find the <code>\r\n\r\n</code> token which signifies the end of the request head and the start of the body, if present. It is also possible that our buffer reads over the request head limit and into the body.
