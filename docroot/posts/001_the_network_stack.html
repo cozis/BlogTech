@@ -110,7 +110,16 @@ Each layer solves a specific set of problems. By adding them up we create the ab
 <br />
 <br />
 
-Our application sits in layer 5 (L5) and produces messages based on what it does for the user. Messages are passed to the lower layer which adds a header to the message. This header contains information required by the same protocol in other hosts for the correct handling of the message. The message is then forwarded to the lower layer which encapsulates further by adding its own header. The message goes down the stack being incapsulated recursively until it reaches the hardware and its bits are sent off. During transit over the network, intermediate devices (such as switches and routers) will unpack the message in reverse order to get the information necessary for forwarding it to its destination. When the message finally reaches the destination host, it is unpacked all the way up to the application layer, where the destination application is operating.</p>
+Our application sits in layer 5 (L5) and produces messages based on what it does for the user. Messages are passed to the lower layer which adds a header to the message. This header contains information required by the same protocol in other hosts for the correct handling of the message. The message is then forwarded to the lower layer which encapsulates further by adding its own header. The message goes down the stack being incapsulated recursively until it reaches the hardware and its bits are sent off. During transit over the network, intermediate devices (such as switches and routers) will unpack the message in reverse order to get the information necessary for forwarding it to its destination. When the message finally reaches the destination host, it is unpacked all the way up to the application layer, where the destination application is operating.
+
+</p>
+<h2>Join the Discussion!</h2>
+<p>Have questions or feedback for me? Feel free to pop in my discord
+
+<br />
+<br />
+
+<a href="https://discord.gg/5rtC3FTU">Join the Discord Server</a></p>
 
 			</article>
 		</main>
