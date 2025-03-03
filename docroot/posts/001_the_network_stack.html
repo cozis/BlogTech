@@ -40,17 +40,7 @@
 			<article>
 				<h1>Building web apps from scratch - The Network Stack - Part 1</h1>
 <p>
-Our web application will use the networking facilities implemented by the operating system to communicate with clients. These facilities, which are used by programs through the socket programming interface, offer a reliable service for the transmission of byte streams. Internally, the OS uses the TCP protocol and other lower level ones such as IP, ethernet, or wifi.
-
-<br />
-<br />
-
-This makes things quite easy for us. Many things can go wrong on the network, causing data to be lost. The protocols implemented by the OS solve pretty much all of them. When using the socket interface we essentially hand bytes to the OS and tell where they should go, it handles the rest.
-
-<br />
-<br />
-
-Unless we want to really fine-tune our server, knowing the details of the lower level protocols won't help us much. Even then, you may feel like you're missing an important part of the larger picture. That's why I decided to spend some time giving you a sense of what's happening under the hood. I'll go into how networks work with a strong bias towards what we need for our web app.
+Our web application will use <strong>sockets</strong> to handle the transmission of bytes over the network. They are kernel objects we can use to tell the operating system how to handle our networking operations. There is a lot going on under the hood of sockets, so this simplifies our work quite a bit! But even then, we should understand what the OS is doing for us. This will allow us to use the interface correctly. This and the few posts following will go into exactly that! We will see how networks work with a string bias towards what we need for our project.
 
 </p>
 <h2>The Network Stack</h2>
@@ -111,6 +101,10 @@ Each layer solves a specific set of problems. By adding them up we create the ab
 <br />
 
 Our application sits in layer 5 (L5) and produces messages based on what it does for the user. Messages are passed to the lower layer which adds a header to the message. This header contains information required by the same protocol in other hosts for the correct handling of the message. The message is then forwarded to the lower layer which encapsulates further by adding its own header. The message goes down the stack being incapsulated recursively until it reaches the hardware and its bits are sent off. During transit over the network, intermediate devices (such as switches and routers) will unpack the message in reverse order to get the information necessary for forwarding it to its destination. When the message finally reaches the destination host, it is unpacked all the way up to the application layer, where the destination application is operating.
+
+</p>
+<h2>What's next</h2>
+<p>In the <a href="002_ethernet_and_ip.html">next posts</a>, we will go over the lowest layers of the network: the data-link and the network layers, where the ethernet, wifi, and IP protocols are located.
 
 </p>
 <h2>Join the Discussion!</h2>

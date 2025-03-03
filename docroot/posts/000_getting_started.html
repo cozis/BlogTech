@@ -40,7 +40,7 @@
 			<article>
 				<h1>Building web apps from scratch - Getting Started - Part 0</h1>
 <p>
-I've always been fascinated by how web applications work. After spending the past few years diving how they are build, I thought it would be fun to share what I've learned! In this series of posts, we'll build a social network-like website from scratch. Think of it as a journey where we'll explore how all the pieces fit together. By the end, you'll have a fully functional website ready for real users!
+In the past few years, I had som fun studying how web apps are built from the ground up. It's been a great journey so I decided to share what I learned by making a series of posts showing how one can build a web app from scratch. We will build a simple social network featuring posting articles and following other users. If you follow along, by the end you'll have a fully functional website ready for real users!
 
 <br/>
 <br/>
@@ -64,8 +64,8 @@ We'll be using the C programming language for everything, since it's low level e
 To follow along, you will need:</p>
 
 <ul>
-<li>A good grasp of C programming: there is a lot to cover and I won't be able to delve into the details of everything, not at first at least. I plan on accompanying the main posts with secondary posts explaining the things I had to gloss over.</li>
-<li>You should have an idea of how HTTP works: what is a request, a response, and their general syntex.</li>
+<li>A good grasp of C programming</li>
+<li>An idea of how HTTP works: what is a request, a response, and their general syntax.</li>
 </ul>
 <p>
 </p>
@@ -97,15 +97,14 @@ On Windows, you have two options:</p>
 If you still want to go native, then you should download <a href="https://github.com/skeeto/w64devkit">w64devkit</a>, which is is an unix-like environment for Windows built by the awesome author of <a href="https://nullprogram.com/">nullprogram.com</a>. It contains <code>gcc</code>, <code>gdb</code>, <code>make</code> and some other utilities.
 
 </p>
-<h2>The Roadmap</h2>
+<h2>Roadmap</h2>
 <p>
-The project will be divided 3 parts:</p>
+We will start by building a <strong>blocking web server</strong> with the <strong>socket interface</strong> provided by the operating system. We will then add a <strong>database</strong> and implement the first version of our application. You could host this version online, but only as a test, since there will be <strong>no encryption</strong>. Then, we will reaorganize our server to make it <strong>non-blocking</strong>, greatly increasing how many requests the server can handle at a given time. Finally, we will add encryption.
 
-<ul>
-<li><strong>Section 1</strong>: we will create a simplified yet complete version of our application. This will include a <strong>blocking web server</strong>, the <strong>database</strong>, and <strong>no encryption</strong>.</li>
-<li><strong>Section 2</strong>: we will improve our web server by making it <strong>non-blocking</strong>.</li>
-<li><strong>Section 3</strong>: we will add <strong>encryption</strong>.</li>
-</ul>
+<br/>
+<br/>
+
+But before all of that, I decided to offer an overview of how networks work. This will give you a sense of what the OS is doing for us. So in the <a href="001_the_network_stack.html">next post</a> we will go over the general structure of the internet and the protocols it uses.</p>
 
 			</article>
 		</main>
