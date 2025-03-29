@@ -1,0 +1,281 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - TCP and UDP - Part 3</h1>
+<p>
+In this post, we'll talk about the all mighty TCP! The protocol which powers the web and more. This article ended up quite beefy, but I assure you, knowing this stuff really is worth it! It will greatly enhance your usage of the socket interface. Knowing how TCP works really is a superpower :D
+
+</p>
+<h2>Layer 4: The Transport Layer</h2>
+<p>
+As mentioned earlier, L4 protocols work to add varying levels of reliability to the network and to address processes within a host. The most widespread transport protocol is the Transmission Control Protocol (TCP), which is used by the web. TCP solves the problem of packet loss and out-of-order reception, creating the abstraction of a reliable network from the point of view of applications. The way it works is by basically retrying until the message is received. In TCP, there is no concept of a message. The data being transferred is treated as an ordered sequence of bytes. Nonetheless, these bytes are sent over the networks in batches, which we call segments. The other L4 protocol is UDP, which is very minimal in the guarantees it offers. You can think of it as a L4 version of the IP protocol with the addition of ports and a checksum over the content (the IP checksum only covers its header). The UDP is very useful for applications that already manage communication unreliability internally, or just don't care: sometimes it's better to have fewer packets reaching the destination on time, than having all of them reach it a bit late. The web uses mostly TCP, so we will put UDP on the side and focus on TCP.
+
+</p>
+<h2>TCP Segment Layout</h2>
+<p>
+To learn about TCP, a good starting point is its segment layout. First, I want to give you an overview of all the fields, and then dive into the details of how they work with the following paragraphs.
+</p>
+<pre><code class="language-">0           1           2           3           4
++-----+-----+-----+-----+-----+-----+-----+-----+
+|      source port      |    destination port   |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|                sequence number                |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|             acknowledgement number            |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|   offset  |   flags   |      window size      |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|        checksum       |     urgent pointer    |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|                                               |
+|                ... options ...                |
+|                                               |
++-----+-----+-----+-----+-----+-----+-----+-----+
+|                                               |
+|                ... payload ...                |
+|                                               |
+|                                               |
+|                                               |
++-----+-----+-----+-----+-----+-----+-----+-----+
+
+NOTE: each row is 4 bytes.
+</code></pre>
+<p>
+The <strong>port</strong> fields allow the addressing of specific processes within a host. When a TCP connection is initiated by a process, both input and output ports must be specified.
+
+<br/>
+<br/>
+
+The <code>sequence number</code> identifies which bytes are contained by the segment. If a segment of size 100 has sequence number of 333, this means it's holding bytes with sequence numbers from 333 to 100+333-1=432. Sequence numbers are essential to ensure that data is delivered in order. I remember thinking of sequence number as something like a "segment ID", but that's not quite correct. If for some reason the receiver only acknowledges part of the segment (more on ACKs later), the sender will have to send a new segment which overlaps with the previous one. When a connection is established, each host chooses its own starting sequence number. From that point on, sequence numbers are increased by the number of bytes sent. Note that if the first sequence number were zero, the sequence number of a byte would correspond to its position in the stream relative to the start. Unfortunately, for security reasons hosts choose a random-ish sequence number.
+
+<br/>
+<br/>
+
+The <code>acknowledgement number</code> is only used when the ACK flag is set and contains the next sequence number expected by the sender of the segment. With this, hosts know how many bytes the peer received and, by comparing it with the last sequence number, can infer how many are in transit or were lost in the network.
+
+<br/>
+<br/>
+
+The <code>offset</code> contains the number of 32 bit words that make up the header. This is necessary since segment headers have variable length due to options.
+
+<br/>
+<br/>
+
+The <code>flags</code> field contains a number of flags which gives a special meaning to the segment. The flags we will mostly talk about are SYN, ACK, FIN. The other important flag is RST, which is used to abort a connection on the spot.
+
+<br/>
+<br/>
+
+The <code>window size</code> field contains the number of bytes the host is willing to accept. It's required for <strong>flow control</strong>.
+
+<br/>
+<br/>
+
+The <code>checksum</code> contains a code which is calculated over the entire segment and is used to detect corrupted bits.
+
+<br/>
+<br/>
+
+If you were to ask me which TCP segment field is my favorite, I would certainly tell you it's the <code>urgent pointer</code>! Apparently, TCP allows sending two streams of data over a single connection: one for regular data, and one for urgent/high priority data. When the URG flag is set, the current segment is holding urgent data and the length of that data is the <code>urgent pointer</code> value minus one. The urgent payload spans from the start of the segment up to the byte with sequence number <code>sequence number + urgent pointer</code>. Ahh.. so much to say. I'll have to write a post specifically about this!
+
+<br/>
+<br/>
+
+The <code>options</code> region of the header may contain configurations which change the default behavior of the protocol.
+
+</p>
+<h2>ACKing and Retransmission</h2>
+<p>
+For now, let's skip the connection establishment step to see how a TCP connection behaves when sending regular data.
+
+<br/>
+<br/>
+
+A TCP connection is made of two unidirectional streams of data, each with its own sequence numbers. Since each host has its own output channel, it's pretty much free to send data whenever it wants. Any synchronization between input and output is handled by higher level protocols.
+
+<br/>
+<br/>
+
+Each connection is associated with an input buffer and an output buffer. The input buffer holds data received by the network until the application accepts it, and the output buffer contains data sent by the application that is waiting to be forwarded to the network. The knowledge of these buffers is probably the single most important thing for a network programmer.
+
+<br/>
+<br/>
+
+When a host sends data to the network, it doesn't immediately remove it from the output buffer. Instead, the host assumes some of it will be lost and will need to be sent again. Upon receiving that data, the peer will respond with an ACK segment (a segment with the ACK flag set) telling the sender that the data has been received. Bytes from the output buffer can be freed only after an ACK for them has been received. If no ACK is received by a certain time, the data is assumed to be lost and is retransmitted. When a number of segments are lost, the sender may start assuming the network is congested or the peer is not available at all.
+
+<br/>
+<br/>
+
+If a host sending an ACK is also about to send a data segment, the two can be merged into one data+ACK segment. This should be pretty intuitive. You just set the ACK flag on the data segment. We call this <strong>piggybacking</strong>.
+
+</p>
+<h2>Cumulative ACKs and Pipelining</h2>
+<p>
+Every ACK segment sent by a host contains an acknowledgement number, which corresponds to the sequence number of the next byte expected by the host. When everything goes well, the acknowledgement number will match the peer's current sequence number. However, the receiver may acknowledge only part of the previously received segment. For instance, the segment may contain more data than the available free space. In this case, the ACK number will refer to the first discarded byte in the data segment and the sender will have to retransmit those bytes by sending a segment which overlaps with the previous one. The ACK number mechanism makes it so the relation between data and ACK segments is not 1-to-1: every ACK refers to all bytes up to a certain point. This is why we call ACKs in TCP "cumulative".
+
+<br/>
+<br/>
+
+A consequence of cumulative ACKing is that each ACK implies all previous ones. If a host receives two segments, the ACK for the second segment will also ACK the first segment! This completely changes the relation between data segments and ACKs. We don't need to ACK every segment, we just need to send an occasional ACK to let the sender know everything up to this point was received. The ability to send multiple segments before the ACK for the previous ones is received, which we call <strong>pipelining</strong>, greatly improves performance.
+
+</p>
+<h2>Flow Control</h2>
+<p>
+TCP employs a mechanism to regulate data transmission to avoid overwhelming the receiver, which we call <strong>flow control</strong>.
+
+When sending segments, hosts set the <code>window size</code> field to the available free space in their input buffer. This tells the sender that any data over this limit will likely be discarded. With this, senders know how much data is safe to send.
+
+</p>
+<h2>The Three-way Handshake</h2>
+<p>
+To use TCP, hosts must first establish a connection. We call this process the three-way handshake.
+
+<br/>
+<br/>
+
+The host initiating the connection sends a SYN segment (a segment with the SYN flag set). This segment contains its first sequence number. If the peer is open to communicate, it will respond with an ACK+SYN segment, which includes its own first sequence number. The initial host then replies with an ACK segment, which concludes the handshake. If no ACK is sent in response to a SYN, the SYN is retransmitted. Although uncommon, SYNs can piggyback on data segments, in which case the data must be delivered after the handshake has been completed.
+
+<br/>
+<br/>
+
+In the previous paragraphs we talked about how ACKs use sequence numbers to specify what was received, which implies only things with a sequence number can be ACKed. But then, how do we ACK SYNs? The answer is SYNs are ACKed as any other byte, except there is no byte for it. We call SYN a "ghost byte". Of course this only works since SYN is sent before any data. If we added random ghost bytes in the middle of our stream it would mess up the entire sequence. Similarly, the connection termination process uses the FIN flag which also behave as ghost bytes.
+
+<br/>
+<br/>
+
+Here's a diagram of the handshake:
+</p>
+<pre><code class="language-">Host A                       Host B
+  |                            |
+  | ---------- SYN ----------&gt; |
+  |                            |
+  | &lt;------- SYN+ACK --------- |
+  |                            |
+  | ---------- ACK ----------&gt; |
+  |                            |
+</code></pre>
+<p>
+
+However, this process is flexible enough that it handles peers simultaneously sending connection requests to each other:
+</p>
+<pre><code class="language-">Host A                       Host B
+  |                            |
+  | ---------- SYN ----------&gt; |
+  |                            |
+  | &lt;--------- SYN ----------- |
+  |                            |
+  | &lt;--------- ACK ----------- |
+  |                            |
+  | ---------- ACK ----------&gt; |
+  |                            |
+</code></pre>
+<p>
+
+So the handshake is not strictly three-way. We just call it that because it requires three steps most of the time.
+
+We can also interpret the <code>SYN+ACK</code> segment as the <code>ACK</code> piggybacking on the <code>SYN</code> segment. Hosts responding to a <code>SYN</code> could just decide to send their own <code>SYN</code> and <code>ACK</code> in different segments.
+
+</p>
+<h2>The Four-Way Termination</h2>
+<p>
+Terminating a TCP connection is a similar process to creating one, where we use FIN segments instead of SYN segments. If a host decides it will not send any more data, it must send a FIN segment. The peer must then ACK the FIN segment. FINs only terminate the output channel of a host, which means communication is free to continue in the direction of the host which sent the FIN. When both peers have sent (and acknowledged) FINs, the connection is closed.
+
+<br/>
+<br/>
+
+The four-way termination looks like this:
+</p>
+<pre><code class="language-">Host A                       Host B
+  |                            |
+  | ---------- FIN ----------&gt; |
+  |                            |
+  | &lt;--------- ACK ----------- |
+  |                            |
+  | &lt;----- optional data ----- |
+  |                            |
+  | &lt;--------- FIN ----------- |
+  |                            |
+  | ---------- ACK ----------&gt; |
+  |                            |
+</code></pre>
+<p>
+
+but similarly to handshakes, it can be expressed as a three-way termination:
+</p>
+<pre><code class="language-">Host A                       Host B
+  |                            |
+  | ---------- FIN ----------&gt; |
+  |                            |
+  | &lt;------- FIN+ACK --------- |
+  |                            |
+  | ---------- ACK ----------&gt; |
+  |                            |
+</code></pre>
+<p>
+
+although this version is less common.
+
+</p>
+<h2>Congestion Control</h2>
+<p>
+At times, especially due to pipelining, it's possible for networks to get congested. This happens when routers are overwhelmed by the amount of packets in transit, causing them to drop some of them. To avoid this, TCP implements a congestion control mechanism. This consists of keeping track of the "congestion window", which is the maximum number of bytes that the network is able to handle at once. This is not a static value since it depends on the current load of the network, therefore TCP must infer it dynamically based on the behavior of the network. The congestion window value starts small and is increased any time an ACK is received. When three duplicate ACKs are received or there is an ACK timeout, a congestion is assumed and the congestion window is reduced. The specifics change based on the implemented algorithm (like TCP Reno, TCP Tahoe, and many more).
+
+</p>
+<h2>What's next</h2>
+<p>And that's it! The world's most famous protocol explained in a measly 60-minute read :D
+
+<br/>
+<br/>
+
+In the next post I'll just give an overview of HTTP and TLS. I won't go into much detail since we'll talk about them extensively throughout the entire series.
+
+</p>
+<h2>Join the Discussion!</h2>
+<p>Have questions or feedback for me? Feel free to pop in my discord
+
+<br />
+<br />
+
+<a href="https://discord.gg/vCKkCWceYP">Join the Discord Server</a></p>
+
+			</article>
+		</main>
+	</body>
+</html>
