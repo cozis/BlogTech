@@ -1,0 +1,215 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<p>First of all, let's set up a TCP server that accepts new incoming connections on the loopback interface and port 8080.
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;sys/socket.h&gt;</span></td></tr>
+      <tr><td>2</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;arpa/inet.h&gt;</span></td></tr>
+      <tr><td>3</td><td></td></tr>
+      <tr><td>4</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>5</td><td>{</td></tr>
+      <tr><td>6</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">addr</span>[] <span class="c2h-operator">=</span> <span class="c2h-val-str">"127.0.0.1"</span>;</td></tr>
+      <tr><td>7</td><td>    <span class="c2h-kword c2h-kword-unsigned">unsigned</span> <span class="c2h-kword c2h-kword-short">short</span> <span class="c2h-identifier">port</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">8080</span>;</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>10</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>11</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>12</td><td>    }</td></tr>
+      <tr><td>13</td><td></td></tr>
+      <tr><td>14</td><td>    <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buf</span>;</td></tr>
+      <tr><td>15</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>16</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_port</span>   <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">htons</span>(<span class="c2h-identifier">port</span>);</td></tr>
+      <tr><td>17</td><td>    <span class="c2h-identifier c2h-fcallname">memset</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_zero</span>, <span class="c2h-val-int">0</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_zero</span>));</td></tr>
+      <tr><td>18</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">inet_pton</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">addr</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_addr</span>) <span class="c2h-operator">!=</span> <span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>19</td><td>        <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>20</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>21</td><td>    }</td></tr>
+      <tr><td>22</td><td></td></tr>
+      <tr><td>23</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_fd</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>)) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>24</td><td>        <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>25</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>26</td><td>    }</td></tr>
+      <tr><td>27</td><td></td></tr>
+      <tr><td>28</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>29</td><td>        <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>30</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>31</td><td>    }</td></tr>
+      <tr><td>32</td><td></td></tr>
+      <tr><td>33</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (;;) {</td></tr>
+      <tr><td>34</td><td></td></tr>
+      <tr><td>35</td><td>        <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>36</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>37</td><td>            <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>38</td><td></td></tr>
+      <tr><td>39</td><td>        <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"Incoming connection!\n"</span>);</td></tr>
+      <tr><td>40</td><td></td></tr>
+      <tr><td>41</td><td>        <span class="c2h-comment">// TODO: The HTTP server logic goes here</span></td></tr>
+      <tr><td>42</td><td></td></tr>
+      <tr><td>43</td><td>        <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>44</td><td>    }</td></tr>
+      <tr><td>45</td><td></td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>47</td><td>}</td></tr>
+      <tr><td>48</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+that's quite a bit of information in one go, but I figured it would be good to have a look at the entire thing before unpacking each function.
+
+First of all, we create a socket object that we will use to accept new incoming connections:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>4</td><td>}</td></tr>
+      <tr><td>5</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+the first argument <code>AF_INET</code> tells the OS we want our TCP socket to be based on IP version 4. If we wanted to use IP version 6, we would use AF<em>INET6 here. The second argument `SOCK</em>STREAM<code>tells the OS we are going to use a stream-oriented protocol, or in other terms TCP. I'm not sure what the third argument does, but 0 is the default argument so we can use that. The return value is an integer with describes the socket object which is stored in the operating system's kernel, or -1 if the function failed.
+
+Then, we use the</code>bind<code>system call to tell the OS which network interface and port the server will accept connections from. The way this works is we fill out a</code>struct sockaddr<em>in<code>structure, and then call</code>bind<code>with it. The</code>struct sockaddr</em>in<code> structure is specific to IPv4. If we were to use other protocols we would need to fill out a different type of structure (</code>struct sockaddr_in6` is used by IPv6 for instance).
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buf</span>;</td></tr>
+      <tr><td>2</td><td><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>3</td><td><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_port</span>   <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">htons</span>(<span class="c2h-identifier">port</span>);</td></tr>
+      <tr><td>4</td><td><span class="c2h-identifier c2h-fdeclname">memset</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_zero</span>, <span class="c2h-val-int">0</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_zero</span>));</td></tr>
+      <tr><td>5</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fdeclname">inet_pton</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">addr</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_addr</span>) <span class="c2h-operator">!=</span> <span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>6</td><td>    <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>7</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>8</td><td>}</td></tr>
+      <tr><td>9</td><td></td></tr>
+      <tr><td>10</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fdeclname">bind</span>(<span class="c2h-identifier">listen_fd</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>)) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>11</td><td>    <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>12</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>13</td><td>}</td></tr>
+      <tr><td>14</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+The structure has three fields we care about: <code>sin_family</code>, <code>sin_port</code>, <code>sin_addr</code>. The <code>sin_family</code> refers to the underlying level 3 protocol we are using, which is still <code>AF_INET</code> for IPv4. The <code>sin_port</code> field contains the port we are listening on in network byte order. The byte ordering refers to how types that are larger than one byte are represented in the CPU compared to the network. Different CPU may organize the bytes that make up multi-byte types in different ways, so in order to understand each other they need to use a fixed ordering when speaking to each other. The <code>htons</code> function, which stands for "host to network short", makes sure our 16 bit value is properly ordered. The <code>sin_addr</code> field contains the IPv4 address of the local interface we want to listen on. Our server hardware may have multiple network cards, so this is how we choose one over the other. If we wanted to listen on all available interfaces, we could use the <code>INADDR_ANY</code> value, like this:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_addr</span>.<span class="c2h-identifier">s_addr</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">htonl</span>(<span class="c2h-identifier">INADDR_ANY</span>);</td></tr>
+      <tr><td>2</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+this field also needs to be in network byte order, but we use <code>htonl</code> (host to network long) for 4 byte values.
+
+But in general we want to be able to specify the address in dotted decimal notation, such as "192.168.0.3". To perform this conversion we use the <code>inet_pton</code> function, which returns takes the dotted decimal notation string as second argument and writes the raw IP address in network byte order in the last argument. The first argument tells it which IP version to use, so AF<em>INET for IPv4 and AF</em>INET6 for IPv6.
+
+We also have a fourth field <code>sin_zero</code>, but it's not important. I usually set it to zero just because it feel more correct this way.
+
+And finally we call <code>bind</code> to bind the socket to the specified interface and port. Before passing the structure as second argument we need to cast its pointer to <code>struct sockaddr*</code>. The idea here is that <code>bind</code> may be used for many different protocols requiring may different configuration structures <code>struct sockaddr_in</code> for IPv4, <code>struct sockaddr_in6</code> for IPv6, <code>struct sockaddr_un</code> for UNIX sockets. For this reason <code>bind</code> a pointer to <code>struct sockaddr</code> which is an opaque type used to refer to any <code>struct sockaddr_*</code> structure. In other words it's a way to perform polymorphism.
+
+Now that our socket is bound to an interface, we can start listening for incoming connections:</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fdeclname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>2</td><td>    <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>4</td><td>}</td></tr>
+      <tr><td>5</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+This will tell the OS to start enqueueing TCP connections in the kernel's buffer associated to this socket. The second argument is called the "backlog" and is the length of that kernel queue. 
+
+Now the server will use the <code>accept</code> system call to get connections from the kernel's queue. The way we set up things, a connection is accepted, processend, and closed. Then, the server calls accept again to process a new connection. The server will go on forever like this until we tell it to stop.
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-for">for</span> (;;) {</td></tr>
+      <tr><td>2</td><td></td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>4</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">==</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>)</td></tr>
+      <tr><td>5</td><td>        <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"Incoming connection!\n"</span>);</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>    <span class="c2h-comment">// TODO: The HTTP server logic goes here</span></td></tr>
+      <tr><td>10</td><td></td></tr>
+      <tr><td>11</td><td>    <span class="c2h-identifier c2h-fcallname">close</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>12</td><td>}</td></tr>
+      <tr><td>13</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+similarly to the <code>socket</code> system call, <code>accept</code> returns a descriptor to the newly accepted connection, or -1 on failure. We can read bytes from the peer by using the <code>recv</code> system call or send using the <code>send</code> system call on this descriptor. When we are done communicating, we can call <code>close</code>.
+
+One thing to note is that the kernel relies on our server to accept incoming connections before the kernel queue is full. If we get more requests than the backlog before calling accept, the operating system will be forced to drop some connections. This is very uncommon, but can cause some head scratches when stress testing it. I know it did for me at least!
+
+Of course this isn't even close to being a working HTTP server, but we can still spin it up and see what happens when we try to send requests to it. Let's compile it
+</p>
+<pre><code class="language-">$ gcc http_server.c -o http_server -Wall -Wextra -g3 -O0
+</code></pre>
+<p>
+
+and now we open our (still not implemented) website from our preferred browser at <code>http://127.0.0.1:8080/hello</code>.</p>
+
+			</article>
+		</main>
+	</body>
+</html>

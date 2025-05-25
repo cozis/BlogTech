@@ -40,7 +40,7 @@
 			<article>
 				<h1>String Parsing Patterns</h1>
 <p>
-Over the years, I came up with several patterns for parsing strings without a tokenization step. I found that following this patterns consciously made it easy to write robust string parsing code.
+Over the years, I came up with several patterns for parsing strings without a tokenization step. I found that following these patterns consciously made it easy to write robust string parsing code.
 
 <br />
 <br />
@@ -50,7 +50,7 @@ In this post I'll list them and show how to use them to make a simplified JSON p
 </p>
 <h2>General Structure</h2>
 <p>
-Lets assume <code>char *src</code> is a string of length <code>int len</code> we want to extract information from. We will use the <code>int cur</code> cursor variable to keep track of how many characters we already inspected from the string. The cursor is such that <code>src[cur]</code> is the next character that hasn't been inspected yet. If <code>cur == len</code>, all characters have been inspected. Note that I sometimes refer to inspecting characters as "skipping" or "consuming" them.
+Let's assume <code>char *src</code> is a string of length <code>int len</code> we want to extract information from. We will use the <code>int cur</code> cursor variable to keep track of how many characters we already inspected from the string. The cursor is such that <code>src[cur]</code> is the next character that hasn't been inspected yet. If <code>cur == len</code>, all characters have been inspected. Note that I sometimes refer to inspecting characters as "skipping" or "consuming" them.
 
 </p>
 <h2>Consuming an Optional Sequence</h2>
@@ -230,7 +230,7 @@ this is because <code>len - cur</code> can never underflow, while <code>cur+2</c
 </p>
 <h2>Parsing Strings</h2>
 <p>
-What if we want to not only consume characters, but extract information from the source string? Fear not! We can easily use our previous lessons for this. Lets say we want to parse a string in the form <code>&lt;spaces&gt; &lt;name&gt; &lt;spaces&gt; &lt;nickname&gt;</code>:
+What if we want to not only consume characters, but extract information from the source string? Fear not! We can easily use our previous lessons for this. Let's say we want to parse a string in the form <code>&lt;spaces&gt; &lt;name&gt; &lt;spaces&gt; &lt;nickname&gt;</code>:
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
