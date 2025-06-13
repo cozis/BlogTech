@@ -40,7 +40,7 @@
 			<article>
 				<h1>Building web apps from scratch - The Listener Socket - Part 5</h1>
 <p>
-Now that we have a pretty good handle of how the HTTP protocol works, we can start with the implementation. The way we will go about this is to first set up a plain TCP echo server using system calls and document step by step what everything does (an echo server is one that repeats back any message it receives). Then, we will use this generic TCP server to actually process HTTP requests and serve responses. In this post we will talk about setting up a listening socket.
+Now that we have a pretty good handle on how the HTTP protocol works, we can start with the implementation. The way we will go about this is to first set up a plain TCP echo server using system calls and document step by step what everything does (an echo server is one that repeats back any message it receives). Then, we will use this generic TCP server to actually process HTTP requests and serve responses. In this post we will talk about setting up a listening socket.
 
 <br />
 <br />
@@ -50,7 +50,7 @@ The code snippets used here are Linux-specific. The general points also apply to
 </p>
 <h2>Creating a Socket</h2>
 <p>
-First, we need to create a "socket" object to tell the server we are interested in accepting TCP connections on a given interface and port. This is done using the <code>socket()</code> function:
+First, we need to create a "socket" object to tell the system we are interested in accepting TCP connections on a given interface and port. This is done using the <code>socket()</code> function:
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -80,12 +80,30 @@ The third argument specifies which stream-oriented protocol we are going to use 
 <br />
 <br />
 
-The return value is an integer that describes the socket object which is stored in the operating system's kernel, or -1 if the function failed.
+The return value is an integer that identifies the socket object which is stored in the operating system's kernel, or -1 if the function failed.
+
+</p>
+<h2>Enabling Address Reuse (optional)</h2>
+<p>
+This is an optional step helpful while developing servers. When a TCP connection that uses a given local address and port pair is terminated, the actively closing end enters the TIME-WAIT state (see <a href="https://datatracker.ietf.org/doc/html/rfc9293#name-state-machine-overview">RFC 9293</a>) where no new connections can be established on the interface/port pair to let any residual network traffic related to it settle. This is extremely annoying when developing a server because it means you'll have to wait a couple minutes between runs. If you run the server before then, you'll get an "Address already in use" error. To avoid this, you can set the address reuse option on the socket:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">one</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>2</td><td><span class="c2h-identifier c2h-fdeclname">setsockopt</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">SOL_SOCKET</span>, <span class="c2h-identifier">SO_REUSEADDR</span>, (<span class="c2h-kword c2h-kword-char">char</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">one</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">one</span>));</td></tr>
+      <tr><td>3</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+This will set the <code>SO_REUSEADDR</code> setting to 1 for this socket.
 
 </p>
 <h2>Binding to the Local Interface</h2>
 <p>
-We created a socket but it's still not doing anything as we need to configure it first. We can start by telling the OS which interface and port pair we want to listen on. We do so using the <code>bind()</code> function.
+We created a socket, but it's not doing anything yet since we need to configure it first. We can start by telling the OS which interface and port pair we want to listen on. We do so using the <code>bind()</code> function.
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -109,7 +127,7 @@ We created a socket but it's still not doing anything as we need to configure it
   </div>
 </div>
 <p>
-The way this works is by filling out the <code>struct sockaddr_in</code> structure with our parameters and then pass that to <code>bind()</code>. If we were using a different L3 protocol such as IPv6 we would be using a different address structure here.
+This works by filling out the <code>struct sockaddr_in</code> structure with our parameters and then pass that to <code>bind()</code>. If we were using a different L3 protocol such as IPv6 we would be using a different address structure here.
 
 <br />
 <br />
@@ -143,12 +161,12 @@ The way to set the <code>sin_port</code> field is by first converting the port v
 <br />
 <br />
 
-Setting the <code>sin_addr</code> field is a bit trickier as we usually specify IPv4 addresses in dot-decimal form. That's why we rely on the standard <code>inet_pton</code> function to convert the string to the raw 4 byte address. The resulting value already has the correct byte ordering here. The first argument <code>inet_pton</code> specifies which address format it should parse. For dot-decimal we pass it AF_INET. The second argument is the actuall null-terminated string. The last argument is the memory location where the address's 32 bits would be written to. The return value is 1 on success and 0 or -1 on failure.
+Setting the <code>sin_addr</code> field is a bit trickier as we usually specify the IPv4 addresses in dot-decimal form. That's why we rely on the standard <code>inet_pton</code> function to convert the string to the raw 4 byte address. The resulting value already has the correct byte ordering here. The first argument <code>inet_pton</code> specifies which address format it should parse. For dot-decimal we pass it AF_INET. The second argument is the actual null-terminated string. The last argument is the memory location where the address's 32 bits would be written to. The return value is 1 on success and 0 or -1 on failure.
 
 </p>
 <h2>Listening for Connections</h2>
 <p>
-Now we can "activate" our socket by calling the <code>listen()</code> function. This will tell the OS to start performing the three-way handshakes and save up the established connections in a backlog. After that we will be able to get connections from that backlog to our application by calling the <code>accept()</code> function:
+Now we can "activate" our socket by calling the <code>listen()</code> function. This will tell the OS to start performing the three-way handshakes and store the established connections in a backlog. After that we will be able to get connections from that backlog to our application by calling the <code>accept()</code> function:
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -230,36 +248,39 @@ Now let's put everything together and include the proper headers:
       <tr><td>24</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
       <tr><td>25</td><td>    }</td></tr>
       <tr><td>26</td><td></td></tr>
-      <tr><td>27</td><td>    <span class="c2h-comment">// We want to listen for connections on this interface and port</span></td></tr>
-      <tr><td>28</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">addr</span>[] <span class="c2h-operator">=</span> <span class="c2h-val-str">"127.0.0.1"</span>;</td></tr>
-      <tr><td>29</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">port</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">8080</span>;</td></tr>
-      <tr><td>30</td><td></td></tr>
-      <tr><td>31</td><td>    <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buf</span>;</td></tr>
-      <tr><td>32</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
-      <tr><td>33</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_port</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">htons</span>(<span class="c2h-identifier">port</span>);</td></tr>
-      <tr><td>34</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">inet_pton</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">addr</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_addr</span>) <span class="c2h-operator">!=</span> <span class="c2h-val-int">1</span>) {</td></tr>
-      <tr><td>35</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
-      <tr><td>36</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
-      <tr><td>37</td><td>    }</td></tr>
-      <tr><td>38</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_fd</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>)) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
-      <tr><td>39</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
-      <tr><td>40</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
-      <tr><td>41</td><td>    }</td></tr>
-      <tr><td>42</td><td></td></tr>
-      <tr><td>43</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
-      <tr><td>44</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
-      <tr><td>45</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
-      <tr><td>46</td><td>    }</td></tr>
-      <tr><td>47</td><td></td></tr>
-      <tr><td>48</td><td>    <span class="c2h-comment">// TODO: Accept and process connections</span></td></tr>
-      <tr><td>49</td><td></td></tr>
+      <tr><td>27</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">one</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>28</td><td>    <span class="c2h-identifier c2h-fcallname">setsockopt</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">SOL_SOCKET</span>, <span class="c2h-identifier">SO_REUSEADDR</span>, (<span class="c2h-kword c2h-kword-char">char</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">one</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">one</span>));</td></tr>
+      <tr><td>29</td><td></td></tr>
+      <tr><td>30</td><td>    <span class="c2h-comment">// We want to listen for connections on this interface and port</span></td></tr>
+      <tr><td>31</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">addr</span>[] <span class="c2h-operator">=</span> <span class="c2h-val-str">"127.0.0.1"</span>;</td></tr>
+      <tr><td>32</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">port</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">8080</span>;</td></tr>
+      <tr><td>33</td><td></td></tr>
+      <tr><td>34</td><td>    <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr_in</span> <span class="c2h-identifier">bind_buf</span>;</td></tr>
+      <tr><td>35</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_family</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">AF_INET</span>;</td></tr>
+      <tr><td>36</td><td>    <span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_port</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">htons</span>(<span class="c2h-identifier">port</span>);</td></tr>
+      <tr><td>37</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">inet_pton</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">addr</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>.<span class="c2h-identifier">sin_addr</span>) <span class="c2h-operator">!=</span> <span class="c2h-val-int">1</span>) {</td></tr>
+      <tr><td>38</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>39</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>40</td><td>    }</td></tr>
+      <tr><td>41</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_fd</span>, (<span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">sockaddr</span><span class="c2h-operator">*</span>) <span class="c2h-operator">&</span><span class="c2h-identifier">bind_buf</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">bind_buf</span>)) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>42</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>43</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>44</td><td>    }</td></tr>
+      <tr><td>45</td><td></td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>47</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">listen_fd</span>);</td></tr>
+      <tr><td>48</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>49</td><td>    }</td></tr>
       <tr><td>50</td><td></td></tr>
-      <tr><td>51</td><td><span class="c2h-directive">#ifdef</span> <span class="c2h-identifier">_WIN32</span></td></tr>
-      <tr><td>52</td><td>    <span class="c2h-identifier c2h-fcallname">WSACleanup</span>();</td></tr>
-      <tr><td>53</td><td><span class="c2h-directive">#endif</span></td></tr>
-      <tr><td>54</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
-      <tr><td>55</td><td>}</td></tr>
-      <tr><td>56</td><td></td></tr>
+      <tr><td>51</td><td>    <span class="c2h-comment">// TODO: Accept and process connections</span></td></tr>
+      <tr><td>52</td><td></td></tr>
+      <tr><td>53</td><td></td></tr>
+      <tr><td>54</td><td><span class="c2h-directive">#ifdef</span> <span class="c2h-identifier">_WIN32</span></td></tr>
+      <tr><td>55</td><td>    <span class="c2h-identifier c2h-fcallname">WSACleanup</span>();</td></tr>
+      <tr><td>56</td><td><span class="c2h-directive">#endif</span></td></tr>
+      <tr><td>57</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>58</td><td>}</td></tr>
+      <tr><td>59</td><td></td></tr>
     </table>
   </div>
 </div>
