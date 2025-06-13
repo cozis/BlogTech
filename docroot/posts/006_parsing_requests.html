@@ -1,0 +1,177 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - Parsing Requests - Part 6</h1>
+<p>
+</p>
+<h2>Receiving Requests</h2>
+<p>
+In the last post we set up a TCP server capable of accepting connections and then closing them, but was doing nothing with them. In this post we will read a request and parse it.
+
+The inner portion of our accept loop looked like this:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-identifier c2h-fdeclname">printf</span>(<span class="c2h-val-str">"Incoming connection!\n"</span>);</td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td><span class="c2h-comment">// TODO: The HTTP server logic goes here</span></td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td><span class="c2h-identifier c2h-fdeclname">close</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>10</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Now lets create a buffer for our incoming request and call the <code>recv</code> system call to write into it:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-identifier c2h-fdeclname">printf</span>(<span class="c2h-val-str">"Incoming connection!\n"</span>);</td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td><span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">input_buffer</span>[<span class="c2h-val-int">4000</span>];</td></tr>
+      <tr><td>8</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">input_size</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">recv</span>(<span class="c2h-identifier">accepted_fd</span>, <span class="c2h-identifier">input_buffer</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">input_buffer</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>9</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">input_size</span> <span class="c2h-operator">&gt;</span> <span class="c2h-val-int">0</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">input_size</span> <span class="c2h-operator">&lt;</span> <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">input_buffer</span>)) {</td></tr>
+      <tr><td>10</td><td></td></tr>
+      <tr><td>11</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"=== REQUEST ===\n"</span>);</td></tr>
+      <tr><td>12</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"%.*s\n"</span>, <span class="c2h-identifier">input_size</span>, <span class="c2h-identifier">input_buffer</span>);</td></tr>
+      <tr><td>13</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"===============\n"</span>);</td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td>    <span class="c2h-comment">// TODO: The HTTP server logic goes here</span></td></tr>
+      <tr><td>16</td><td></td></tr>
+      <tr><td>17</td><td>}</td></tr>
+      <tr><td>18</td><td><span class="c2h-identifier c2h-fdeclname">close</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>19</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+The call to <code>recv</code> will return -1 if an I/O error occurred, 0 if the peer disconnected, or the number of bytes written to the buffer if the read was successfull. If we get a non-positive return value we must skip the processing step.
+
+We also need to account for the limited size of the buffer. It's possible for the request to not fit in the fixed buffer, so we must consider this scenario as an error. The way we detect this is by checking that at least one byte of the buffer wasn't written to. If the buffer gets filled up by recv, we assume more bytes needed to be written. In a bit we will change this code to use dynamic buffers, which will solve this problem entirely.
+
+One other simplification we are doing for now is assuming the entire request will be received in one <code>recv</code> call. This is not necessarily the case. Since TCP is not a message-oriented protocol there is no reason a single <code>recv</code> will write the entire request. Since we are not stress testing our server yet we will likely get the expected behavior anyways, but it's possible for partial request to be read. Our implementation will handle these as malformed request due to a client error, even though it's our fault.
+
+If we run the above code and open our server's address in a browser, we should get a log of the received HTTP requests.
+
+</p>
+<h2>Adding a Dynamic Buffer and Addressing Partial Reads</h2>
+<p>
+First, let's fix the buffer limit issue.
+
+The idea here is that we allocate a dynamic buffer and <code>recv</code> into it. If the request was received completely, we are done. If it wasn't, we grow the buffer and <code>recv</code> again. We can also use this logic to address partial ready by calling <code>recv</code> without growing the array if the last call did not use all free space.
+
+But how do we know whether the buffer contains a complete HTTP request or not? This is more tricky.
+
+We know that the head of the request is always terminated by the \r\n\r\n sequence. If we can't find it in our received bytes, the head of the request wasn't received yet. If we do find it, then the head was received but the body may or may not. We need to parse the "Content-Length" header to know whether the body was received too.
+
+Let's start with the dynamic buffer:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-identifier c2h-fdeclname">printf</span>(<span class="c2h-val-str">"Incoming connection!\n"</span>);</td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">MAX</span>(<span class="c2h-identifier">X</span>, <span class="c2h-identifier">Y</span>) ((<span class="c2h-identifier">X</span>) <span class="c2h-operator">&gt;</span> (<span class="c2h-identifier">Y</span>) ? (<span class="c2h-identifier">X</span>) : (<span class="c2h-identifier">Y</span>))</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td><span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">input_buffer</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">NULL</span>;</td></tr>
+      <tr><td>10</td><td><span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">input_size</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>11</td><td><span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">input_capacity</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>12</td><td><span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>13</td><td><span class="c2h-kword c2h-kword-for">for</span> (;;) {</td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">min_recv</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1024</span>;</td></tr>
+      <tr><td>16</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">input_capacity</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">input_size</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">min_recv</span>) {</td></tr>
+      <tr><td>17</td><td></td></tr>
+      <tr><td>18</td><td>        <span class="c2h-identifier">input_capacity</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">MAX</span>(<span class="c2h-identifier">min_recv</span>, <span class="c2h-val-int">2</span><span class="c2h-operator">*</span><span class="c2h-identifier">input_capacity</span>);</td></tr>
+      <tr><td>19</td><td>        <span class="c2h-identifier">input_buffer</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">realloc</span>(<span class="c2h-identifier">input_buffer</span>, <span class="c2h-identifier">input_capacity</span>);</td></tr>
+      <tr><td>20</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">input_buffer</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">NULL</span>) {</td></tr>
+      <tr><td>21</td><td>            <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>22</td><td>            <span class="c2h-kword c2h-kword-break">break</span>;</td></tr>
+      <tr><td>23</td><td>        }</td></tr>
+      <tr><td>24</td><td>    }</td></tr>
+      <tr><td>25</td><td></td></tr>
+      <tr><td>26</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">recv</span>(<span class="c2h-identifier">accepted_fd</span>, <span class="c2h-identifier">input_buffer</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">input_size</span>, <span class="c2h-identifier">input_capacity</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">input_size</span>);</td></tr>
+      <tr><td>27</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">num</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>28</td><td>        <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>29</td><td>        <span class="c2h-kword c2h-kword-break">break</span>;</td></tr>
+      <tr><td>30</td><td>    }</td></tr>
+      <tr><td>31</td><td>    <span class="c2h-identifier">input_size</span> <span class="c2h-operator">+=</span> <span class="c2h-identifier">num</span>;</td></tr>
+      <tr><td>32</td><td></td></tr>
+      <tr><td>33</td><td>    <span class="c2h-identifier">num</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">parse_request</span>(<span class="c2h-identifier">input_buffer</span>, <span class="c2h-identifier">input_size</span>);</td></tr>
+      <tr><td>34</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">num</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>35</td><td>        <span class="c2h-identifier">error</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>36</td><td>        <span class="c2h-kword c2h-kword-break">break</span>;</td></tr>
+      <tr><td>37</td><td>    }</td></tr>
+      <tr><td>38</td><td></td></tr>
+      <tr><td>39</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">num</span> <span class="c2h-operator">&gt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>40</td><td>        <span class="c2h-kword c2h-kword-break">break</span>;</td></tr>
+      <tr><td>41</td><td>}</td></tr>
+      <tr><td>42</td><td></td></tr>
+      <tr><td>43</td><td><span class="c2h-identifier c2h-fdeclname">free</span>(<span class="c2h-identifier">input_buffer</span>)</td></tr>
+      <tr><td>44</td><td><span class="c2h-identifier c2h-fdeclname">close</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>45</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Now the call to <code>recv</code> is performed multiple times. Before each call we make sure there is some free space in the input buffer. After the call, we try to parse the request. If the request is available, a positive number is returned so we can exit the loop. If the request is malformed, a negative value is returned. If the return value is zero, we need to receive more bytes. If for any reason we exit the loop because of some problem, se set the error flag.
+</p>
+
+			</article>
+		</main>
+	</body>
+</html>

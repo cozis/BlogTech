@@ -38,7 +38,9 @@
 			</header>
 
 			<article>
-				<p>First of all, let's set up a TCP server that accepts new incoming connections on the loopback interface and port 8080.
+				<h1>Building web apps from scratch - The Accept Loop - Part 4</h1>
+<p>
+First of all, let's set up a TCP server that accepts new incoming connections on the loopback interface and port 8080.
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -98,6 +100,9 @@
 
 that's quite a bit of information in one go, but I figured it would be good to have a look at the entire thing before unpacking each function.
 
+</p>
+<h2>Creating the listener socket</h2>
+<p>
 First of all, we create a socket object that we will use to accept new incoming connections:
 </p>
 <div class="c2h-code">
@@ -113,9 +118,12 @@ First of all, we create a socket object that we will use to accept new incoming 
 </div>
 <p>
 
-the first argument <code>AF_INET</code> tells the OS we want our TCP socket to be based on IP version 4. If we wanted to use IP version 6, we would use AF<em>INET6 here. The second argument `SOCK</em>STREAM<code>tells the OS we are going to use a stream-oriented protocol, or in other terms TCP. I'm not sure what the third argument does, but 0 is the default argument so we can use that. The return value is an integer with describes the socket object which is stored in the operating system's kernel, or -1 if the function failed.
+the first argument <code>AF_INET</code> tells the OS we want our TCP socket to be based on IP version 4. If we wanted to use IP version 6, we would use <code>AF_INET6</code> here. The second argument <code>SOCK_STREAM</code> tells the OS we are going to use a stream-oriented protocol, or in other terms TCP. I'm not sure what the third argument does, but 0 is the default argument so we can use that. The return value is an integer with describes the socket object which is stored in the operating system's kernel, or -1 if the function failed.
 
-Then, we use the</code>bind<code>system call to tell the OS which network interface and port the server will accept connections from. The way this works is we fill out a</code>struct sockaddr<em>in<code>structure, and then call</code>bind<code>with it. The</code>struct sockaddr</em>in<code> structure is specific to IPv4. If we were to use other protocols we would need to fill out a different type of structure (</code>struct sockaddr_in6` is used by IPv6 for instance).
+</p>
+<h2>Binding to the local interface</h2>
+<p>
+Then, we use the <code>bind</code> system call to tell the OS which network interface and port the server will accept connections from. The way this works is we fill out a <code>struct sockaddr_in</code> structure, and then call <code>bind</code> with it. The <code>struct sockaddr_in</code> structure is specific to IPv4. If we were to use other protocols we would need to fill out a different type of structure (<code>struct sockaddr_in6</code> is used by IPv6 for instance).
 </p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -159,6 +167,9 @@ We also have a fourth field <code>sin_zero</code>, but it's not important. I usu
 
 And finally we call <code>bind</code> to bind the socket to the specified interface and port. Before passing the structure as second argument we need to cast its pointer to <code>struct sockaddr*</code>. The idea here is that <code>bind</code> may be used for many different protocols requiring may different configuration structures <code>struct sockaddr_in</code> for IPv4, <code>struct sockaddr_in6</code> for IPv6, <code>struct sockaddr_un</code> for UNIX sockets. For this reason <code>bind</code> a pointer to <code>struct sockaddr</code> which is an opaque type used to refer to any <code>struct sockaddr_*</code> structure. In other words it's a way to perform polymorphism.
 
+</p>
+<h2>Accepting incoming connections</h2>
+<p>
 Now that our socket is bound to an interface, we can start listening for incoming connections:</p>
 <div class="c2h-code">
   <div class="c2h-code-inner">
@@ -201,13 +212,29 @@ similarly to the <code>socket</code> system call, <code>accept</code> returns a 
 
 One thing to note is that the kernel relies on our server to accept incoming connections before the kernel queue is full. If we get more requests than the backlog before calling accept, the operating system will be forced to drop some connections. This is very uncommon, but can cause some head scratches when stress testing it. I know it did for me at least!
 
+</p>
+<h2>Testing our code</h2>
+<p>
 Of course this isn't even close to being a working HTTP server, but we can still spin it up and see what happens when we try to send requests to it. Let's compile it
 </p>
 <pre><code class="language-">$ gcc http_server.c -o http_server -Wall -Wextra -g3 -O0
 </code></pre>
 <p>
 
-and now we open our (still not implemented) website from our preferred browser at <code>http://127.0.0.1:8080/hello</code>.</p>
+and now we open our (still not implemented) website from our preferred browser at <code>http://127.0.0.1:8080/hello</code>.
+
+</p>
+<h2>What's next</h2>
+<p>In the next post we will start writing the logic which processes HTTP messages using the TCP connection
+
+</p>
+<h2>Join the Discussion!</h2>
+<p>Have questions or feedback for me? Feel free to pop in my discord
+
+<br />
+<br />
+
+<a href="https://discord.gg/vCKkCWceYP">Join the Discord Server</a></p>
 
 			</article>
 		</main>
