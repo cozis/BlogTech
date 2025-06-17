@@ -1,0 +1,231 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Building web apps from scratch - The Accept Loop - Part 7</h1>
+<p>
+In this post we'll continue building or TCP echo server by adding the all mighty accept loop of our server. In the last one we managed to set up the listener socket, but didn't actually accept any TCP connection from it.
+
+</p>
+<h2>The Accept Loop</h2>
+<p>
+At this time our program looks somewhat like this:</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">SOCKET</span> <span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_fd</span>, ...)) {</td></tr>
+      <tr><td>6</td><td>        <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>7</td><td>    }</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>10</td><td>        <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>11</td><td>    }</td></tr>
+      <tr><td>12</td><td></td></tr>
+      <tr><td>13</td><td>    <span class="c2h-comment">// TODO: Accept and process connections</span></td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>16</td><td>}</td></tr>
+      <tr><td>17</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+as we were saying, the <code>listen</code> function tells the system to start performing three-way handshakes and enqueueing connections that completed it. The <code>accept</code> function allows our program to read from that queue and return a socket descriptor for a newly established connection.
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">SOCKET</span> <span class="c2h-identifier">listen_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">socket</span>(<span class="c2h-identifier">AF_INET</span>, <span class="c2h-identifier">SOCK_STREAM</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">bind</span>(<span class="c2h-identifier">listen_fd</span>, ...)) {</td></tr>
+      <tr><td>6</td><td>        <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>7</td><td>    }</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">listen</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-val-int">32</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>10</td><td>        <span class="c2h-comment">// ...</span></td></tr>
+      <tr><td>11</td><td>    }</td></tr>
+      <tr><td>12</td><td></td></tr>
+      <tr><td>13</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (;;) {</td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td>        <span class="c2h-identifier">SOCKET</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>16</td><td></td></tr>
+      <tr><td>17</td><td>        <span class="c2h-comment">// TODO: process connections</span></td></tr>
+      <tr><td>18</td><td></td></tr>
+      <tr><td>19</td><td>        <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>20</td><td>    }</td></tr>
+      <tr><td>21</td><td></td></tr>
+      <tr><td>22</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>23</td><td>}</td></tr>
+      <tr><td>24</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+We accept connections and get back a socket. When we are done with it, we close it. The logic related to the accepted connection is inside an infinite loop because we want to accept new connections when we are done with the old one. Listener and connection sockets are different kinds of sockets in terms of what operations you can perform on them. Listener sockets are made for calling <code>accept()</code>, while connection sockets are made for reading and writing bytes using <code>send()</code> and <code>recv()</code>. So let's use these functions to read a message and send it back:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-identifier">SOCKET</span> <span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">accept</span>(<span class="c2h-identifier">listen_fd</span>, <span class="c2h-identifier">NULL</span>, <span class="c2h-identifier">NULL</span>);</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">accepted_fd</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">INVALID_SOCKET</span>)</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">input</span>[<span class="c2h-val-int">128</span>];</td></tr>
+      <tr><td>6</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">input_len</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fdeclname">recv</span>(<span class="c2h-identifier">accepted_fd</span>, <span class="c2h-identifier">input</span>, <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">input</span>), <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>7</td><td><span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">input_len</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>8</td><td>    <span class="c2h-identifier c2h-fcallname">CLOSE_SOCKET</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-continue">continue</span>;</td></tr>
+      <tr><td>10</td><td>}</td></tr>
+      <tr><td>11</td><td></td></tr>
+      <tr><td>12</td><td><span class="c2h-identifier c2h-fdeclname">printf</span>(<span class="c2h-val-str">"Received message is:\n%.*s\n\n"</span>, <span class="c2h-identifier">input_len</span>, <span class="c2h-identifier">input</span>);</td></tr>
+      <tr><td>13</td><td></td></tr>
+      <tr><td>14</td><td><span class="c2h-identifier c2h-fdeclname">send</span>(<span class="c2h-identifier">accepted_fd</span>, <span class="c2h-identifier">input</span>, <span class="c2h-identifier">input_len</span>, <span class="c2h-val-int">0</span>);</td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td><span class="c2h-identifier c2h-fdeclname">CLOSE_SOCKET</span>(<span class="c2h-identifier">accepted_fd</span>);</td></tr>
+      <tr><td>17</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+First of all I added a error check after <code>accept</code>. Note that in general whenever we use <code>continue</code> in our loop, this will cause the execution to go to the top. It's a cool trick that allows us to jump back to the start!
+
+<br />
+<br />
+
+The next thing we do after accepting is declare a buffer where our incoming message will be stored and call <code>recv</code> to actually read the bytes from the network. The return value will be equal to the number of bytes written to our buffer, so the length of the message. It may also return -1 in case of failure, which is why we have that extra check. I added a print statement so that the message will be loggen on the terminal. This will make it easier to see what is happening in real time.
+
+<br />
+<br />
+
+Then, we use <code>send</code> on that same buffer to send it back. Note that <code>send</code> may also return -1 on failure, but that wouldn't change what we would do after it which is close the socket regardless, which is why we omitted the error check.
+
+</p>
+<h2>Testing the Echo Server using Netcat</h2>
+<p>
+Now that our server is fully functional we can try it out! First of all we need to compile the server using the same command as last time:
+
+Linux:</p>
+<pre><code class="language-">gcc -o main main.c
+</code></pre>
+<p>
+Windows:</p>
+<pre><code class="language-">gcc -o main.exe main.c -lws2_32
+</code></pre>
+<p>
+
+Now we need a way to send a message to our server in the first place. If you are on Linux or you are using w64devkit on Windows, then a great option is the netcat tool. By running <code>nc 127.0.0.1 8080</code> when the server is also running, you will be able to type a message and send it by pressing enter.
+
+Say this is your terminal tab for netcat:</p>
+<pre><code class="language-">$ nc 127.0.0.1 8080
+Hello, how's it going?
+Hello, how's it going?
+^C
+</code></pre>
+<p>
+
+then this is what the server will look like:</p>
+<pre><code class="language-">./main
+Received message is:
+Hello, how's it going?
+
+
+^C
+</code></pre>
+<p>
+
+the <code>^C</code> token appears when you run ctrl+C to terminate the program.
+
+</p>
+<h2>Testing the Echo Server Using the Browser</h2>
+<p>
+As we said in the HTTP overview post, the HTTP protocol usually sits on top of TCP, which means an HTTP client is also a TCP client! In other words no one is stopping us from using our browser to send an HTTP request to our TCP echo server. Of course our server's response will be considered nonsense by the browser.
+
+<br />
+<br />
+
+So let's spin up our server, then open the broser and navigate to <code>http://127.0.0.1:8080/</code>. In my case the result looks like this:
+</p>
+<pre><code class="language-">$ ./main
+Received message is:
+GET / HTTP/1.1
+Host: 127.0.0.1:8080
+Connection: keep-alive
+sec-ch-ua: &quot;Brave&quot;;v=&quot;137&quot;, &quot;Chromium&quot;;v=&quot;137&quot;, &quot;Not/A)Brand&quot;;v=&quot;2
+
+Received message is:
+GET / HTTP/1.1
+Host: 127.0.0.1:8080
+Connection: keep-alive
+Cache-Control: max-age=0
+sec-ch-ua: &quot;Brave&quot;;v=&quot;137&quot;, &quot;Chromium&quot;;v
+
+</code></pre>
+<p>
+while the loaded webpage looks somewhat like this:
+
+<img src="../images/browser_broken_page.png" alt="image" />
+
+You can see now why we started from an echo server! The only real difference between an echo server and an HTTP server is that the received message is interpreted and instead of sending it back an appropriate HTTP response stirng is sent. Of course this requires some attention to detail and knowing how to put the pieces together, but at a conceptual level it's quite simple.
+
+</p>
+<h2>What's next</h2>
+<p>This echo server works but is quite crude! There are a number of corner cases that we'll want to handle to make sure it won't randonly crash or send incorrect responses. In the next post we'll look at all these corner cases and make sure our server is rock solid!
+
+</p>
+<h2>Join the Discussion!</h2>
+<p>Have questions or feedback for me? Feel free to pop in my discord
+
+<br />
+<br />
+
+<a href="https://discord.gg/vCKkCWceYP">Join the Discord Server</a></p>
+
+			</article>
+		</main>
+	</body>
+</html>
