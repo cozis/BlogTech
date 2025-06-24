@@ -48,7 +48,8 @@
 <p>Another source of complexity is introduced by having different parts of your program being maintained by different organizations. Your program may become incompatible with dependencies over time, they may introduce issues at distribution time if not bundled, they may even introduce vulnerabilities or be compromised altogether in an avoidable way if their development process isn't good.</p>
 <p>These issues wouldn't normally be too problematic. After all, it's a compromise that could go either way based on the specific circumstances. The thing that tips the balance is how fast dependency graphs grow, causing the complexity to get worse and worse in what feels like an exponential way. </p>
 <h2>Dependency Graph Degradation</h2>
-<p>But why do dependency graphs grow so quickly? Let's take a generic library A. Due to the benefits of code reuse, A's developer uses libraries B and C</p>
+<p>But why do dependency graphs grow so quickly?</p>
+<p>Let's take a generic library A. Due to the benefits of code reuse, A's developer uses libraries B and C</p>
 <pre><code>  A
  / \
 B   C
@@ -76,7 +77,7 @@ H   I   J   K   L   M   N   O
 <p>In this example, the cost of dependencies grows exponentially as we add layers, doubling each time. But each node is only aware of what's beneath it, so they have no information of how much their dependencies are costing to the actual root program.  This is quite a simplistic example, but I think it shows the underlying principle that causes dependency graphs to grow.</p>
 <p>Given this model the "dependencies are bad" heuristic makes more sense as you always design for the worst case.</p>
 <h2>Conclusion</h2>
-<p>So what can we do about this? First, we must reconsider the value of dependencies. They work well for small projects, but things start falling apart when scaling to larger projects. Vendoring and bundling help mitigate some problems, but I think most of the value will come by being less afraid of solving problems directly. If you do software development for a living, don't shy away from trying to solve hard problems yourself. If you do end up deciding that you need to use someone else's library, you will be much more knowledgeable of what it is doing for you. And there is an additional benefit: in time, you'll improve your ability to solve hard problems.</p>
+<p>The root cause of this situation is assuming that code reuse has no downsides. The costs outweigh the benefits as projects grow larger. There needs to be a mindset shift from "I know a library for that" to first trying to solve problems yourself, and then looking for someone else's solution if necessary. If you do choose to add a dependency, you'll have a much better idea of what it's doing for you.</p>
 
 			</article>
 		</main>
