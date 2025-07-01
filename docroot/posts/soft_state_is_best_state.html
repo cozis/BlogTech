@@ -1,0 +1,168 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Soft State Is the Best State</h1>
+<p>
+For some time I've noticed how much redundant state I use in my programs.
+
+<br />
+<br />
+
+For instance, I may write something like this:</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>2</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">buffer</span>[<span class="c2h-val-int">1024</span>];</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">used</span>;</td></tr>
+      <tr><td>4</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">unused</span>;</td></tr>
+      <tr><td>5</td><td>} <span class="c2h-identifier">MyData</span>;</td></tr>
+      <tr><td>6</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+There is a buffer and two variables describing how many bytes in it are used, and how many are not. This is where the spidey sense comes in. The number of used and unused bytes will always total 1024, and therefore one of the two variables is unnecessary as its value can be inferred by the other: <code>used = 1024 - unused</code> or <code>unused = 1024 - used</code>. In other words, one of the two variables is redundant.
+
+<br />
+<br />
+
+Or let's take the case of a linked list:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">Node</span> <span class="c2h-identifier">Node</span>;</td></tr>
+      <tr><td>2</td><td><span class="c2h-kword c2h-kword-struct">struct</span> <span class="c2h-identifier">Node</span> {</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">Node</span> <span class="c2h-operator">*</span><span class="c2h-identifier">next</span>;</td></tr>
+      <tr><td>4</td><td>    <span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">value</span>;</td></tr>
+      <tr><td>5</td><td>};</td></tr>
+      <tr><td>6</td><td></td></tr>
+      <tr><td>7</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>8</td><td>    <span class="c2h-identifier">Node</span> <span class="c2h-operator">*</span><span class="c2h-identifier">head</span>;</td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">count</span>; <span class="c2h-comment">// redundant</span></td></tr>
+      <tr><td>10</td><td>} <span class="c2h-identifier">List</span>;</td></tr>
+      <tr><td>11</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+We have a list of nodes pointing at each other and a parent structure <code>List</code> with an additional element count. In this case the element count is redundant as it can be inferred by iterating over all nodes and counting them until the NULL next pointer is found.
+
+<br />
+<br />
+
+Often we add redundancy to make our program more performant. This is quite intuitive from the linked list example. If we didn't store the counter, we would need to scan the list just to get the number of elements.
+
+<br />
+<br />
+
+But there is also a disadvantage. By having redundant state we increase the chances that this state is incoherent, causing the program to get in a deeply broken state. Whenever we change some part of the state we need to make sure the changes are mirrored to all other redundant parts of the state. If we forget to do it in at least one place, our program is broken. In the context of the linked list example this means forgetting to increment or decrement the counter when we add or remove a node.
+
+</p>
+<h2>Caching &amp; Soft State</h2>
+<p>
+What I referred to until now as "state" can be referred to more specifically as "hard state", which is different from "soft state".
+
+<br />
+<br />
+
+Soft state is state that is non-authoritative. In other words, it improves how the program works but isn't strictly necessary. An example of soft state are caches, which allow storing the results of computation to avoid computing them again. If for any reason these results are not valid anymore, the cache can simply be "invalidated".
+
+<br />
+<br />
+
+Caches offer all the advantages of redundant hard state without the downsides. So what would happen if we stripped down our program's state from all redundancy and then added it back in the form of caches?
+
+</p>
+<h2>Treating Redundancy as Soft State</h2>
+<p>
+My solution to this problem is to determine the minimum amount of hard state required by the program, and then determine the alternative representations need based on how the program's algorithm needs to interact with it.
+
+<br />
+<br />
+
+These alternative representations are computed and cached. If the hard state is modified, the cached representations are invalidated and computed on request next time. This works well because it's easier to write a single function to create a copy of the state than implementing write methods on the state that mirror the same change in multiple representations.
+
+<br />
+<br />
+
+Recalculating soft state each time is costly but greatly improves correctness. If the cost is too great, then changes to the authoritative state may be mirrored on the soft state when the performance benefits outweigh correctness.
+
+<br />
+<br />
+
+In other words, you can implement redundancy as hard or soft state on a case by case basis. The point is being intentional about it. This approach offers a way to opt-out of complexity.
+
+</p>
+<h2>Event Sourcing </h2>
+<p>
+Since the authoritative state doesn't need a layout optimized for reading it, we can use a layout optimized for simplifying write operations.
+
+<br />
+<br />
+
+The best layout depends on the specifics, but in general I would make the case for event sourcing, which consists in encoding state as a list of changes. With this setup, any changes to the state consists of appending a structure to a list.
+
+<br />
+<br />
+
+To give you a practical example, imagine a database of account balances. You don't need to store the account balance of every account if you have a log of all transactions. The balance can be calculated by adding up the transaction transfer amounts.
+
+<br />
+<br />
+
+Event sourcing has a number of benefits, other than simplifying updating the state. The ones I came to appreciate are:
+</p>
+
+<ol>
+<li>By storing the log on a file you automatically get fault tolerant state since what is in memory is just soft state. When your application crashes and restarts it will recalculate the cache representation. This is called write-ahead logging (WAL).</li>
+</ol>
+<p></p>
+
+<ol start="2">
+<li>You have a view of the application state in all points in time, with the potential of rolling back the state or changing the past entirely by inserting in the middle of the log. If the log changes, the soft state is simply recalculated.</li>
+</ol>
+
+			</article>
+		</main>
+	</body>
+</html>
