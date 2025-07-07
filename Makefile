@@ -6,6 +6,7 @@ COMMON_FLAGS   = -Wall -Wextra -DHTTPS=$(HTTPS) -ggdb -rdynamic
 DEBUG_FLAGS    = -O0 -ggdb #-fsanitize=address,undefined
 COVERAGE_FLAGS =  -fprofile-arcs -ftest-coverage -lgcov
 RELEASE_FLAGS  = -ggdb -O2 -DNDEBUG -DRELEASE
+LUA_FLAGS  = -lluajit-5.1 -ldl -lm
 
 ifneq ($(HTTPS),0)
 	COMMON_FLAGS += -l:libbearssl.a -I3p/BearSSL/inc -L3p/BearSSL/build
@@ -20,13 +21,13 @@ test_config_cov: tests/test_config.c serve.c
 	gcc $< -o $@ $(COMMON_FLAGS) $(COVERAGE_FLAGS)
 
 serve: serve.c
-	gcc $< -o $@ $(COMMON_FLAGS) $(RELEASE_FLAGS)
+	gcc $< -o $@ $(COMMON_FLAGS) $(RELEASE_FLAGS) $(LUA_FLAGS)
 
 serve_cov: serve.c
-	gcc $< -o $@ $(COMMON_FLAGS) $(COVERAGE_FLAGS)
+	gcc $< -o $@ $(COMMON_FLAGS) $(COVERAGE_FLAGS) $(LUA_FLAGS)
 
 serve_debug: serve.c
-	gcc $< -o $@ $(COMMON_FLAGS) $(DEBUG_FLAGS)
+	gcc $< -o $@ $(COMMON_FLAGS) $(DEBUG_FLAGS) $(LUA_FLAGS)
 
 report: 
 	lcov --capture --directory . --output-file coverage.info
