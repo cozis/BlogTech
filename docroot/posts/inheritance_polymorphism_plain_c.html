@@ -1,0 +1,398 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Inheritance and Polymorphism in Plain C</h1>
+<p>
+People often say C is not an object-oriented language because it's missing inheritance and polymorphism, but this is not quite accurate! I would argue that OOP is more about how you structure a solution than what language features you use. You can create the abstraction of objects in C just as well as other languages like C++ and Java, with a bit of extra work.
+
+<br />
+<br />
+
+In this post, I want to show how inheritance and polymorphism can be achieved in plain C. Since C has no syntax sugar for this, we will need to build things from scratch using plain old structures and functions. This will have the side-effect of showing how effortlessly dynamic languages work under the hood.
+
+</p>
+<h1>Inheritance in C++</h1>
+<p>
+In case you haven't been on Linkedin recently, inheritance is a way to declare types as extensions of other types. Consider this C++ code:
+</p>
+<pre><code class="language-c++">// base class
+struct Shape {
+
+    Color color;
+
+    void  setColor(Color color_) { color = color_; }
+};
+
+// derived class
+struct Square : Shape {
+
+    float side;
+
+    float calculateArea() { return side * side; }
+};
+</code></pre>
+<p>
+
+we declared two types: <code>Shape</code> and <code>Square</code>. The <code>Shape</code> object has a color and a method to change it. The <code>Square</code> has a side variable and a method to calculate its area. Since we want the <code>Square</code> to have a color just as any other shape, we define it to be an extension of the <code>Shape</code> type (this is what the <code>Square : Shape</code> notation means). The <code>Square</code> implicitly inherits all fields and methods of the base type as its own. For instance, you could do:
+</p>
+<pre><code class="language-c++">int main()
+{
+    Square square;
+    square.setColor(RED);
+}
+</code></pre>
+<p>
+
+The <code>setColor</code> method was declared on <code>Shape</code> and not <code>Square</code>, but it was inherited.
+
+<br />
+<br />
+
+Any code implemented for <code>Shape</code> will also work on <code>Square</code>s now. Say you have a function for drawing a shape:</p>
+<pre><code class="language-c++">void draw(Shape*);
+
+int main()
+{
+    Square *square = createSquare();
+
+    draw(square);
+}
+</code></pre>
+<p>
+
+The <code>draw</code> function was defined to work on a <code>Shape</code>, which means it will also work on types derived from it. This simplifies code reuse quite a bit!
+
+<br />
+<br />
+
+Now let's peek under the hood to understand how this works. Whenever an object inherits from another, all its fields are implicitly inserted before that type's regular fields:
+</p>
+<pre><code class="language-c++">// base class
+struct Shape {
+
+    Color color;
+
+    void  setColor(Color color_) { color = color_; }
+};
+
+// derived class
+struct Square : Shape {
+
+    // Color color; &lt;----- Implicit field inserted by the compiler
+
+    float side;
+
+    float calculateArea() { return side * side; }
+};
+</code></pre>
+<p>
+
+This means that the first half of any derived type will match the base class:
+</p>
+<pre><code class="language-">+---------------------------------+ Square
+|+-------+ Shape                  |
+||       |                        |
+||       |                        |
+||       |                        |
+|+-------+                        |
++---------------------------------+
+ ^
+ Address of the Square
+</code></pre>
+<p>
+
+This implies that any pointer to a <code>Square</code> is also a valid pointer to <code>Shape</code> at the same time, therefore casting <code>Square*</code> to <code>Shape*</code> (which is called an "upcast") is a safe operation. The C++ compiler performs this cast implicitly for us, which allows for seamless reuse of code defined on base types for its derived types.
+
+<br />
+<br />
+
+The inverse operation of casting base type pointers to derived type pointers (downcast) is generally unsafe. It's not possible to determine without extra information that the base type pointer came original from an upcast of the same derived type.
+</p>
+<pre><code class="language-c++">
+struct Shape {
+
+    Color color;
+
+    void  setColor(Color color_) { color = color_; }
+};
+
+struct Square : Shape {
+
+    float side;
+
+    float calculateArea() { return side * side; }
+};
+
+struct Triangle : Shape {
+
+    float base;
+    float height;
+
+    float calculateArea() { return base * height / 2; }
+};
+
+int main()
+{
+    Square   *square   = createSquare();
+    Triangle *triangle = createTriangle();
+
+    Shape *shapeA = square;   // upcast
+    Shape *shapeB = triangle; // upcast
+
+    Square *downcastA = (Square*) shapeA; // downcast (OK)
+    Square *downcastB = (Square*) shapeB; // downcast (ERROR!)
+}
+</code></pre>
+<p>
+Ignoring how the <code>shapeA</code> and <code>shapeB</code> pointers were obtained, the last two lines are identical from the compiler's perspective, which is why it's not possible to detect downcast errors without extra information.
+
+</p>
+<h1>Inheritance in C</h1>
+<p>
+Inheritance really is just a glorified version of composition, which means it's quite easy to replicate in C:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>2</td><td>    <span class="c2h-identifier">Color</span> <span class="c2h-identifier">color</span>;</td></tr>
+      <tr><td>3</td><td>} <span class="c2h-identifier">Shape</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>6</td><td>    <span class="c2h-identifier">Shape</span> <span class="c2h-identifier">base</span>;</td></tr>
+      <tr><td>7</td><td>    <span class="c2h-kword c2h-kword-float">float</span> <span class="c2h-identifier">side</span>;</td></tr>
+      <tr><td>8</td><td>} <span class="c2h-identifier">Square</span>;</td></tr>
+      <tr><td>9</td><td></td></tr>
+      <tr><td>10</td><td><span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-identifier c2h-fdeclname">draw</span>(<span class="c2h-identifier">Shape</span> <span class="c2h-operator">*</span><span class="c2h-identifier">shape</span>);</td></tr>
+      <tr><td>11</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+We just need to explicitly add the base type's fields at the start of the derived type. If we do so, all pointer cast consideration we made for C++ apply. The only exception is that the compiler has no notion of upcasts so we'll need to make them explicit:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">Square</span> <span class="c2h-operator">*</span><span class="c2h-identifier">square</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">createSquare</span>();</td></tr>
+      <tr><td>4</td><td>    <span class="c2h-identifier c2h-fcallname">draw</span>((<span class="c2h-identifier">Shape</span><span class="c2h-operator">*</span>) <span class="c2h-identifier">square</span>); <span class="c2h-comment">// explicit upcast</span></td></tr>
+      <tr><td>5</td><td>}</td></tr>
+      <tr><td>6</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Type methods can be written as regular functions that take the object's pointer as first argument:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-identifier c2h-fdeclname">Shape_setColor</span>(<span class="c2h-identifier">Shape</span> <span class="c2h-operator">*</span><span class="c2h-identifier">shape</span>, <span class="c2h-identifier">Color</span> <span class="c2h-identifier">color</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">shape</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">color</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">color</span>;</td></tr>
+      <tr><td>4</td><td>}</td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td><span class="c2h-kword c2h-kword-float">float</span> <span class="c2h-identifier c2h-fdeclname">Square_calculateArea</span>(<span class="c2h-identifier">Square</span> <span class="c2h-operator">*</span><span class="c2h-identifier">square</span>)</td></tr>
+      <tr><td>7</td><td>{</td></tr>
+      <tr><td>8</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">square</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">side</span> <span class="c2h-operator">*</span> <span class="c2h-identifier">square</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">side</span>;</td></tr>
+      <tr><td>9</td><td>}</td></tr>
+      <tr><td>10</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+</p>
+<h1>Polymorphism in C++</h1>
+<p>
+The inheritance technique we just saw is completely resolved at compile-time. Any time a method is called on an object, the compiler knows exactly which method will be executed based on that object pointer's type. This is obvious from the C code but may be less clear in C++. Consider the following code:
+</p>
+<pre><code class="language-c++">struct Animal {
+    void talk() { printf(&quot;yayaya\n&quot;); }
+};
+
+struct Cat : Animal {
+    void talk() { printf(&quot;meow\n&quot;); }
+};
+
+int main()
+{
+    // Create a cat object
+    Cat cat;
+
+    // Convert it to an animal object
+    Animal *animal = &amp;cat;
+
+    // Run talk() from Animal*
+    animal-&gt;talk();
+}
+</code></pre>
+<p>
+
+What does this program print? Since inheritance is resolved at compile-time, the <code>talk()</code> method is resolved based on the current type of the object, which is <code>Animal</code>.
+
+<br />
+<br />
+
+Polymorphism allows us to change this behavior. If <code>Animal</code> were polymorphic, the <code>talk()</code> method would not be called based on the current pointer type, but the original type of the object. 
+</p>
+<pre><code class="language-c++">struct Animal {
+    virtual void talk() { printf(&quot;yayaya\n&quot;); }
+};
+
+struct Cat : Animal {
+    virtual void talk() { printf(&quot;meow\n&quot;); }
+};
+
+int main()
+{
+    // Create a cat object
+    Cat cat;
+
+    // Convert it to an animal object
+    Animal *animal = &amp;cat;
+
+    // Run talk() from Animal*
+    animal-&gt;talk();
+}
+</code></pre>
+<p>
+
+If we mark the methods as <code>virtual</code>, the <code>Animal*</code> object will hold internally some information about its original type, which allows the program to call the right method regardless of what is the current type of the pointer.
+
+<br />
+<br />
+
+But how does this work under the hood? Let's replicate this behavior using C.
+
+</p>
+<h1>Polymorphism in C</h1>
+<p>
+The way we implement this is by adding to the base type a list of function pointers, one per method. These pointers will refer to the current implementation that should be used when calling a method on the base type. Derived types will inherit the function pointers alongside other base type fields and upon initialization set them to their own implementation. When the derived types are upcased, the base type object will still hold the pointers to the implementations of the derived type.
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>2</td><td>    <span class="c2h-kword c2h-kword-void">void</span> (<span class="c2h-operator">*</span><span class="c2h-identifier">talk</span>)(<span class="c2h-kword c2h-kword-void">void</span>);</td></tr>
+      <tr><td>3</td><td>} <span class="c2h-identifier">Animal</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td><span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-identifier c2h-fdeclname">talk</span>(<span class="c2h-identifier">Animal</span> <span class="c2h-operator">*</span><span class="c2h-identifier">animal</span>)</td></tr>
+      <tr><td>6</td><td>{</td></tr>
+      <tr><td>7</td><td>    <span class="c2h-identifier">animal</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier c2h-fcallname">talk</span>();</td></tr>
+      <tr><td>8</td><td>}</td></tr>
+      <tr><td>9</td><td></td></tr>
+      <tr><td>10</td><td><span class="c2h-comment">////////////////////////////////////////</span></td></tr>
+      <tr><td>11</td><td></td></tr>
+      <tr><td>12</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>13</td><td>    <span class="c2h-identifier">Animal</span> <span class="c2h-identifier">base</span>;</td></tr>
+      <tr><td>14</td><td>} <span class="c2h-identifier">Cat</span>;</td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td><span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-identifier c2h-fdeclname">catTalk</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>17</td><td>{</td></tr>
+      <tr><td>18</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"Meow\n"</span>);</td></tr>
+      <tr><td>19</td><td>}</td></tr>
+      <tr><td>20</td><td></td></tr>
+      <tr><td>21</td><td><span class="c2h-identifier">Animal</span> <span class="c2h-operator">*</span><span class="c2h-identifier c2h-fdeclname">makeCat</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>22</td><td>{</td></tr>
+      <tr><td>23</td><td>    <span class="c2h-identifier">Cat</span> <span class="c2h-operator">*</span><span class="c2h-identifier">cat</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">malloc</span>(<span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">Cat</span>));</td></tr>
+      <tr><td>24</td><td>    <span class="c2h-identifier">cat</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">base</span>.<span class="c2h-identifier">talk</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">catTalk</span>;</td></tr>
+      <tr><td>25</td><td>    <span class="c2h-kword c2h-kword-return">return</span> (<span class="c2h-identifier">Animal</span><span class="c2h-operator">*</span>) <span class="c2h-identifier">cat</span>; <span class="c2h-comment">// upcast</span></td></tr>
+      <tr><td>26</td><td>}</td></tr>
+      <tr><td>27</td><td></td></tr>
+      <tr><td>28</td><td><span class="c2h-comment">////////////////////////////////////////</span></td></tr>
+      <tr><td>29</td><td></td></tr>
+      <tr><td>30</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>31</td><td>    <span class="c2h-identifier">Animal</span> <span class="c2h-identifier">base</span>;</td></tr>
+      <tr><td>32</td><td>} <span class="c2h-identifier">Dog</span>;</td></tr>
+      <tr><td>33</td><td></td></tr>
+      <tr><td>34</td><td><span class="c2h-kword c2h-kword-void">void</span> <span class="c2h-identifier c2h-fdeclname">dogTalk</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>35</td><td>{</td></tr>
+      <tr><td>36</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"Bau\n"</span>);</td></tr>
+      <tr><td>37</td><td>}</td></tr>
+      <tr><td>38</td><td></td></tr>
+      <tr><td>39</td><td><span class="c2h-identifier">Animal</span> <span class="c2h-operator">*</span><span class="c2h-identifier c2h-fdeclname">makeDog</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>40</td><td>{</td></tr>
+      <tr><td>41</td><td>    <span class="c2h-identifier">Dog</span> <span class="c2h-operator">*</span><span class="c2h-identifier">dog</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">malloc</span>(<span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">Dog</span>));</td></tr>
+      <tr><td>42</td><td>    <span class="c2h-identifier">dog</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">base</span>.<span class="c2h-identifier">talk</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">dogTalk</span>;</td></tr>
+      <tr><td>43</td><td>    <span class="c2h-kword c2h-kword-return">return</span> (<span class="c2h-identifier">Animal</span><span class="c2h-operator">*</span>) <span class="c2h-identifier">dog</span>;</td></tr>
+      <tr><td>44</td><td>}</td></tr>
+      <tr><td>45</td><td></td></tr>
+      <tr><td>46</td><td><span class="c2h-comment">////////////////////////////////////////</span></td></tr>
+      <tr><td>47</td><td></td></tr>
+      <tr><td>48</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>49</td><td>{</td></tr>
+      <tr><td>50</td><td>    <span class="c2h-identifier">Animal</span> <span class="c2h-operator">*</span><span class="c2h-identifier">a</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">makeCat</span>();</td></tr>
+      <tr><td>51</td><td>    <span class="c2h-identifier">Animal</span> <span class="c2h-operator">*</span><span class="c2h-identifier">b</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">makeDog</span>();</td></tr>
+      <tr><td>52</td><td></td></tr>
+      <tr><td>53</td><td>    <span class="c2h-identifier c2h-fcallname">talk</span>(<span class="c2h-identifier">a</span>); <span class="c2h-comment">// Meow</span></td></tr>
+      <tr><td>54</td><td>    <span class="c2h-identifier c2h-fcallname">talk</span>(<span class="c2h-identifier">b</span>); <span class="c2h-comment">// Bau</span></td></tr>
+      <tr><td>55</td><td>}</td></tr>
+      <tr><td>56</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Even though both objects have the <code>Animal</code> type, the <code>talk</code> operation operates based on the original type. This matches quite closely how C++ does things. One optimization they introduce is the "vtable". Object of the same types will always have the function pointers set to the same implementations, so it makes sense to introduce a global table of implementation associated to each derived type and keep a pointer to that in the object's header.
+
+</p>
+<h1>Final Note</h1>
+<p>
+If you are anything like me, you will take this new found knowledge and make every <code>struct</code> of your program polymorphic. That is all fun and good, but it does introduce quite a bit of complexity. In my experience I found that the benefits are rarely worth the cost. I found this <a href="https://www.youtube.com/watch?v=tD5NrevFtbU&amp;ab_channel=MollyRocket">video</a> on the topic quite fascinating!
+
+<br />
+<br />
+
+If you enjoy this type of discussion consider hopping in my <a href="https://discord.gg/vCKkCWceYP">discord server</a>. We talk about this sort of stuff all the time.
+
+<br />
+<br />
+
+Thanks for reading :)</p>
+
+			</article>
+		</main>
+	</body>
+</html>
