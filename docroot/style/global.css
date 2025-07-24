@@ -44,6 +44,18 @@ article ul {
 article li {
 	margin: 8px 32px;
 }
+
+blockquote {
+    border-left: 4px solid #404040;
+    margin: 0;
+}
+
+blockquote p {
+    color: #404040;
+    font-size: 15px;
+    margin: 10px;
+}
+
 code {
 	padding: 1px 3px;
 	background: #eee;
@@ -51,6 +63,7 @@ code {
 	font-family: monospace;
 	color: #404040;
 }
+
 pre code {
 	display: inline-block;
 	width: calc(100% - 20px);

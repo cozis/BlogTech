@@ -81,22 +81,24 @@ The result should be an array of structs, each containing a name:
       <tr><td>8</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">surname</span>;</td></tr>
       <tr><td>9</td><td>} <span class="c2h-identifier">Person</span>;</td></tr>
       <tr><td>10</td><td></td></tr>
-      <tr><td>11</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">S</span>(<span class="c2h-identifier">X</span>) (<span class="c2h-identifier">String</span>) { (<span class="c2h-identifier">X</span>), (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">X</span>)<span class="c2h-operator">-</span><span class="c2h-val-int">1</span> }</td></tr>
+      <tr><td>11</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">MAX_PEOPLE</span> <span class="c2h-val-int">100</span></td></tr>
       <tr><td>12</td><td></td></tr>
-      <tr><td>13</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
-      <tr><td>14</td><td>{</td></tr>
-      <tr><td>15</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">file_contents</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"BEGIN\n  Linus Torvalds\n  Bill Gates\n  Steve Jobs\n  Mark Facebook\nEND"</span>);</td></tr>
-      <tr><td>16</td><td></td></tr>
-      <tr><td>17</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num_people</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
-      <tr><td>18</td><td>    <span class="c2h-identifier">Person</span> <span class="c2h-identifier">people</span>[<span class="c2h-identifier">MAX_PEOPLE</span>];</td></tr>
-      <tr><td>19</td><td></td></tr>
-      <tr><td>20</td><td>    <span class="c2h-comment">// TODO: parse file_contents and fill up the people array</span></td></tr>
+      <tr><td>13</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">S</span>(<span class="c2h-identifier">X</span>) (<span class="c2h-identifier">String</span>) { (<span class="c2h-identifier">X</span>), (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">X</span>)<span class="c2h-operator">-</span><span class="c2h-val-int">1</span> }</td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>16</td><td>{</td></tr>
+      <tr><td>17</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">file_contents</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"BEGIN\n  Linus Torvalds\n  Bill Gates\n  Steve Jobs\n  Mark Facebook\nEND"</span>);</td></tr>
+      <tr><td>18</td><td></td></tr>
+      <tr><td>19</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num_people</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>20</td><td>    <span class="c2h-identifier">Person</span> <span class="c2h-identifier">people</span>[<span class="c2h-identifier">MAX_PEOPLE</span>];</td></tr>
       <tr><td>21</td><td></td></tr>
-      <tr><td>22</td><td>    <span class="c2h-comment">// TODO: check that the list contains a given name</span></td></tr>
+      <tr><td>22</td><td>    <span class="c2h-comment">// TODO: parse file_contents and fill up the people array</span></td></tr>
       <tr><td>23</td><td></td></tr>
-      <tr><td>24</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
-      <tr><td>25</td><td>}</td></tr>
-      <tr><td>26</td><td></td></tr>
+      <tr><td>24</td><td>    <span class="c2h-comment">// TODO: check that the list contains a given name</span></td></tr>
+      <tr><td>25</td><td></td></tr>
+      <tr><td>26</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>27</td><td>}</td></tr>
+      <tr><td>28</td><td></td></tr>
     </table>
   </div>
 </div>
@@ -246,7 +248,7 @@ Of course this type of check is only possible when the string we are looking for
       <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">==</span> <span class="c2h-val-int">0</span>)</td></tr>
       <tr><td>4</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
       <tr><td>5</td><td></td></tr>
-      <tr><td>6</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">cur</span>)</td></tr>
+      <tr><td>6</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>)</td></tr>
       <tr><td>7</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
       <tr><td>8</td><td></td></tr>
       <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
@@ -565,7 +567,7 @@ And here is the final result! By following these patterns correctly, we can be q
       <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">==</span> <span class="c2h-val-int">0</span>)</td></tr>
       <tr><td>47</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
       <tr><td>48</td><td></td></tr>
-      <tr><td>49</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">cur</span>)</td></tr>
+      <tr><td>49</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>)</td></tr>
       <tr><td>50</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
       <tr><td>51</td><td></td></tr>
       <tr><td>52</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>

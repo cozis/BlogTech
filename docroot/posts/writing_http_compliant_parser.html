@@ -1,0 +1,733 @@
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" media="screen" href="../style/global.css" />
+		<title>cozis</title>
+		<!-- Matomo -->
+		<script>
+			var _paq = window._paq = window._paq || [];
+			/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function() {
+				var u="//coz.is:8443/";
+				_paq.push(['setTrackerUrl', u+'matomo.php']);
+				_paq.push(['setSiteId', '1']);
+				var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+				g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+			})();
+		</script>
+		<!-- End Matomo Code -->
+	</head>
+	<body>
+		<main>
+			<header>
+				<center>
+					<span id="cozis-text">Cozis</span>
+					<br />
+					<nav>
+						<a href="../index.html">index</a>
+						•
+						<a href="../projects.html">projects</a>
+						•
+						<a href="https://github.com/cozis" target="_blank">github</a>
+						•
+						<a href="https://www.linkedin.com/in/cozis/" target="_blank">linkedin</a>
+					</nav>
+				</center>
+			</header>
+
+			<article>
+				<h1>Writing an HTTP compliant parser in C</h1>
+<p>
+Recently I published a library called <a href="https://github.com/cozis/cHTTP">cHTTP</a> on GitHub, which is essentially my private networking code polished and made reusable. Yesterday I decided I would go through the HTTP request parser and make sure it is compliant to spec, so I took the opportunity to write about it. In this post I will go throgh the specification to turn it into an HTTP request parser using C.
+
+<br />
+<br />
+
+This article will focus more on following the specification than the actual parsing code. If you're not familiar with string parsing in C, consider reading my post about <a href="the_scanner_pattern.html">the scanner pattern</a> where I document my way of doing things. Also, if for some reason you're not familiar with HTTP protocol or it's syntax, you should go read <a href="004_http.html">this post</a>.
+
+</p>
+<h2>How to Read the Spec</h2>
+<p>
+The HTTP protocol is standardized by documents called RFCs. Often new documents that obsolete old ones are published. For instance the first RFC for HTTP 1.1 was RFC 2616, but the latest specification at the time of writing is RFC 9112.
+
+<br />
+<br />
+
+If we take a look at RFC 9112, we'll find that in section <a href="https://www.rfc-editor.org/rfc/rfc9112.html#name-message">2</a> the syntax of an "HTTP message" is defined:
+</p>
+<pre><code class="language-">HTTP-message = start-line CRLF
+               *( field-line CRLF )
+               CRLF
+               [ message-body ]
+</code></pre>
+<p>
+
+It's expressed using a notation called <em>Augmented Backus-Naur Form (ABNF)</em> and this is essentially what we'll need to turn into code. I'll go into its details as we write code, but if you want to learn about it in more detail, read <a href="https://www.rfc-editor.org/rfc/rfc9112.html#name-syntax-notation">section 1.2</a>.
+
+<br />
+<br />
+
+The basic idea is that every "token" (start-line, CRLF, field-line, message-body) represents a pattern of characters called "rules". Token representing rules can be grouped into higher level rules, such as this one. Tokens with uppercase names usually are primitive tokens that represent simple characters. The special characters such as parenthesis or the asterisk specify how these tokens combine to make the higher level rule. For instance, the asterisk means that the tokens following it can repeat zero or more times and the square brackets mean that the tokens inside it are optional.
+
+<br />
+<br />
+
+So our job will be to read the document, unpack these rules and turn them into code. Now let's dive in!
+
+</p>
+<h2>Parsing the Request Line</h2>
+<p>
+Let's make sense of that <code>HTTP-message</code> rule by comparing it to a practical example of HTTP request
+</p>
+<pre><code class="language-">HTTP-message = start-line CRLF
+               *( field-line CRLF )
+               CRLF
+               [ message-body ]
+</code></pre>
+<p>
+</p>
+<pre><code class="language-">GET /index.html HTTP/1.1\r\n
+Host: coz.is\r\n
+User-Agent: curl/7.81.0\r\n
+\r\n
+</code></pre>
+<p>
+
+A quick string search of CRLF shows that it is defined in section 1.2 as a carriage return and line feed <code>\r\n</code>. So intuitively we can observe that:
+</p>
+<pre><code class="language-">start-line   =&gt; GET /index.html HTTP/1.1
+field-line   =&gt; Host: coz.is
+field-line   =&gt; User-Agent: curl/7.81.0
+message-body =&gt; (empty)
+</code></pre>
+<p>
+
+The <code>start-line</code> matches the line where method, path, and version are specified, the <code>field-line</code> matches the headers, and the <code>message-body</code> matches the body (which is not present here).
+
+<br />
+<br />
+
+Let's unpack the rule further by looking at how <code>start-line</code> is defined (as always, we do a string search in the document):
+</p>
+<pre><code class="language-">start-line = request-line / status-line
+
+request-line = method SP request-target SP HTTP-version
+</code></pre>
+<p>
+
+The slash <code>/</code> means only one of the two rules apply. Since we are parsing HTTP requests, we are interested in the <code>request-line</code> rule. Just like the CRLF token, the SP token is defined in section 1.2 as a single space.
+</p>
+<pre><code class="language-">method         =&gt; GET
+request-target =&gt; /index.html
+HTTP-version   =&gt; HTTP/1.1
+</code></pre>
+<p>
+
+</p>
+<h3>Parsing the Method</h3>
+<p>
+If we look for the <code>method</code> rule, we find that it's definition references some other document called <code>[HTTP]</code>
+</p>
+<pre><code class="language-">method = token
+
+token = &lt;token, see [HTTP], Section 5.6.2&gt;
+</code></pre>
+<p>
+
+If we follow the reference (look for <code>[HTTP]</code> in the <a href="https://www.rfc-editor.org/rfc/rfc9112.html#name-references">references</a> section) we find that the rule is defined in RFC 9110
+</p>
+<pre><code class="language-">token = 1*tchar
+
+tchar = &quot;!&quot; / &quot;#&quot; / &quot;$&quot; / &quot;%&quot; / &quot;&amp;&quot; / &quot;'&quot; / &quot;*&quot;
+      / &quot;+&quot; / &quot;-&quot; / &quot;.&quot; / &quot;^&quot; / &quot;_&quot; / &quot;`&quot; / &quot;|&quot; / &quot;~&quot;
+      / DIGIT / ALPHA
+      ; any VCHAR, except delimiters
+</code></pre>
+<p>
+
+Now we have a good idea of how to parse the method. We want to parse one or more tchars followed by a space! That's easy enough:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td></td></tr>
+      <tr><td>2</td><td><span class="c2h-comment">// DIGIT</span></td></tr>
+      <tr><td>3</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_digit</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>4</td><td>{</td></tr>
+      <tr><td>5</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'0'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'9'</span>;</td></tr>
+      <tr><td>6</td><td>}</td></tr>
+      <tr><td>7</td><td></td></tr>
+      <tr><td>8</td><td><span class="c2h-comment">// ALPHA</span></td></tr>
+      <tr><td>9</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_alpha</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>10</td><td>{</td></tr>
+      <tr><td>11</td><td>    <span class="c2h-kword c2h-kword-return">return</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'a'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'z'</span>) <span class="c2h-operator">||</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'Z'</span>);</td></tr>
+      <tr><td>12</td><td>}</td></tr>
+      <tr><td>13</td><td></td></tr>
+      <tr><td>14</td><td><span class="c2h-comment">// tchar</span></td></tr>
+      <tr><td>15</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_tchar</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>16</td><td>{</td></tr>
+      <tr><td>17</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'!'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'#'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'$'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'%'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'&'</span></td></tr>
+      <tr><td>18</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'\''</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'*'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'+'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'-'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'.'</span></td></tr>
+      <tr><td>19</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'^'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'_'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'`'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'|'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'~'</span></td></tr>
+      <tr><td>20</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier c2h-fcallname">is_digit</span>(<span class="c2h-identifier">c</span>) <span class="c2h-operator">||</span> <span class="c2h-identifier c2h-fcallname">is_alpha</span>(<span class="c2h-identifier">c</span>);</td></tr>
+      <tr><td>21</td><td>}</td></tr>
+      <tr><td>22</td><td></td></tr>
+      <tr><td>23</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_method</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-operator">*</span><span class="c2h-identifier">method</span>)</td></tr>
+      <tr><td>24</td><td>{</td></tr>
+      <tr><td>25</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">method_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>26</td><td></td></tr>
+      <tr><td>27</td><td>    <span class="c2h-comment">// Consume a tchar or fail</span></td></tr>
+      <tr><td>28</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>29</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>; <span class="c2h-comment">// Error! Missing token</span></td></tr>
+      <tr><td>30</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>31</td><td></td></tr>
+      <tr><td>32</td><td>    <span class="c2h-comment">// Consume additional tchars following the first one</span></td></tr>
+      <tr><td>33</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>34</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>35</td><td></td></tr>
+      <tr><td>36</td><td>    <span class="c2h-comment">// Make a substring of the method</span></td></tr>
+      <tr><td>37</td><td>    <span class="c2h-operator">*</span><span class="c2h-identifier">method</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) {</td></tr>
+      <tr><td>38</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">method_off</span>,</td></tr>
+      <tr><td>39</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">method_off</span></td></tr>
+      <tr><td>40</td><td>    };</td></tr>
+      <tr><td>41</td><td></td></tr>
+      <tr><td>42</td><td>    <span class="c2h-comment">// Consume a space or fail</span></td></tr>
+      <tr><td>43</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">' '</span>)</td></tr>
+      <tr><td>44</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>45</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>46</td><td></td></tr>
+      <tr><td>47</td><td>    <span class="c2h-comment">// All good!</span></td></tr>
+      <tr><td>48</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>49</td><td>}</td></tr>
+      <tr><td>50</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+</p>
+<h2>Parsing the Request Target</h2>
+<p>
+Now that we parsed the method, let's go back to the <code>request-line</code> rule:
+</p>
+<pre><code class="language-">request-line = method SP request-target SP HTTP-version
+</code></pre>
+<p>
+
+The next rule is <code>request-target</code>. I happen to know that this one is quite complex. This rule alone takes more code than the rest of the parser, so we can take a shortcut and say that the request target is anything that goes from the first space to the second one preceding the version. This isn't ideal but most server do it. Note that it's always safer to parse strings by explicitly allowing a set of characters, which is not what we are doing here as we are letting though anything that is not a space.
+
+<br />
+<br />
+
+With this simplification parsing the target should be quite straight-forward
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_target</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-operator">*</span><span class="c2h-identifier">target</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>4</td><td></td></tr>
+      <tr><td>5</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">' '</span>)</td></tr>
+      <tr><td>6</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>7</td><td></td></tr>
+      <tr><td>8</td><td>    <span class="c2h-operator">*</span><span class="c2h-identifier">target</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) {</td></tr>
+      <tr><td>9</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">off</span>,</td></tr>
+      <tr><td>10</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">off</span>,</td></tr>
+      <tr><td>11</td><td>    };</td></tr>
+      <tr><td>12</td><td></td></tr>
+      <tr><td>13</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span>)</td></tr>
+      <tr><td>14</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>15</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>16</td><td></td></tr>
+      <tr><td>17</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>18</td><td>}</td></tr>
+      <tr><td>19</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+</p>
+<h2>Parsing the Version</h2>
+<p>
+Following the target comes the HTTP-version rule:
+</p>
+<pre><code class="language-">HTTP-name = %x48.54.54.50 ; HTTP
+HTTP-version = HTTP-name &quot;/&quot; DIGIT &quot;.&quot; DIGIT
+</code></pre>
+<p>
+
+The <code>%x</code> notation just means a sequence of character specified by their hex representation. If you look the numbers in the <a href="https://en.wikipedia.org/wiki/ASCII">ASCII table</a>, you will find that they simpli represent the string "HTTP". I think they used this notation to express that the string must be uppercase. Following the "HTTP" string comes the "/" character and then a major version number and a minor version number separated by a dot. Since this is an HTTP 1.1 parser we only allow versions "1.1" and "1.0", which means the rule might as well be this for us
+</p>
+<pre><code class="language-">HTTP-version = &quot;HTTP/1.0&quot; / &quot;HTTP/1.1&quot;
+</code></pre>
+<p>
+
+For this, we can rely on our super useful <code>consume_str</code> function defined in <a href="the_scanner_pattern.html">the scanner pattern</a> post
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">consume_str</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-identifier">x</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">==</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>4</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span>.<span class="c2h-identifier">cur</span>)</td></tr>
+      <tr><td>7</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
+      <tr><td>10</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-identifier">i</span>] <span class="c2h-operator">!=</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">ptr</span>[<span class="c2h-identifier">i</span>])</td></tr>
+      <tr><td>11</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>12</td><td></td></tr>
+      <tr><td>13</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">+=</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>;</td></tr>
+      <tr><td>14</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">true</span>;</td></tr>
+      <tr><td>15</td><td>}</td></tr>
+      <tr><td>16</td><td></td></tr>
+      <tr><td>17</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_version</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span>)</td></tr>
+      <tr><td>18</td><td>{</td></tr>
+      <tr><td>19</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"HTTP/1.0\r\n"</span>))) {</td></tr>
+      <tr><td>20</td><td>        <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>21</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>22</td><td>    }</td></tr>
+      <tr><td>23</td><td></td></tr>
+      <tr><td>24</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"HTTP/1.1\r\n"</span>))) {</td></tr>
+      <tr><td>25</td><td>        <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>26</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>27</td><td>    }</td></tr>
+      <tr><td>28</td><td></td></tr>
+      <tr><td>29</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>30</td><td>}</td></tr>
+      <tr><td>31</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+Since the major version is always 1, we just need to return the minor version. Also as we did with the method and target parsing function, we make the version function also consume the CRLF separator that follows it.
+
+<br />
+<br />
+
+And this completes are parsing of the request line!
+
+</p>
+<h2>Parsing Headers</h2>
+<p>
+Next come the <code>field-line</code> rule
+</p>
+<pre><code class="language-">HTTP-message = start-line CRLF
+               *( field-line CRLF )
+               CRLF
+               [ message-body ]
+</code></pre>
+<p>
+
+This rule can occur zero or more times, which means we'll need to write a function to parse a single <code>field-line</code> and then call it in a loop.
+
+<br />
+<br />
+
+A single <code>field-line</code> is defined as this:
+</p>
+<pre><code class="language-">field-line = field-name &quot;:&quot; OWS field-value OWS
+</code></pre>
+<p>
+
+We have a name and a value separated by a semicolon. The value is padded by spaces (string search OWS in the document). The name and value rules are defined in RFC 9110
+</p>
+<pre><code class="language-">field-name = &lt;field-name, see [HTTP], Section 5.1&gt;
+field-value = &lt;field-value, see [HTTP], Section 5.5&gt;
+</code></pre>
+<p>
+
+Following the references we get to these definitions
+</p>
+<pre><code class="language-">field-name = token
+
+field-value    = *field-content
+field-content  = field-vchar
+                 [ 1*( SP / HTAB / field-vchar ) field-vchar ]
+field-vchar    = VCHAR / obs-text
+obs-text       = %x80-FF
+</code></pre>
+<p>
+
+The name rule is simple enough, while the value rule is quite verbose. Fortunately, that's just a way of saying that the header value can't contain leading and trailing spaces. Other than that it can contain spaces, tabs, any visible ASCII caracters (referred to as VCHARs) or characters with values 0x80 to 0xFF that correspond to UTF-8 character bytes. Unfortunately there is a lot of weirdness with UTF-8 so I prefer to only allow ASCII.
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>2</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">name</span>;</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">value</span>;</td></tr>
+      <tr><td>4</td><td>} <span class="c2h-identifier">Header</span>;</td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_vchar</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>7</td><td>{</td></tr>
+      <tr><td>8</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'~'</span>;</td></tr>
+      <tr><td>9</td><td>}</td></tr>
+      <tr><td>10</td><td></td></tr>
+      <tr><td>11</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_header</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">Header</span> <span class="c2h-operator">*</span><span class="c2h-identifier">header</span>)</td></tr>
+      <tr><td>12</td><td>{</td></tr>
+      <tr><td>13</td><td>    <span class="c2h-comment">// Parse the name</span></td></tr>
+      <tr><td>14</td><td></td></tr>
+      <tr><td>15</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">name_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>16</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>17</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>18</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>19</td><td></td></tr>
+      <tr><td>20</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>21</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>22</td><td>    <span class="c2h-identifier">header</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">name</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) { <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">name_off</span>, <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">name_off</span> };</td></tr>
+      <tr><td>23</td><td></td></tr>
+      <tr><td>24</td><td>    <span class="c2h-comment">// Consume the separator</span></td></tr>
+      <tr><td>25</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">':'</span>)</td></tr>
+      <tr><td>26</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>27</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>28</td><td></td></tr>
+      <tr><td>29</td><td>    <span class="c2h-comment">// Consume whitespace preceding the value</span></td></tr>
+      <tr><td>30</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>31</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>32</td><td></td></tr>
+      <tr><td>33</td><td>    <span class="c2h-comment">// Parse the value</span></td></tr>
+      <tr><td>34</td><td></td></tr>
+      <tr><td>35</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">value_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>36</td><td></td></tr>
+      <tr><td>37</td><td>    <span class="c2h-comment">// Consume all VCHARs and spaces</span></td></tr>
+      <tr><td>38</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier c2h-fcallname">is_vchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]) <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>39</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>40</td><td></td></tr>
+      <tr><td>41</td><td>    <span class="c2h-comment">// If the body ended with some spaces, remove them. Note how this loop</span></td></tr>
+      <tr><td>42</td><td>    <span class="c2h-comment">// doesn't have bound checks. We can do this because we know the header</span></td></tr>
+      <tr><td>43</td><td>    <span class="c2h-comment">// contains at least one tchar</span></td></tr>
+      <tr><td>44</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>)</td></tr>
+      <tr><td>45</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">--</span>;</td></tr>
+      <tr><td>46</td><td></td></tr>
+      <tr><td>47</td><td>    <span class="c2h-comment">// Make a slice for the value</span></td></tr>
+      <tr><td>48</td><td>    <span class="c2h-identifier">header</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">value</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) { <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">value_off</span>, <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">value_off</span> };</td></tr>
+      <tr><td>49</td><td></td></tr>
+      <tr><td>50</td><td>    <span class="c2h-comment">// Consume any spaces that follow the value</span></td></tr>
+      <tr><td>51</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>52</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>53</td><td></td></tr>
+      <tr><td>54</td><td>    <span class="c2h-comment">// Consume the CRLF following the header field</span></td></tr>
+      <tr><td>55</td><td></td></tr>
+      <tr><td>56</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-val-int">1</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span></td></tr>
+      <tr><td>57</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-val-int">0</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">'\r'</span></td></tr>
+      <tr><td>58</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-val-int">1</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">'\n'</span>)</td></tr>
+      <tr><td>59</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>60</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">+=</span> <span class="c2h-val-int">2</span>;</td></tr>
+      <tr><td>61</td><td></td></tr>
+      <tr><td>62</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>63</td><td>}</td></tr>
+      <tr><td>64</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+As we were saying earlier, the header rule may apply multiple times until the final <code>CRLF</code> that precedes the body is found. Let's define a parsing function for the entire header list:
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_header_list</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">Header</span> <span class="c2h-operator">*</span><span class="c2h-identifier">headers</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">max_headers</span>)</td></tr>
+      <tr><td>2</td><td>{</td></tr>
+      <tr><td>3</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num_headers</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>4</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"\r\n"</span>))) {</td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">num_headers</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">max_headers</span>)</td></tr>
+      <tr><td>7</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>8</td><td></td></tr>
+      <tr><td>9</td><td>        <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">ret</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">parse_header</span>(<span class="c2h-identifier">s</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">headers</span>[<span class="c2h-identifier">num_headers</span>]);</td></tr>
+      <tr><td>10</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">ret</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>11</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>12</td><td></td></tr>
+      <tr><td>13</td><td>        <span class="c2h-identifier">num_headers</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>14</td><td>    }</td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">num_headers</span>;</td></tr>
+      <tr><td>17</td><td>}</td></tr>
+      <tr><td>18</td><td></td></tr>
+    </table>
+  </div>
+</div>
+<p>
+
+</p>
+<h2>Parsing the Body</h2>
+<p>
+The last thing to do is parse the <code>message-body</code> rule, which is defined in <a href="https://www.rfc-editor.org/rfc/rfc9112.html#name-message-body">section 6</a> of RFC 9112
+</p>
+<pre><code class="language-">message-body = *OCTET
+</code></pre>
+<p>
+
+by octet the RFC means a generic byte, which means the body is expressed as a generic stream of data. The length of the data depends on the header values. If the request contains the <code>Content-Length</code> header, then the body is a single chunk of bytes. If the request contains the <code>Transfer-Encoding</code> header, then the body is actually a list of chunks each with its own header that needs parsing. This alone, as the request target parsing does, warrants its own article! So for now, you'll need to try implement body parsing on your own :)
+
+</p>
+<h2>Putting Everything Together</h2>
+<p>
+And here it is, the complete parser with a basic test of our initial input!
+</p>
+<div class="c2h-code">
+  <div class="c2h-code-inner">
+    <table>
+      <tr><td>1</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdio.h&gt;</span></td></tr>
+      <tr><td>2</td><td><span class="c2h-directive">#include</span> <span class="c2h-val-str">&lt;stdbool.h&gt;</span></td></tr>
+      <tr><td>3</td><td></td></tr>
+      <tr><td>4</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier">MAX_HEADERS</span> <span class="c2h-val-int">128</span></td></tr>
+      <tr><td>5</td><td></td></tr>
+      <tr><td>6</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">S</span>(<span class="c2h-identifier">X</span>) (<span class="c2h-identifier">String</span>) { (<span class="c2h-identifier">X</span>), (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">X</span>)<span class="c2h-operator">-</span><span class="c2h-val-int">1</span> }</td></tr>
+      <tr><td>7</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">UNPACK</span>(<span class="c2h-identifier">X</span>) (<span class="c2h-identifier">X</span>).<span class="c2h-identifier">len</span>, (<span class="c2h-identifier">X</span>).<span class="c2h-identifier">ptr</span></td></tr>
+      <tr><td>8</td><td><span class="c2h-directive">#define</span> <span class="c2h-identifier c2h-fdeclname">COUNT</span>(<span class="c2h-identifier">X</span>) (<span class="c2h-kword c2h-kword-sizeof">sizeof</span>(<span class="c2h-identifier">X</span>) <span class="c2h-operator">/</span> <span class="c2h-kword c2h-kword-sizeof">sizeof</span>((<span class="c2h-identifier">X</span>)[<span class="c2h-val-int">0</span>]))</td></tr>
+      <tr><td>9</td><td></td></tr>
+      <tr><td>10</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>11</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">src</span>;</td></tr>
+      <tr><td>12</td><td>    <span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">len</span>;</td></tr>
+      <tr><td>13</td><td>    <span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>14</td><td>} <span class="c2h-identifier">Scanner</span>;</td></tr>
+      <tr><td>15</td><td></td></tr>
+      <tr><td>16</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>17</td><td>    <span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-operator">*</span><span class="c2h-identifier">ptr</span>;</td></tr>
+      <tr><td>18</td><td>    <span class="c2h-kword c2h-kword-int">int</span>   <span class="c2h-identifier">len</span>;</td></tr>
+      <tr><td>19</td><td>} <span class="c2h-identifier">String</span>;</td></tr>
+      <tr><td>20</td><td></td></tr>
+      <tr><td>21</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>22</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">name</span>;</td></tr>
+      <tr><td>23</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">value</span>;</td></tr>
+      <tr><td>24</td><td>} <span class="c2h-identifier">Header</span>;</td></tr>
+      <tr><td>25</td><td></td></tr>
+      <tr><td>26</td><td><span class="c2h-kword c2h-kword-typedef">typedef</span> <span class="c2h-kword c2h-kword-struct">struct</span> {</td></tr>
+      <tr><td>27</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">method</span>;</td></tr>
+      <tr><td>28</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">target</span>;</td></tr>
+      <tr><td>29</td><td>    <span class="c2h-kword c2h-kword-int">int</span>    <span class="c2h-identifier">minor</span>;</td></tr>
+      <tr><td>30</td><td>    <span class="c2h-kword c2h-kword-int">int</span>    <span class="c2h-identifier">num_headers</span>;</td></tr>
+      <tr><td>31</td><td>    <span class="c2h-identifier">Header</span> <span class="c2h-identifier">headers</span>[<span class="c2h-identifier">MAX_HEADERS</span>];</td></tr>
+      <tr><td>32</td><td>} <span class="c2h-identifier">Request</span>;</td></tr>
+      <tr><td>33</td><td></td></tr>
+      <tr><td>34</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_digit</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>35</td><td>{</td></tr>
+      <tr><td>36</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'0'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'9'</span>;</td></tr>
+      <tr><td>37</td><td>}</td></tr>
+      <tr><td>38</td><td></td></tr>
+      <tr><td>39</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_alpha</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>40</td><td>{</td></tr>
+      <tr><td>41</td><td>    <span class="c2h-kword c2h-kword-return">return</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'a'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'z'</span>) <span class="c2h-operator">||</span> (<span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">'A'</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'Z'</span>);</td></tr>
+      <tr><td>42</td><td>}</td></tr>
+      <tr><td>43</td><td></td></tr>
+      <tr><td>44</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_tchar</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>45</td><td>{</td></tr>
+      <tr><td>46</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'!'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'#'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'$'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'%'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'&'</span></td></tr>
+      <tr><td>47</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'\''</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'*'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'+'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'-'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'.'</span></td></tr>
+      <tr><td>48</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'^'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'_'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'`'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'|'</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">==</span> <span class="c2h-val-char">'~'</span></td></tr>
+      <tr><td>49</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier c2h-fcallname">is_digit</span>(<span class="c2h-identifier">c</span>) <span class="c2h-operator">||</span> <span class="c2h-identifier c2h-fcallname">is_alpha</span>(<span class="c2h-identifier">c</span>);</td></tr>
+      <tr><td>50</td><td>}</td></tr>
+      <tr><td>51</td><td></td></tr>
+      <tr><td>52</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">consume_str</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-identifier">x</span>)</td></tr>
+      <tr><td>53</td><td>{</td></tr>
+      <tr><td>54</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">==</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>55</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>56</td><td></td></tr>
+      <tr><td>57</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span> <span class="c2h-operator">&gt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>)</td></tr>
+      <tr><td>58</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>59</td><td></td></tr>
+      <tr><td>60</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
+      <tr><td>61</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-identifier">i</span>] <span class="c2h-operator">!=</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">ptr</span>[<span class="c2h-identifier">i</span>])</td></tr>
+      <tr><td>62</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">false</span>;</td></tr>
+      <tr><td>63</td><td></td></tr>
+      <tr><td>64</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">+=</span> <span class="c2h-identifier">x</span>.<span class="c2h-identifier">len</span>;</td></tr>
+      <tr><td>65</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">true</span>;</td></tr>
+      <tr><td>66</td><td>}</td></tr>
+      <tr><td>67</td><td></td></tr>
+      <tr><td>68</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_method</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-operator">*</span><span class="c2h-identifier">method</span>)</td></tr>
+      <tr><td>69</td><td>{</td></tr>
+      <tr><td>70</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">method_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>71</td><td></td></tr>
+      <tr><td>72</td><td>    <span class="c2h-comment">// Consume a tchar or fail</span></td></tr>
+      <tr><td>73</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>74</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>; <span class="c2h-comment">// Error! Missing token</span></td></tr>
+      <tr><td>75</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>76</td><td></td></tr>
+      <tr><td>77</td><td>    <span class="c2h-comment">// Consume additional tchars following the first one</span></td></tr>
+      <tr><td>78</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>79</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>80</td><td></td></tr>
+      <tr><td>81</td><td>    <span class="c2h-comment">// Make a substring of the method</span></td></tr>
+      <tr><td>82</td><td>    <span class="c2h-operator">*</span><span class="c2h-identifier">method</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) {</td></tr>
+      <tr><td>83</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">method_off</span>,</td></tr>
+      <tr><td>84</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">method_off</span></td></tr>
+      <tr><td>85</td><td>    };</td></tr>
+      <tr><td>86</td><td></td></tr>
+      <tr><td>87</td><td>    <span class="c2h-comment">// Consume a space or fail</span></td></tr>
+      <tr><td>88</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">' '</span>)</td></tr>
+      <tr><td>89</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>90</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>91</td><td></td></tr>
+      <tr><td>92</td><td>    <span class="c2h-comment">// All good!</span></td></tr>
+      <tr><td>93</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>94</td><td>}</td></tr>
+      <tr><td>95</td><td></td></tr>
+      <tr><td>96</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_target</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">String</span> <span class="c2h-operator">*</span><span class="c2h-identifier">target</span>)</td></tr>
+      <tr><td>97</td><td>{</td></tr>
+      <tr><td>98</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>99</td><td></td></tr>
+      <tr><td>100</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">' '</span>)</td></tr>
+      <tr><td>101</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>102</td><td></td></tr>
+      <tr><td>103</td><td>    <span class="c2h-operator">*</span><span class="c2h-identifier">target</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) {</td></tr>
+      <tr><td>104</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">off</span>,</td></tr>
+      <tr><td>105</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">off</span>,</td></tr>
+      <tr><td>106</td><td>    };</td></tr>
+      <tr><td>107</td><td></td></tr>
+      <tr><td>108</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span>)</td></tr>
+      <tr><td>109</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>110</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>111</td><td></td></tr>
+      <tr><td>112</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>113</td><td>}</td></tr>
+      <tr><td>114</td><td></td></tr>
+      <tr><td>115</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_version</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span>)</td></tr>
+      <tr><td>116</td><td>{</td></tr>
+      <tr><td>117</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"HTTP/1.0\r\n"</span>))) {</td></tr>
+      <tr><td>118</td><td>        <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>119</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>120</td><td>    }</td></tr>
+      <tr><td>121</td><td></td></tr>
+      <tr><td>122</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"HTTP/1.1\r\n"</span>))) {</td></tr>
+      <tr><td>123</td><td>        <span class="c2h-operator">*</span><span class="c2h-identifier">minor</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>124</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>125</td><td>    }</td></tr>
+      <tr><td>126</td><td></td></tr>
+      <tr><td>127</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>128</td><td>}</td></tr>
+      <tr><td>129</td><td></td></tr>
+      <tr><td>130</td><td><span class="c2h-identifier">bool</span> <span class="c2h-identifier c2h-fdeclname">is_vchar</span>(<span class="c2h-kword c2h-kword-char">char</span> <span class="c2h-identifier">c</span>)</td></tr>
+      <tr><td>131</td><td>{</td></tr>
+      <tr><td>132</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier">c</span> <span class="c2h-operator">&lt;=</span> <span class="c2h-val-char">'~'</span>;</td></tr>
+      <tr><td>133</td><td>}</td></tr>
+      <tr><td>134</td><td></td></tr>
+      <tr><td>135</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_header</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">Header</span> <span class="c2h-operator">*</span><span class="c2h-identifier">header</span>)</td></tr>
+      <tr><td>136</td><td>{</td></tr>
+      <tr><td>137</td><td>    <span class="c2h-comment">// Parse the name</span></td></tr>
+      <tr><td>138</td><td></td></tr>
+      <tr><td>139</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">name_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>140</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>141</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>142</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>143</td><td></td></tr>
+      <tr><td>144</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> <span class="c2h-identifier c2h-fcallname">is_tchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]))</td></tr>
+      <tr><td>145</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>146</td><td>    <span class="c2h-identifier">header</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">name</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) { <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">name_off</span>, <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">name_off</span> };</td></tr>
+      <tr><td>147</td><td></td></tr>
+      <tr><td>148</td><td>    <span class="c2h-comment">// Consume the separator</span></td></tr>
+      <tr><td>149</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">':'</span>)</td></tr>
+      <tr><td>150</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>151</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>152</td><td></td></tr>
+      <tr><td>153</td><td>    <span class="c2h-comment">// Consume whitespace preceding the value</span></td></tr>
+      <tr><td>154</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>155</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>156</td><td></td></tr>
+      <tr><td>157</td><td>    <span class="c2h-comment">// Parse the value</span></td></tr>
+      <tr><td>158</td><td></td></tr>
+      <tr><td>159</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">value_off</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>;</td></tr>
+      <tr><td>160</td><td></td></tr>
+      <tr><td>161</td><td>    <span class="c2h-comment">// Consume all VCHARs and spaces</span></td></tr>
+      <tr><td>162</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier c2h-fcallname">is_vchar</span>(<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>]) <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>163</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>164</td><td></td></tr>
+      <tr><td>165</td><td>    <span class="c2h-comment">// If the body ended with some spaces, remove them. Note how this loop</span></td></tr>
+      <tr><td>166</td><td>    <span class="c2h-comment">// doesn't have bound checks. We can do this because we know the header</span></td></tr>
+      <tr><td>167</td><td>    <span class="c2h-comment">// contains at least one tchar</span></td></tr>
+      <tr><td>168</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>)</td></tr>
+      <tr><td>169</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">--</span>;</td></tr>
+      <tr><td>170</td><td></td></tr>
+      <tr><td>171</td><td>    <span class="c2h-comment">// Make a slice for the value</span></td></tr>
+      <tr><td>172</td><td>    <span class="c2h-identifier">header</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">value</span> <span class="c2h-operator">=</span> (<span class="c2h-identifier">String</span>) { <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span> <span class="c2h-operator">+</span> <span class="c2h-identifier">value_off</span>, <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">value_off</span> };</td></tr>
+      <tr><td>173</td><td></td></tr>
+      <tr><td>174</td><td>    <span class="c2h-comment">// Consume any spaces that follow the value</span></td></tr>
+      <tr><td>175</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">&&</span> (<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">' '</span> <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span>] <span class="c2h-operator">==</span> <span class="c2h-val-char">'\t'</span>))</td></tr>
+      <tr><td>176</td><td>        <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>177</td><td></td></tr>
+      <tr><td>178</td><td>    <span class="c2h-comment">// Consume the CRLF following the header field</span></td></tr>
+      <tr><td>179</td><td></td></tr>
+      <tr><td>180</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-val-int">1</span> <span class="c2h-operator">&gt;=</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">len</span> <span class="c2h-operator">-</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span></td></tr>
+      <tr><td>181</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-val-int">0</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">'\r'</span></td></tr>
+      <tr><td>182</td><td>        <span class="c2h-operator">||</span> <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">src</span>[<span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span><span class="c2h-operator">+</span><span class="c2h-val-int">1</span>] <span class="c2h-operator">!=</span> <span class="c2h-val-char">'\n'</span>)</td></tr>
+      <tr><td>183</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>184</td><td>    <span class="c2h-identifier">s</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">cur</span> <span class="c2h-operator">+=</span> <span class="c2h-val-int">2</span>;</td></tr>
+      <tr><td>185</td><td></td></tr>
+      <tr><td>186</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>187</td><td>}</td></tr>
+      <tr><td>188</td><td></td></tr>
+      <tr><td>189</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_header_list</span>(<span class="c2h-identifier">Scanner</span> <span class="c2h-operator">*</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">Header</span> <span class="c2h-operator">*</span><span class="c2h-identifier">headers</span>, <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">max_headers</span>)</td></tr>
+      <tr><td>190</td><td>{</td></tr>
+      <tr><td>191</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">num_headers</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>192</td><td>    <span class="c2h-kword c2h-kword-while">while</span> (<span class="c2h-operator">!</span><span class="c2h-identifier c2h-fcallname">consume_str</span>(<span class="c2h-identifier">s</span>, <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"\r\n"</span>))) {</td></tr>
+      <tr><td>193</td><td></td></tr>
+      <tr><td>194</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">num_headers</span> <span class="c2h-operator">==</span> <span class="c2h-identifier">max_headers</span>)</td></tr>
+      <tr><td>195</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>196</td><td></td></tr>
+      <tr><td>197</td><td>        <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">ret</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">parse_header</span>(<span class="c2h-identifier">s</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">headers</span>[<span class="c2h-identifier">num_headers</span>]);</td></tr>
+      <tr><td>198</td><td>        <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">ret</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>199</td><td>            <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>200</td><td></td></tr>
+      <tr><td>201</td><td>        <span class="c2h-identifier">num_headers</span><span class="c2h-operator">++</span>;</td></tr>
+      <tr><td>202</td><td>    }</td></tr>
+      <tr><td>203</td><td></td></tr>
+      <tr><td>204</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-identifier">num_headers</span>;</td></tr>
+      <tr><td>205</td><td>}</td></tr>
+      <tr><td>206</td><td></td></tr>
+      <tr><td>207</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">parse_request</span>(<span class="c2h-identifier">String</span> <span class="c2h-identifier">src</span>, <span class="c2h-identifier">Request</span> <span class="c2h-operator">*</span><span class="c2h-identifier">req</span>)</td></tr>
+      <tr><td>208</td><td>{</td></tr>
+      <tr><td>209</td><td>    <span class="c2h-identifier">Scanner</span> <span class="c2h-identifier">s</span> <span class="c2h-operator">=</span> { <span class="c2h-identifier">src</span>.<span class="c2h-identifier">ptr</span>, <span class="c2h-identifier">src</span>.<span class="c2h-identifier">len</span>, <span class="c2h-val-int">0</span> };</td></tr>
+      <tr><td>210</td><td></td></tr>
+      <tr><td>211</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">parse_method</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">s</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">method</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>212</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>213</td><td></td></tr>
+      <tr><td>214</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">parse_target</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">s</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">target</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>215</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>216</td><td></td></tr>
+      <tr><td>217</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">parse_version</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">s</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">minor</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>218</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>219</td><td></td></tr>
+      <tr><td>220</td><td>    <span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">ret</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">parse_header_list</span>(<span class="c2h-operator">&</span><span class="c2h-identifier">s</span>, <span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">headers</span>, (<span class="c2h-kword c2h-kword-int">int</span>) <span class="c2h-identifier c2h-fcallname">COUNT</span>(<span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">headers</span>));</td></tr>
+      <tr><td>221</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier">ret</span> <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>)</td></tr>
+      <tr><td>222</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>223</td><td>    <span class="c2h-identifier">req</span><span class="c2h-operator">-&gt;</span><span class="c2h-identifier">num_headers</span> <span class="c2h-operator">=</span> <span class="c2h-identifier">ret</span>;</td></tr>
+      <tr><td>224</td><td></td></tr>
+      <tr><td>225</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>226</td><td>}</td></tr>
+      <tr><td>227</td><td></td></tr>
+      <tr><td>228</td><td><span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier c2h-fdeclname">main</span>(<span class="c2h-kword c2h-kword-void">void</span>)</td></tr>
+      <tr><td>229</td><td>{</td></tr>
+      <tr><td>230</td><td>    <span class="c2h-identifier">String</span> <span class="c2h-identifier">str</span> <span class="c2h-operator">=</span> <span class="c2h-identifier c2h-fcallname">S</span>(<span class="c2h-val-str">"GET /index.html HTTP/1.1\r\nHost: coz.is\r\nUser-Agent: curl/7.81.0\r\n\r\n"</span>);</td></tr>
+      <tr><td>231</td><td></td></tr>
+      <tr><td>232</td><td>    <span class="c2h-identifier">Request</span> <span class="c2h-identifier">req</span>;</td></tr>
+      <tr><td>233</td><td>    <span class="c2h-kword c2h-kword-if">if</span> (<span class="c2h-identifier c2h-fcallname">parse_request</span>(<span class="c2h-identifier">str</span>, <span class="c2h-operator">&</span><span class="c2h-identifier">req</span>) <span class="c2h-operator">&lt;</span> <span class="c2h-val-int">0</span>) {</td></tr>
+      <tr><td>234</td><td>        <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"Parsing failed\n"</span>);</td></tr>
+      <tr><td>235</td><td>        <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-operator">-</span><span class="c2h-val-int">1</span>;</td></tr>
+      <tr><td>236</td><td>    }</td></tr>
+      <tr><td>237</td><td></td></tr>
+      <tr><td>238</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"method: %.*s\n"</span>, <span class="c2h-identifier c2h-fcallname">UNPACK</span>(<span class="c2h-identifier">req</span>.<span class="c2h-identifier">method</span>));</td></tr>
+      <tr><td>239</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"target: %.*s\n"</span>, <span class="c2h-identifier c2h-fcallname">UNPACK</span>(<span class="c2h-identifier">req</span>.<span class="c2h-identifier">target</span>));</td></tr>
+      <tr><td>240</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"version: HTTP/1.%d\n"</span>, <span class="c2h-identifier">req</span>.<span class="c2h-identifier">minor</span>);</td></tr>
+      <tr><td>241</td><td>    <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"headers:\n"</span>);</td></tr>
+      <tr><td>242</td><td>    <span class="c2h-kword c2h-kword-for">for</span> (<span class="c2h-kword c2h-kword-int">int</span> <span class="c2h-identifier">i</span> <span class="c2h-operator">=</span> <span class="c2h-val-int">0</span>; <span class="c2h-identifier">i</span> <span class="c2h-operator">&lt;</span> <span class="c2h-identifier">req</span>.<span class="c2h-identifier">num_headers</span>; <span class="c2h-identifier">i</span><span class="c2h-operator">++</span>)</td></tr>
+      <tr><td>243</td><td>        <span class="c2h-identifier c2h-fcallname">printf</span>(<span class="c2h-val-str">"name: %.*s, value: %.*s\n"</span>, <span class="c2h-identifier c2h-fcallname">UNPACK</span>(<span class="c2h-identifier">req</span>.<span class="c2h-identifier">headers</span>[<span class="c2h-identifier">i</span>].<span class="c2h-identifier">name</span>), <span class="c2h-identifier c2h-fcallname">UNPACK</span>(<span class="c2h-identifier">req</span>.<span class="c2h-identifier">headers</span>[<span class="c2h-identifier">i</span>].<span class="c2h-identifier">value</span>));</td></tr>
+      <tr><td>244</td><td></td></tr>
+      <tr><td>245</td><td>    <span class="c2h-kword c2h-kword-return">return</span> <span class="c2h-val-int">0</span>;</td></tr>
+      <tr><td>246</td><td>}</td></tr>
+      <tr><td>247</td><td></td></tr>
+    </table>
+  </div>
+</div>
+
+			</article>
+		</main>
+	</body>
+</html>
