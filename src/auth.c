@@ -1,9 +1,10 @@
 #include "auth.h"
 
-void auth_init(Auth *auth)
+int auth_init(Auth *auth)
 {
     for (int i = 0; i < MAX_NONCES; i++)
         auth->nonces[i].value = BAD_NONCE;
+    return 0;
 }
 
 void auth_free(Auth *auth)

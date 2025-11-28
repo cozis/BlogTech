@@ -180,7 +180,7 @@ static bool is_pss_alg(JWS_Alg alg) {
 }
 
 static int calculate_signature(
-    JWT_ALg alg, EVP_PKEY *key,
+    JWS_Alg alg, EVP_PKEY *key,
     char *prot, int prot_len,
     char *pay, int pay_len,
     char *sign, int sign_cap)
@@ -197,6 +197,7 @@ static int calculate_signature(
     if (ctx == NULL)
         return JWS_ERROR_UNSPEC;
 
+    EVP_PKEY_CTX *pctx;
     if (EVP_DigestSignInit(ctx, &pctx, md, NULL, key) != 1) {
         EVP_MD_CTX_free(ctx);
         return JWS_ERROR_UNSPEC;
@@ -274,18 +275,18 @@ void jws_builder_flush(JWS_Builder *builder)
                 builder->alg = JWS_ALG_NONE;
             } else if (alg.len == 5) {
                 if (0) {}
-                else if (!memcmp(alg.ptr, "HS256", 5)) alg = JWS_ALG_HS256;
-                else if (!memcmp(alg.ptr, "HS384", 5)) alg = JWS_ALG_HS384;
-                else if (!memcmp(alg.ptr, "HS512", 5)) alg = JWS_ALG_HS512;
-                else if (!memcmp(alg.ptr, "RS256", 5)) alg = JWS_ALG_RS256;
-                else if (!memcmp(alg.ptr, "RS384", 5)) alg = JWS_ALG_RS384;
-                else if (!memcmp(alg.ptr, "RS512", 5)) alg = JWS_ALG_RS512;
-                else if (!memcmp(alg.ptr, "ES256", 5)) alg = JWS_ALG_ES256;
-                else if (!memcmp(alg.ptr, "ES384", 5)) alg = JWS_ALG_ES384;
-                else if (!memcmp(alg.ptr, "ES512", 5)) alg = JWS_ALG_ES512;
-                else if (!memcmp(alg.ptr, "PS256", 5)) alg = JWS_ALG_PS256;
-                else if (!memcmp(alg.ptr, "PS384", 5)) alg = JWS_ALG_PS384;
-                else if (!memcmp(alg.ptr, "PS512", 5)) alg = JWS_ALG_PS512;
+                else if (!memcmp(alg.ptr, "HS256", 5)) builder->alg = JWS_ALG_HS256;
+                else if (!memcmp(alg.ptr, "HS384", 5)) builder->alg = JWS_ALG_HS384;
+                else if (!memcmp(alg.ptr, "HS512", 5)) builder->alg = JWS_ALG_HS512;
+                else if (!memcmp(alg.ptr, "RS256", 5)) builder->alg = JWS_ALG_RS256;
+                else if (!memcmp(alg.ptr, "RS384", 5)) builder->alg = JWS_ALG_RS384;
+                else if (!memcmp(alg.ptr, "RS512", 5)) builder->alg = JWS_ALG_RS512;
+                else if (!memcmp(alg.ptr, "ES256", 5)) builder->alg = JWS_ALG_ES256;
+                else if (!memcmp(alg.ptr, "ES384", 5)) builder->alg = JWS_ALG_ES384;
+                else if (!memcmp(alg.ptr, "ES512", 5)) builder->alg = JWS_ALG_ES512;
+                else if (!memcmp(alg.ptr, "PS256", 5)) builder->alg = JWS_ALG_PS256;
+                else if (!memcmp(alg.ptr, "PS384", 5)) builder->alg = JWS_ALG_PS384;
+                else if (!memcmp(alg.ptr, "PS512", 5)) builder->alg = JWS_ALG_PS512;
                 else {
                     // Invalid "alg" field
                     builder->state = JWS_BUILDER_STATE_ERROR;

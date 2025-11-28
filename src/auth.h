@@ -6,15 +6,15 @@
 
 typedef struct {
     uint64_t value;
-    Time     expire;
+    time_t   expire;
 } AppliedNonce;
 
 typedef struct {
-    PublicKey admin_key;
+    EVP_PKEY *admin_key;
     AppliedNonce nonces[MAX_NONCES];
 } Auth;
 
-void auth_init(Auth *auth);
+int  auth_init(Auth *auth);
 void auth_free(Auth *auth);
 int  auth_verify(Auth *auth, HTTP_Request *request);
 

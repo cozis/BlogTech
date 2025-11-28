@@ -13,8 +13,11 @@ typedef enum {
 } JWS_BuilderState;
 
 enum {
-    JWS_ERROR_UNSPEC = -1,
-    JWS_ERROR_OOM = -2,
+    JWS_ERROR_UNSPEC  = -1,
+    JWS_ERROR_OOM     = -2,
+    JWS_ERROR_BADJSON = -3,
+    JWS_ERROR_BADKEY  = -4,
+    JWS_ERROR_ALGNONE = -5,
 };
 
 typedef enum {
