@@ -68,7 +68,6 @@ typedef struct {
     HTTP_String domains[ACME_DOMAIN_LIMIT];
 
     ACME_URLSet urls;
-    bool urls_loaded;
 
     HTTP_String nonce;
     HTTP_String account_url;

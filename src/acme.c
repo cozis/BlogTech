@@ -197,36 +197,45 @@
 //
 //
 
-// Forward declarations
 static int send_directory_request(ACME *acme);
-static int complete_directory_request(ACME *acme, HTTP_Response *response);
-static int send_first_nonce_request(ACME *acme);
-static int complete_first_nonce_request(ACME *acme, HTTP_Response *response);
-static int send_account_creation_request(ACME *acme);
-static int complete_account_creation_request(ACME *acme, HTTP_Response *response);
-static int send_order_creation_request(ACME *acme);
-static int complete_order_creation_request(ACME *acme, HTTP_Response *response);
-static int send_next_challenge_request(ACME *acme);
-static int complete_next_challenge_request(ACME *acme, HTTP_Response *response);
-static int send_challenge_status_request(ACME *acme);
-static int complete_challenge_status_request(ACME *acme, HTTP_Response *response);
-static int send_finalize_order_request(ACME *acme);
-static int complete_finalize_request(ACME *acme, HTTP_Response *response);
-static int send_certificate_request(ACME *acme);
-static int complete_certificate_request(ACME *acme, HTTP_Response *response);
-static bool account_exists(ACME *acme);
-static bool certificate_exists(ACME *acme);
-static bool challenge_completed(ACME *acme);
-static bool all_challenges_completed(ACME *acme);
+
+// Helper function to extract and copy nonce from response headers
+static int extract_nonce(ACME *acme, HTTP_Response *response)
+{
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx == -1) {
+        return -1;
+    }
+
+    HTTP_String nonce_value = response->headers[idx].value;
+
+    // Free old nonce if it exists
+    if (acme->nonce.ptr != NULL) {
+        free(acme->nonce.ptr);
+    }
+
+    // Allocate and copy new nonce
+    char *nonce_copy = malloc(nonce_value.len);
+    if (nonce_copy == NULL) {
+        return -1;
+    }
+
+    memcpy(nonce_copy, nonce_value.ptr, nonce_value.len);
+    acme->nonce.ptr = nonce_copy;
+    acme->nonce.len = nonce_value.len;
+
+    return 0;
+}
 
 int acme_init(ACME *acme, HTTP_Client *client,
     HTTP_String *domains, int num_domains)
 {
     acme->state = ACME_STATE_DIRECTORY;
     acme->client = client;
-    acme->urls_loaded = false;
+    acme->urls.new_account.ptr = NULL;
     acme->num_challenges = 0;
     acme->current_challenge = 0;
+    acme->nonce.ptr = NULL;
 
     acme->num_domains = num_domains;
     for (int i = 0; i < num_domains; i++)
@@ -240,8 +249,11 @@ int acme_init(ACME *acme, HTTP_Client *client,
 
 void acme_free(ACME *acme)
 {
-    if (acme->urls_loaded) {
+    if (acme->urls.new_account.ptr != NULL) {
         free(acme->urls.new_account.ptr);
+    }
+    if (acme->nonce.ptr != NULL) {
+        free(acme->nonce.ptr);
     }
 }
 
@@ -317,7 +329,6 @@ static int complete_directory_request(ACME *acme, HTTP_Response *response)
 {
     if (parse_urls(response->body, &acme->urls) < 0)
         return -1;
-    acme->urls_loaded = true;
     return 0;
 }
 
@@ -334,13 +345,7 @@ static int send_first_nonce_request(ACME *acme)
 
 static int complete_first_nonce_request(ACME *acme, HTTP_Response *response)
 {
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx == -1) {
-        // Missing nonce header
-        return -1;
-    }
-    acme->nonce = response->headers[idx].value;
-    return 0;
+    return extract_nonce(acme, response);
 }
 
 static int send_account_creation_request(ACME *acme)
@@ -392,16 +397,10 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
         // Missing the Location header
         return -1;
     }
+    // Shallow copy is OK here - account_url persists in HTTP response cache
     acme->account_url = response->headers[idx].value;
 
-    idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx == -1) {
-        // Missing nonce header
-        return -1;
-    }
-    acme->nonce = response->headers[idx].value;
-
-    return 0;
+    return extract_nonce(acme, response);
 }
 
 static int send_order_creation_request(ACME *acme)
@@ -470,9 +469,7 @@ static bool all_challenges_completed(ACME *acme)
 static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
 {
     // Update nonce
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx != -1)
-        acme->nonce = response->headers[idx].value;
+    extract_nonce(acme, response);
 
     // Parse the order response to get authorizations and finalize URL
     char pool[1<<13];
@@ -518,9 +515,7 @@ static int send_next_challenge_request(ACME *acme)
 static int complete_next_challenge_request(ACME *acme, HTTP_Response *response)
 {
     // Update nonce
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx != -1)
-        acme->nonce = response->headers[idx].value;
+    extract_nonce(acme, response);
 
     // Parse the authorization response to get the challenge token
     char pool[1<<13];
@@ -580,9 +575,7 @@ static int send_challenge_status_request(ACME *acme)
 static int complete_challenge_status_request(ACME *acme, HTTP_Response *response)
 {
     // Update nonce
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx != -1)
-        acme->nonce = response->headers[idx].value;
+    extract_nonce(acme, response);
 
     // Parse response to check if challenge is valid
     char pool[1<<13];
@@ -642,9 +635,7 @@ static int send_finalize_order_request(ACME *acme)
 static int complete_finalize_request(ACME *acme, HTTP_Response *response)
 {
     // Update nonce
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx != -1)
-        acme->nonce = response->headers[idx].value;
+    extract_nonce(acme, response);
 
     // Parse response to get certificate URL
     char pool[1<<13];
@@ -698,9 +689,7 @@ static int send_certificate_request(ACME *acme)
 static int complete_certificate_request(ACME *acme, HTTP_Response *response)
 {
     // Update nonce
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
-    if (idx != -1)
-        acme->nonce = response->headers[idx].value;
+    extract_nonce(acme, response);
 
     // The response body contains the certificate
     // Store it or process it as needed
