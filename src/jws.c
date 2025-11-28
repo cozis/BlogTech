@@ -2,6 +2,7 @@
 #include <limits.h>
 #include <string.h>
 #include <openssl/evp.h>
+#include <openssl/rsa.h>
 
 #include <json.h>
 #include "jws.h"
