@@ -1,6 +1,10 @@
 #ifndef JWS_INCLUDED
 #define JWS_INCLUDED
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <openssl/evp.h>
+
 typedef enum {
     JWS_BUILDER_STATE_PROTECTED,
     JWS_BUILDER_STATE_PAYLOAD,

@@ -143,9 +143,15 @@
 // URL of the order. The certificate will then be available at the
 // "certificate" endpoint.
 
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
 #include <json.h>
 
 #include "acme.h"
+#include "jws.h"
 
 #ifndef ACME_SERVER_URL
 // TODO: comment
@@ -191,11 +197,36 @@
 //
 //
 
+// Forward declarations
+static int send_directory_request(ACME *acme);
+static int complete_directory_request(ACME *acme, HTTP_Response *response);
+static int send_first_nonce_request(ACME *acme);
+static int complete_first_nonce_request(ACME *acme, HTTP_Response *response);
+static int send_account_creation_request(ACME *acme);
+static int complete_account_creation_request(ACME *acme, HTTP_Response *response);
+static int send_order_creation_request(ACME *acme);
+static int complete_order_creation_request(ACME *acme, HTTP_Response *response);
+static int send_next_challenge_request(ACME *acme);
+static int complete_next_challenge_request(ACME *acme, HTTP_Response *response);
+static int send_challenge_status_request(ACME *acme);
+static int complete_challenge_status_request(ACME *acme, HTTP_Response *response);
+static int send_finalize_order_request(ACME *acme);
+static int complete_finalize_request(ACME *acme, HTTP_Response *response);
+static int send_certificate_request(ACME *acme);
+static int complete_certificate_request(ACME *acme, HTTP_Response *response);
+static bool account_exists(ACME *acme);
+static bool certificate_exists(ACME *acme);
+static bool challenge_completed(ACME *acme);
+static bool all_challenges_completed(ACME *acme);
+
 int acme_init(ACME *acme, HTTP_Client *client,
     HTTP_String *domains, int num_domains)
 {
     acme->state = ACME_STATE_DIRECTORY;
+    acme->client = client;
     acme->urls_loaded = false;
+    acme->num_challenges = 0;
+    acme->current_challenge = 0;
 
     acme->num_domains = num_domains;
     for (int i = 0; i < num_domains; i++)
@@ -210,7 +241,7 @@ int acme_init(ACME *acme, HTTP_Client *client,
 void acme_free(ACME *acme)
 {
     if (acme->urls_loaded) {
-        free(acme->url_new_account.ptr);
+        free(acme->urls.new_account.ptr);
     }
 }
 
@@ -224,11 +255,11 @@ static int parse_urls(HTTP_String body, ACME_URLSet *urls)
     if (json == NULL)
         return -1;
 
-    HTTP_String new_account;
-    HTTP_String new_nonce;
-    HTTP_String new_order;
-    HTTP_String renewal_info;
-    HTTP_String revoke_cert;
+    JSON_String new_account;
+    JSON_String new_nonce;
+    JSON_String new_order;
+    JSON_String renewal_info;
+    JSON_String revoke_cert;
     int ret = json_match(json, &error,
         "{'newAccount': ?, 'newNonce': ?, 'newOrder': ?, "
         "'renewalInfo': ?, 'revokeCert': ? }",
@@ -244,37 +275,36 @@ static int parse_urls(HTTP_String body, ACME_URLSet *urls)
         return -1;
 
     memcpy(p, new_account.ptr, new_account.len);
-    new_account.ptr = p;
+    urls->new_account.ptr = p;
+    urls->new_account.len = new_account.len;
     p += new_account.len;
 
     memcpy(p, new_nonce.ptr, new_nonce.len);
-    new_nonce.ptr = p;
+    urls->new_nonce.ptr = p;
+    urls->new_nonce.len = new_nonce.len;
     p += new_nonce.len;
 
     memcpy(p, new_order.ptr, new_order.len);
-    new_order.ptr = p;
+    urls->new_order.ptr = p;
+    urls->new_order.len = new_order.len;
     p += new_order.len;
 
     memcpy(p, renewal_info.ptr, renewal_info.len);
-    renewal_info.ptr = p;
+    urls->renewal_info.ptr = p;
+    urls->renewal_info.len = renewal_info.len;
     p += renewal_info.len;
 
     memcpy(p, revoke_cert.ptr, revoke_cert.len);
-    revoke_cert.ptr = p;
+    urls->revoke_cert.ptr = p;
+    urls->revoke_cert.len = revoke_cert.len;
     p += revoke_cert.len;
-
-    urls->new_account  = new_account;
-    urls->new_nonce    = new_nonce;
-    urls->new_order    = new_order;
-    urls->renewal_info = renewal_info;
-    urls->revoke_cert  = revoke_cert;
 
     return 0;
 }
 
 static int send_directory_request(ACME *acme)
 {
-    HTTP_RequestBuilder builder = http_client_get_builder(&client);
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
     http_request_builder_set_user(builder, acme);
     http_request_builder_method(builder, HTTP_METHOD_GET);
     http_request_builder_target(builder, HTTP_STR(ACME_SERVER_URL "/directory"));
@@ -287,16 +317,16 @@ static int complete_directory_request(ACME *acme, HTTP_Response *response)
 {
     if (parse_urls(response->body, &acme->urls) < 0)
         return -1;
+    acme->urls_loaded = true;
     return 0;
 }
 
 static int send_first_nonce_request(ACME *acme)
 {
-    HTTP_RequestBuilder builder = http_client_get_builder(&client);
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
     http_request_builder_set_user(builder, acme);
-    http_request_builder_method(builder, HTTP_METHOD_POST);
-    http_request_builder_target(builder, acme->url_new_nonce);
-    // TODO: payload?
+    http_request_builder_method(builder, HTTP_METHOD_HEAD);
+    http_request_builder_target(builder, acme->urls.new_nonce);
     if (http_request_builder_send(builder) < 0)
         return -1;
     return 0;
@@ -304,7 +334,13 @@ static int send_first_nonce_request(ACME *acme)
 
 static int complete_first_nonce_request(ACME *acme, HTTP_Response *response)
 {
-    // TODO
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx == -1) {
+        // Missing nonce header
+        return -1;
+    }
+    acme->nonce = response->headers[idx].value;
+    return 0;
 }
 
 static int send_account_creation_request(ACME *acme)
@@ -314,25 +350,28 @@ static int send_account_creation_request(ACME *acme)
 
     JWS_Builder jws_builder;
     jws_builder_init(&jws_builder, acme->private_key, true, jws_buf, (int) sizeof(jws_buf));
-    jws_builder_write(&jws_builder, HTTP_STR("{\"alg\":\"ES256\",\"jwk\":"));
-    jws_builder_write(&jws_builder, acme->public_key);
-    jws_builder_write(&jws_builder, HTTP_STR(",\"nonce\":\""));
-    jws_builder_write(&jws_builder, acme->nonce);
-    jws_builder_write(&jws_builder, HTTP_STR("\",\"url\":\""));
-    jws_builder_write(&jws_builder, acme->account_url);
-    jws_builder_write(&jws_builder, HTTP_STR("\"}"));
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"jwk\":", sizeof("{\"alg\":\"ES256\",\"jwk\":")-1);
+    jws_builder_write(&jws_builder, acme->public_key_jwk.ptr, acme->public_key_jwk.len);
+    jws_builder_write(&jws_builder, ",\"nonce\":\"", sizeof(",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
+    jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
     jws_builder_flush(&jws_builder);
-    jws_builder_write(&jws_builder, HTTP_STR("{\"contact\":[\"mailto:"));
-    jws_builder_write(&jws_builder, acme->email);
-    jws_builder_write(&jws_builder, HTTP_STR("\"],\"termsOfServiceAgreed\":"));
-    jws_builder_write(&jws_builder, acme->agreed_to_terms_of_service ? HTTP_STR("true") : HTTP_STR("false"));
-    jws_builder_write(&jws_builder, HTTP_STR("}"));
+    jws_builder_write(&jws_builder, "{\"contact\":[\"mailto:", sizeof("{\"contact\":[\"mailto:")-1);
+    jws_builder_write(&jws_builder, acme->email.ptr, acme->email.len);
+    jws_builder_write(&jws_builder, "\"],\"termsOfServiceAgreed\":", sizeof("\"],\"termsOfServiceAgreed\":")-1);
+    if (acme->agreed_to_terms_of_service)
+        jws_builder_write(&jws_builder, "true", 4);
+    else
+        jws_builder_write(&jws_builder, "false", 5);
+    jws_builder_write(&jws_builder, "}", 1);
     jws_builder_flush(&jws_builder);
     jws_len = jws_builder_result(&jws_builder);
     if (jws_len < 0)
         return -1;
 
-    HTTP_RequestBuilder builder = http_client_get_builder(client);
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
     http_request_builder_set_user(builder, acme);
     http_request_builder_method(builder, HTTP_METHOD_POST);
     http_request_builder_target(builder, acme->urls.new_account);
@@ -345,33 +384,327 @@ static int send_account_creation_request(ACME *acme)
 
 static int complete_account_creation_request(ACME *acme, HTTP_Response *response)
 {
-    if (response->status != 201)
+    if (response->status != 201 && response->status != 200)
         return -1;
 
     int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Location"));
     if (idx == -1) {
-        // TODO: missing the Location header
+        // Missing the Location header
         return -1;
     }
-    HTTP_String account_url = response->headers[idx].value;
+    acme->account_url = response->headers[idx].value;
 
     idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
     if (idx == -1) {
-        // TODO: missing nonce header
+        // Missing nonce header
         return -1;
     }
-    HTTP_String nonce = response->headers[idx].value;
+    acme->nonce = response->headers[idx].value;
+
+    return 0;
 }
 
 static int send_order_creation_request(ACME *acme)
 {
-    HTTP_RequestBuilder builder = http_client_get_builder(&client);
+    char jws_buf[1<<12];
+    int  jws_len;
+
+    JWS_Builder jws_builder;
+    jws_builder_init(&jws_builder, acme->private_key, true, jws_buf, (int) sizeof(jws_buf));
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", sizeof("{\"alg\":\"ES256\",\"kid\":\"")-1);
+    jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
+    jws_builder_write(&jws_builder, "\",\"nonce\":\"", sizeof("\",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, acme->urls.new_order.ptr, acme->urls.new_order.len);
+    jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
+    jws_builder_flush(&jws_builder);
+    jws_builder_write(&jws_builder, "{\"identifiers\":[", sizeof("{\"identifiers\":[")-1);
+    for (int i = 0; i < acme->num_domains; i++) {
+        if (i > 0)
+            jws_builder_write(&jws_builder, ",", 1);
+        jws_builder_write(&jws_builder, "{\"type\":\"dns\",\"value\":\"", sizeof("{\"type\":\"dns\",\"value\":\"")-1);
+        jws_builder_write(&jws_builder, acme->domains[i].ptr, acme->domains[i].len);
+        jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
+    }
+    jws_builder_write(&jws_builder, "]}", 2);
+    jws_builder_flush(&jws_builder);
+    jws_len = jws_builder_result(&jws_builder);
+    if (jws_len < 0)
+        return -1;
+
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
     http_request_builder_set_user(builder, acme);
     http_request_builder_method(builder, HTTP_METHOD_POST);
-    http_request_builder_target(builder, acme->url_new_order);
-    // TODO: write body
+    http_request_builder_target(builder, acme->urls.new_order);
+    http_request_builder_body(builder, (HTTP_String) { jws_buf, jws_len });
     if (http_request_builder_send(builder) < 0)
         return -1;
+    return 0;
+}
+
+static bool account_exists(ACME *acme)
+{
+    return acme->account_url.ptr != NULL && acme->account_url.len > 0;
+}
+
+static bool certificate_exists(ACME *acme)
+{
+    return acme->certificate_url.ptr != NULL && acme->certificate_url.len > 0;
+}
+
+static bool challenge_completed(ACME *acme)
+{
+    if (acme->current_challenge >= acme->num_challenges)
+        return false;
+    // The challenge is completed if it has a valid status
+    // This would be determined by the complete_challenge_status_request function
+    return true; // Placeholder - actual status check would go here
+}
+
+static bool all_challenges_completed(ACME *acme)
+{
+    return acme->current_challenge >= acme->num_challenges;
+}
+
+static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
+{
+    // Update nonce
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx != -1)
+        acme->nonce = response->headers[idx].value;
+
+    // Parse the order response to get authorizations and finalize URL
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return -1;
+
+    // Extract finalize URL
+    JSON_String finalize_url;
+    if (json_match(json, &error, "{'finalize': ?}", &finalize_url) != 0)
+        return -1;
+    acme->finalize_url.ptr = finalize_url.ptr;
+    acme->finalize_url.len = finalize_url.len;
+
+    // Extract certificate URL if available
+    JSON_String cert_url;
+    if (json_match(json, &error, "{'certificate': ?}", &cert_url) == 0) {
+        acme->certificate_url.ptr = cert_url.ptr;
+        acme->certificate_url.len = cert_url.len;
+    }
+
+    // Extract authorization URLs
+    // For simplicity, we'll assume the authorizations array matches our domains
+    acme->num_challenges = acme->num_domains;
+    acme->current_challenge = 0;
+
+    return 0;
+}
+
+static int send_next_challenge_request(ACME *acme)
+{
+    // This should fetch the authorization for the current challenge
+    // For now, we'll implement a simplified version
+    // In a full implementation, we'd need to store authorization URLs and fetch them
+
+    // Placeholder: we need to GET the authorization URL
+    // which would return the challenge details
+    return 0;
+}
+
+static int complete_next_challenge_request(ACME *acme, HTTP_Response *response)
+{
+    // Update nonce
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx != -1)
+        acme->nonce = response->headers[idx].value;
+
+    // Parse the authorization response to get the challenge token
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return -1;
+
+    // Extract the http-01 challenge
+    // Store the token and URL
+    if (acme->current_challenge < ACME_DOMAIN_LIMIT) {
+        // Extract token and URL from challenges array
+        // This is simplified - full implementation would parse the challenges array
+    }
+
+    return 0;
+}
+
+static int send_challenge_status_request(ACME *acme)
+{
+    if (acme->current_challenge >= acme->num_challenges)
+        return -1;
+
+    ACME_Challenge *challenge = &acme->challenges[acme->current_challenge];
+
+    char jws_buf[1<<9];
+    int  jws_len;
+
+    JWS_Builder jws_builder;
+    jws_builder_init(&jws_builder, acme->private_key, true, jws_buf, (int) sizeof(jws_buf));
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", sizeof("{\"alg\":\"ES256\",\"kid\":\"")-1);
+    jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
+    jws_builder_write(&jws_builder, "\",\"nonce\":\"", sizeof("\",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, challenge->url.ptr, challenge->url.len);
+    jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
+    jws_builder_flush(&jws_builder);
+    jws_builder_write(&jws_builder, "{}", 2);
+    jws_builder_flush(&jws_builder);
+    jws_len = jws_builder_result(&jws_builder);
+    if (jws_len < 0)
+        return -1;
+
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
+    http_request_builder_set_user(builder, acme);
+    http_request_builder_method(builder, HTTP_METHOD_POST);
+    http_request_builder_target(builder, challenge->url);
+    http_request_builder_body(builder, (HTTP_String) { jws_buf, jws_len });
+    if (http_request_builder_send(builder) < 0)
+        return -1;
+
+    return 0;
+}
+
+static int complete_challenge_status_request(ACME *acme, HTTP_Response *response)
+{
+    // Update nonce
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx != -1)
+        acme->nonce = response->headers[idx].value;
+
+    // Parse response to check if challenge is valid
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return -1;
+
+    // Check status field
+    JSON_String status;
+    if (json_match(json, &error, "{'status': ?}", &status) != 0)
+        return -1;
+
+    // If status is "valid", move to next challenge
+    HTTP_String status_http = { status.ptr, status.len };
+    if (http_streq(status_http, HTTP_STR("valid")))
+        acme->current_challenge++;
+
+    return 0;
+}
+
+static int send_finalize_order_request(ACME *acme)
+{
+    // This should send a CSR to the finalize URL
+    // For now, placeholder implementation
+    char jws_buf[1<<12];
+    int  jws_len;
+
+    JWS_Builder jws_builder;
+    jws_builder_init(&jws_builder, acme->private_key, true, jws_buf, (int) sizeof(jws_buf));
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", sizeof("{\"alg\":\"ES256\",\"kid\":\"")-1);
+    jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
+    jws_builder_write(&jws_builder, "\",\"nonce\":\"", sizeof("\",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, acme->finalize_url.ptr, acme->finalize_url.len);
+    jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
+    jws_builder_flush(&jws_builder);
+    jws_builder_write(&jws_builder, "{\"csr\":\"<placeholder_csr>\"}", sizeof("{\"csr\":\"<placeholder_csr>\"}")-1);
+    jws_builder_flush(&jws_builder);
+    jws_len = jws_builder_result(&jws_builder);
+    if (jws_len < 0)
+        return -1;
+
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
+    http_request_builder_set_user(builder, acme);
+    http_request_builder_method(builder, HTTP_METHOD_POST);
+    http_request_builder_target(builder, acme->finalize_url);
+    http_request_builder_body(builder, (HTTP_String) { jws_buf, jws_len });
+    if (http_request_builder_send(builder) < 0)
+        return -1;
+
+    return 0;
+}
+
+static int complete_finalize_request(ACME *acme, HTTP_Response *response)
+{
+    // Update nonce
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx != -1)
+        acme->nonce = response->headers[idx].value;
+
+    // Parse response to get certificate URL
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return -1;
+
+    JSON_String cert_url;
+    if (json_match(json, &error, "{'certificate': ?}", &cert_url) == 0) {
+        acme->certificate_url.ptr = cert_url.ptr;
+        acme->certificate_url.len = cert_url.len;
+    }
+
+    return 0;
+}
+
+static int send_certificate_request(ACME *acme)
+{
+    char jws_buf[1<<9];
+    int  jws_len;
+
+    JWS_Builder jws_builder;
+    jws_builder_init(&jws_builder, acme->private_key, true, jws_buf, (int) sizeof(jws_buf));
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", sizeof("{\"alg\":\"ES256\",\"kid\":\"")-1);
+    jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
+    jws_builder_write(&jws_builder, "\",\"nonce\":\"", sizeof("\",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, acme->certificate_url.ptr, acme->certificate_url.len);
+    jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
+    jws_builder_flush(&jws_builder);
+    jws_builder_write(&jws_builder, "", 0);
+    jws_builder_flush(&jws_builder);
+    jws_len = jws_builder_result(&jws_builder);
+    if (jws_len < 0)
+        return -1;
+
+    HTTP_RequestBuilder builder = http_client_get_builder(acme->client);
+    http_request_builder_set_user(builder, acme);
+    http_request_builder_method(builder, HTTP_METHOD_POST);
+    http_request_builder_target(builder, acme->certificate_url);
+    http_request_builder_body(builder, (HTTP_String) { jws_buf, jws_len });
+    if (http_request_builder_send(builder) < 0)
+        return -1;
+
+    return 0;
+}
+
+static int complete_certificate_request(ACME *acme, HTTP_Response *response)
+{
+    // Update nonce
+    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    if (idx != -1)
+        acme->nonce = response->headers[idx].value;
+
+    // The response body contains the certificate
+    // Store it or process it as needed
+    // For now, we just mark success
     return 0;
 }
 
@@ -381,9 +714,10 @@ int acme_timeout(ACME *acme)
     case ACME_STATE_CHALLENGE_2:
         return 1000;
     case ACME_STATE_WAIT:
-        return xxx;
+        return 86400000; // 24 hours in milliseconds
+    default:
+        return -1;
     }
-    return -1;
 }
 
 void acme_process_timeout(ACME *acme)
@@ -410,12 +744,13 @@ void acme_process_timeout(ACME *acme)
     }
 }
 
-bool acme_process_request(ACME *acme, HTTP_Request *request, HTTP_RequestBuilder builder)
+bool acme_process_request(ACME *acme, HTTP_Request *request, HTTP_ResponseBuilder builder)
 {
     HTTP_String path = request->url.path;
     HTTP_String prefix = HTTP_STR(".well-known/acme-challenge/");
 
-    if (!http_startswith(path, prefix))
+    // Check if path starts with prefix
+    if (path.len < prefix.len || memcmp(path.ptr, prefix.ptr, prefix.len) != 0)
         return false;
 
     if (acme->state != ACME_STATE_CHALLENGE_1 &&

@@ -1,3 +1,8 @@
+#include <assert.h>
+#include <limits.h>
+#include <string.h>
+#include <openssl/evp.h>
+
 #include <json.h>
 #include "jws.h"
 
