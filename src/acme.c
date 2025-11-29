@@ -1204,6 +1204,5 @@ void acme_process_response(ACME *acme, int result,
 
 void acme_agree_to_terms_of_service(ACME *acme)
 {
-    // TODO: Implement terms of service agreement
-    (void)acme;
+    acme->agreed_to_terms_of_service = true;
 }
