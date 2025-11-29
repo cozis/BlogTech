@@ -395,7 +395,8 @@ static int send_account_creation_request(ACME *acme, HTTP_Client *client)
     JWS_Builder jws_builder;
     jws_builder_init(&jws_builder, acme->account_key, true, jws_buf, (int) sizeof(jws_buf));
     jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"jwk\":", -1);
-    // TODO: write acme->account_key as a JWK
+    if (jws_write_jwk(&jws_builder, acme->account_key) < 0)
+        return -1;
     jws_builder_write(&jws_builder, ",\"nonce\":\"", -1);
     jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
     jws_builder_write(&jws_builder, "\",\"url\":\"", -1);
