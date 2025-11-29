@@ -4,6 +4,8 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/ec.h>
+#include <openssl/core_names.h>
+#include <openssl/param_build.h>
 
 #include <json.h>
 #include "jws.h"
@@ -479,93 +481,89 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
     int type = EVP_PKEY_id(pkey);
     if (type == EVP_PKEY_RSA) {
 
-        const RSA *rsa = EVP_PKEY_get0_RSA(pkey);
-        if (rsa == NULL)
-            return -1;
         jwk->is_rsa = true;
 
-        const BIGNUM *n, *e, *d;
-        RSA_get0_key(rsa, &n, &e, &d);
+        // Get RSA modulus (n) using new OpenSSL 3.0 API
+        BIGNUM *n = NULL, *e = NULL;
+        if (!EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_N, &n) || n == NULL)
+            return -1;
 
         jwk->rsa.nlen = BN_num_bytes(n);
-        if (jwk->rsa.nlen > (int) sizeof(jwk->rsa.n))
+        if (jwk->rsa.nlen > (int) sizeof(jwk->rsa.n)) {
+            BN_free(n);
             return -1;
-        if (BN_bn2bin(n, jwk->rsa.n) != jwk->rsa.nlen)
+        }
+        if (BN_bn2bin(n, jwk->rsa.n) != jwk->rsa.nlen) {
+            BN_free(n);
             return -1;
+        }
 
         jwk->rsa.nlen = base64url_encode_inplace(jwk->rsa.n,
             jwk->rsa.nlen, (int) sizeof(jwk->rsa.n), false);
-        if (jwk->rsa.nlen < 0)
+        if (jwk->rsa.nlen < 0) {
+            BN_free(n);
+            return -1;
+        }
+        BN_free(n);
+
+        // Get RSA public exponent (e) using new OpenSSL 3.0 API
+        if (!EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_E, &e) || e == NULL)
             return -1;
 
         jwk->rsa.elen = BN_num_bytes(e);
-        if (jwk->rsa.elen > (int) sizeof(jwk->rsa.e))
+        if (jwk->rsa.elen > (int) sizeof(jwk->rsa.e)) {
+            BN_free(e);
             return -1;
-        if (BN_bn2bin(e, jwk->rsa.e) != jwk->rsa.elen)
-           return -1;
+        }
+        if (BN_bn2bin(e, jwk->rsa.e) != jwk->rsa.elen) {
+            BN_free(e);
+            return -1;
+        }
 
         jwk->rsa.elen = base64url_encode_inplace(jwk->rsa.e,
             jwk->rsa.elen, (int) sizeof(jwk->rsa.e), false);
-        if (jwk->rsa.elen < 0)
+        if (jwk->rsa.elen < 0) {
+            BN_free(e);
             return -1;
+        }
+        BN_free(e);
 
     } else if (type == EVP_PKEY_EC) {
 
-        const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
-        if (ec == NULL)
-            return -1;
         jwk->is_rsa = false;
 
-        const EC_GROUP *group = EC_KEY_get0_group(ec);
-        if (group == NULL)
+        // Get curve name using new OpenSSL 3.0 API
+        char group_name[64];
+        size_t group_name_len = 0;
+        if (!EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME,
+                                           group_name, sizeof(group_name), &group_name_len))
             return -1;
 
         const char *crv;
         int coord_size;
-        int nid = EC_GROUP_get_curve_name(group);
-        switch (nid) {
-        case NID_X9_62_prime256v1:
+
+        // Map OpenSSL curve names to JWK curve names
+        if (strcmp(group_name, "prime256v1") == 0) {
             crv = "P-256";
             coord_size = CEIL(256, 8);
-            break;
-        case NID_secp384r1:
+        } else if (strcmp(group_name, "secp384r1") == 0) {
             crv = "P-384";
             coord_size = CEIL(384, 8);
-            break;
-        case NID_secp521r1:
+        } else if (strcmp(group_name, "secp521r1") == 0) {
             crv = "P-521";
             coord_size = CEIL(521, 8);
-            break;
-        default:
+        } else {
             return -1;
         }
         jwk->ec.crv = crv;
 
-        const EC_POINT *point = EC_KEY_get0_public_key(ec);
-        if (point == NULL)
+        // Get EC public key coordinates using new OpenSSL 3.0 API
+        BIGNUM *x = NULL, *y = NULL;
+        if (!EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_EC_PUB_X, &x) || x == NULL)
             return -1;
 
-        BN_CTX *ctx = BN_CTX_new();
-        if (ctx == NULL)
-            return -1;
-
-        BIGNUM *x = BN_new();
-        if (x == NULL) {
-            BN_CTX_free(ctx);
-            return -1;
-        }
-
-        BIGNUM *y = BN_new();
-        if (y == NULL) {
+        if (!EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_EC_PUB_Y, &y) || y == NULL) {
             BN_free(x);
-            BN_CTX_free(ctx);
-            return -1;
-        }
-
-        if (EC_POINT_get_affine_coordinates(group, point, x, y, ctx) != 1) {
-            BN_free(y);
-            BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
 
@@ -580,7 +578,6 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (jwk->ec.xlen > (int) sizeof(jwk->ec.x)) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
         assert(jwk->ec.xlen <= sizeof(jwk->ec.x));
@@ -595,7 +592,6 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (BN_bn2bin(x, jwk->ec.x + coord_size - jwk->ec.xlen) != jwk->ec.xlen) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
         jwk->ec.xlen = coord_size;
@@ -605,7 +601,6 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (jwk->ec.xlen < 0) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
 
@@ -613,7 +608,6 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (jwk->ec.ylen > (int) sizeof(jwk->ec.y)) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
 
@@ -621,7 +615,6 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (BN_bn2bin(y, jwk->ec.y + coord_size - jwk->ec.ylen) != jwk->ec.ylen) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
         jwk->ec.ylen = coord_size;
@@ -631,13 +624,11 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         if (jwk->ec.ylen < 0) {
             BN_free(y);
             BN_free(x);
-            BN_CTX_free(ctx);
             return -1;
         }
 
         BN_free(y);
         BN_free(x);
-        BN_CTX_free(ctx);
 
     } else {
 
