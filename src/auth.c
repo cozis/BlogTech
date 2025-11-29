@@ -11,6 +11,8 @@ void auth_free(Auth *auth)
 {
 }
 
+// Returns 0 if the request is verified, 1 if the request is
+// not verified, and -1 if an error occurred.
 int auth_verify(Auth *auth, HTTP_Request *request)
 {
     // TODO: Calculate the HMAC of the relevant request information

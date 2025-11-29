@@ -2454,6 +2454,9 @@ static void socket_update(Socket *s)
                             break;
                         }
 
+                        SSL_set_verify(s->ssl, s->dont_verify_cert
+                            ? SSL_VERIFY_NONE : SSL_VERIFY_PEER, NULL);
+
                         AddressAndPort addr;
                         if (s->num_addr > 1)
                             addr = s->addrs[s->next_addr];
@@ -2937,7 +2940,8 @@ static int resolve_connect_targets(ConnectTarget *targets,
 #define MAX_CONNECT_TARGETS 16
 
 int socket_connect(SocketManager *sm, int num_targets,
-    ConnectTarget *targets, bool secure, void *user)
+    ConnectTarget *targets, bool secure, bool dont_verify_cert,
+    void *user)
 {
     if (sm->num_used == sm->max_used)
         return HTTP_ERROR_UNSPECIFIED;
@@ -2987,8 +2991,11 @@ int socket_connect(SocketManager *sm, int num_targets,
     s->server_secure_context = NULL;
     s->client_secure_context = NULL;
     s->ssl = NULL;
-    if (secure)
+    s->dont_verify_cert = false;
+    if (secure) {
         s->client_secure_context = &sm->client_secure_context;
+        s->dont_verify_cert = dont_verify_cert;
+    }
 #endif
     sm->num_used++;
 
@@ -3819,6 +3826,17 @@ void http_request_builder_trace(HTTP_RequestBuilder builder, bool trace_bytes)
     conn->trace_bytes = trace_bytes;
 }
 
+// TODO: comment
+void http_request_builder_insecure(HTTP_RequestBuilder builder,
+    bool insecure)
+{
+    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    if (conn == NULL)
+        return; // Invalid builder
+
+    conn->dont_verify_cert = insecure;
+}
+
 void http_request_builder_method(HTTP_RequestBuilder builder,
     HTTP_Method method)
 {
@@ -3927,6 +3945,22 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
         }
     }
 
+    HTTP_String s;
+
+    s = HTTP_STR("Connection: Close\r\n");
+    byte_queue_write(&conn->output, s.ptr, s.len);
+
+    s = HTTP_STR("Content-Length: ");
+    byte_queue_write(&conn->output, s.ptr, s.len);
+
+    conn->content_length_value_offset = byte_queue_offset(&conn->output);
+
+    #define TEN_SPACES "          "
+    _Static_assert(sizeof(TEN_SPACES) == 10+1);
+
+    s = HTTP_STR(TEN_SPACES "\r\n");
+    byte_queue_write(&conn->output, s.ptr, s.len);
+
     conn->state = HTTP_CLIENT_CONN_WAIT_HEADER;
 }
 
@@ -3966,9 +4000,8 @@ void http_request_builder_body(HTTP_RequestBuilder builder,
 
     // Transition from WAIT_HEADER to WAIT_BODY if needed
     if (conn->state == HTTP_CLIENT_CONN_WAIT_HEADER) {
-        // End headers section
-        // TODO: add Content-Length header
         byte_queue_write(&conn->output, "\r\n", 2);
+        conn->content_length_offset = byte_queue_offset(&conn->output);
         conn->state = HTTP_CLIENT_CONN_WAIT_BODY;
     }
 
@@ -4022,8 +4055,8 @@ int http_request_builder_send(HTTP_RequestBuilder builder)
         goto error; // Early completion due to an error
 
     if (conn->state == HTTP_CLIENT_CONN_WAIT_HEADER) {
-        // No body, just end headers
         byte_queue_write(&conn->output, "\r\n", 2);
+        conn->content_length_offset = byte_queue_offset(&conn->output);
         conn->state = HTTP_CLIENT_CONN_WAIT_BODY;
     }
 
@@ -4033,9 +4066,17 @@ int http_request_builder_send(HTTP_RequestBuilder builder)
     if (byte_queue_error(&conn->output))
         goto error;
 
+    int content_length = byte_queue_size_from_offset(&conn->output, conn->content_length_offset);
+
+    char tmp[11];
+    int len = snprintf(tmp, sizeof(tmp), "%d", content_length);
+    assert(len > 0 && len < 11);
+
+    byte_queue_patch(&conn->output, conn->content_length_value_offset, tmp, len);
+
     ConnectTarget target = url_to_connect_target(conn->url);
     bool secure = http_streq(conn->url.scheme, HTTP_STR("https"));
-    if (socket_connect(&client->sockets, 1, &target, secure, conn) < 0)
+    if (socket_connect(&client->sockets, 1, &target, secure, conn->dont_verify_cert, conn) < 0)
         goto error;
 
     conn->state = HTTP_CLIENT_CONN_FLUSHING;
@@ -4245,6 +4286,7 @@ void http_client_process_events(HTTP_Client *client,
 
             // Decouple from the socket
             socket_set_user(&client->sockets, events[i].handle, NULL);
+            socket_close(&client->sockets, events[i].handle);
 
             // Push to the ready queue
             assert(client->num_ready < HTTP_CLIENT_CAPACITY);
@@ -4627,7 +4669,7 @@ void http_server_process_events(HTTP_Server *server,
 
         if (events[i].type == SOCKET_EVENT_DISCONNECT) {
 
-            http_server_conn_free(conn);
+            http_server_conn_free(conn); // TODO: what if this was in the ready queue?
             server->num_conns--;
 
         } else if (events[i].type == SOCKET_EVENT_READY) {

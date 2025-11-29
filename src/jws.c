@@ -63,10 +63,14 @@ static int base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad)
     while (ridx > 0) {
         ridx -= 3;
         widx -= 4;
-        buf[widx+0] = table[(buf[ridx+0] >> 2)];
-        buf[widx+1] = table[((buf[ridx+0] << 4) | (buf[ridx+1] >> 4)) & 0x3F];
-        buf[widx+2] = table[((buf[ridx+1] << 2) | (buf[ridx+2] >> 6)) & 0x3F];
-        buf[widx+3] = table[buf[ridx+2] & 0x3F];
+        uint8_t a = buf[ridx+0] >> 2;
+        uint8_t b = ((buf[ridx+0] << 4) | (buf[ridx+1] >> 4)) & 0x3F;
+        uint8_t c = ((buf[ridx+1] << 2) | (buf[ridx+2] >> 6)) & 0x3F;
+        uint8_t d = buf[ridx+2] & 0x3F;
+        buf[widx+0] = table[a];
+        buf[widx+1] = table[b];
+        buf[widx+2] = table[c];
+        buf[widx+3] = table[d];
     }
 
     if (!pad) {
@@ -187,11 +191,102 @@ static const EVP_MD *get_openssl_md(JWS_Alg alg)
     return NULL;
 }
 
+static bool is_ec_alg(JWS_Alg alg)
+{
+    return alg == JWS_ALG_ES256
+        || alg == JWS_ALG_ES384
+        || alg == JWS_ALG_ES512;
+}
+
 // Check if algorithm requires PSS Padding
 static bool is_pss_alg(JWS_Alg alg) {
     return alg == JWS_ALG_PS256
         || alg == JWS_ALG_PS384
         || alg == JWS_ALG_PS512;
+}
+
+static int get_ec_sig_component_len(JWS_Alg alg)
+{
+    switch (alg) {
+    case JWS_ALG_ES256: return 32;
+    case JWS_ALG_ES384: return 48;
+    case JWS_ALG_ES512: return 66;
+    }
+    return -1;
+}
+
+// Convert DER-encoded ECDSA signature to raw R||S format required by JWS
+// DER format: SEQUENCE { r INTEGER, s INTEGER }
+// JWS format: R || S (concatenated, fixed-length)
+//
+// TODO: Test this function
+static int der_to_raw_signature(const uint8_t *der,
+    int der_len, uint8_t *raw, int component_len)
+{
+    if (der_len < 8) // Minimum valid DER signature size
+        return -1;
+
+    int pos = 0;
+
+    // Check SEQUENCE tag
+    if (der[pos++] != 0x30)
+        return -1;
+
+    // Parse SEQUENCE length
+    int seq_len = der[pos++];
+    if (seq_len & 0x80) {
+        // Long form length (not expected for ECDSA signatures)
+        return -1;
+    }
+
+    // Parse R INTEGER
+    if (der[pos++] != 0x02)
+        return -1;
+
+    int r_len = der[pos++];
+    if (r_len & 0x80 || r_len > component_len + 1)
+        return -1;
+
+    const uint8_t *r_data = &der[pos];
+    pos += r_len;
+
+    // Skip leading zero byte if present (DER adds it when high bit is set)
+    if (r_len > component_len && r_data[0] == 0x00) {
+        r_data++;
+        r_len--;
+    }
+
+    if (r_len > component_len)
+        return -1;
+
+    // Parse S INTEGER
+    if (pos >= der_len || der[pos++] != 0x02)
+        return -1;
+
+    int s_len = der[pos++];
+    if (s_len & 0x80 || s_len > component_len + 1)
+        return -1;
+
+    const uint8_t *s_data = &der[pos];
+
+    // Skip leading zero byte if present
+    if (s_len > component_len && s_data[0] == 0x00) {
+        s_data++;
+        s_len--;
+    }
+
+    if (s_len > component_len)
+        return -1;
+
+    // Write R to output (left-padded with zeros if needed)
+    memset(raw, 0, component_len);
+    memcpy(raw + component_len - r_len, r_data, r_len);
+
+    // Write S to output (left-padded with zeros if needed)
+    memset(raw + component_len, 0, component_len);
+    memcpy(raw + 2 * component_len - s_len, s_data, s_len);
+
+    return 2 * component_len;
 }
 
 static int calculate_signature(
@@ -234,24 +329,63 @@ static int calculate_signature(
         return JWS_ERROR_UNSPEC;
     }
 
-    size_t required_len;
-    if (EVP_DigestSignFinal(ctx, NULL, &required_len) != 1) {
-        EVP_MD_CTX_free(ctx);
-        return JWS_ERROR_UNSPEC;
-    }
+    int result;
+    if (is_ec_alg(alg)) {
 
-    if (required_len > sign_cap) {
-        EVP_MD_CTX_free(ctx);
-        return JWS_ERROR_OOM;
-    }
+        char der[256];
 
-    if (EVP_DigestSignFinal(ctx, (unsigned char*)sign, &required_len) != 1) {
-        EVP_MD_CTX_free(ctx);
-        return JWS_ERROR_UNSPEC;
+        size_t der_len;
+        if (EVP_DigestSignFinal(ctx, NULL, &der_len) != 1) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_UNSPEC;
+        }
+
+        if (der_len > sizeof(der)) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_OOM;
+        }
+
+        if (EVP_DigestSignFinal(ctx, (unsigned char*)der, &der_len) != 1) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_UNSPEC;
+        }
+
+        int component_len = get_ec_sig_component_len(alg);
+        if (component_len < 0)
+            return JWS_ERROR_UNSPEC;
+
+        int raw_len = 2 * component_len;
+        if (raw_len > sign_cap)
+            return JWS_ERROR_OOM;
+
+        // Convert DER to raw R||S format
+        result = der_to_raw_signature(der, (int)der_len, (uint8_t*)sign, component_len);
+        if (result < 0)
+            return JWS_ERROR_UNSPEC;
+
+    } else {
+
+        size_t required_len;
+        if (EVP_DigestSignFinal(ctx, NULL, &required_len) != 1) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_UNSPEC;
+        }
+
+        if (required_len > sign_cap) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_OOM;
+        }
+
+        if (EVP_DigestSignFinal(ctx, (unsigned char*)sign, &required_len) != 1) {
+            EVP_MD_CTX_free(ctx);
+            return JWS_ERROR_UNSPEC;
+        }
+
+        result = required_len;
     }
 
     EVP_MD_CTX_free(ctx);
-    return (int) required_len;
+    return result;
 }
 
 void jws_builder_flush(JWS_Builder *builder)

@@ -505,6 +505,7 @@ typedef struct {
     ClientSecureContext *client_secure_context;
     ServerSecureContext *server_secure_context;
     SSL *ssl;
+    bool dont_verify_cert;
 #endif
 
 } Socket;
@@ -644,7 +645,8 @@ typedef struct {
 // one succedes. If secure=true, the socket uses TLS.
 // Returns 0 on success, -1 on error.
 int socket_connect(SocketManager *sm, int num_targets,
-    ConnectTarget *targets, bool secure, void *user);
+    ConnectTarget *targets, bool secure, bool dont_verify_cert,
+    void *user);
 
 int socket_recv(SocketManager *sm, SocketHandle handle,
     char *dst, int max);
@@ -917,6 +919,9 @@ typedef struct {
     // TODO: comment
     bool trace_bytes;
 
+    // TODO: comment
+    bool dont_verify_cert;
+
     // Allocated copy of the URL string
     HTTP_String url_buffer;
 
@@ -938,6 +943,16 @@ typedef struct {
 
     // Parsed response once complete
     HTTP_Response response;
+
+    // This offset points to the first byte that comes
+    // after the string "Content-Length: ".
+    ByteQueueOffset content_length_value_offset;
+
+    // This one points to the first byte of the body.
+    // This allows calculating the length of the request
+    // content byte subtracting it from the offset reached
+    // when the request is marked as done.
+    ByteQueueOffset content_length_offset;
 } HTTP_ClientConn;
 
 // Fields of this struct are private
@@ -1005,6 +1020,10 @@ void http_request_builder_set_user(HTTP_RequestBuilder builder,
 // TODO: comment
 void http_request_builder_trace(HTTP_RequestBuilder builder,
     bool trace_bytes);
+
+// TODO: comment
+void http_request_builder_insecure(HTTP_RequestBuilder builder,
+    bool insecure);
 
 // Set the method of the current request. This is the first
 // function of the request builder that the user must call.

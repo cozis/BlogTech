@@ -11,13 +11,6 @@
 #include "acme.h"
 #include "file_system.h"
 
-static bool is_request_signed(HTTP_Request *request)
-{
-    // TODO: Should use auth_verify instead of this function
-    (void) request;
-    return false;
-}
-
 int main(void)
 {
     HTTP_String document_root = HTTP_STR("docroot");
@@ -90,7 +83,7 @@ int main(void)
         };
         http_client_register_events(&client, &client_reg);
 
-        if (server_reg.num_polled > 0 ||
+        if (server_reg.num_polled > 0 &&
             client_reg.num_polled > 0) {
             int num_polled = server_reg.num_polled
                             + client_reg.num_polled;
@@ -168,12 +161,21 @@ int main(void)
                 }
                 break;
             case HTTP_METHOD_PUT:
-                if (!is_request_signed(request)) {
-                    http_response_builder_status(response_builder, 401);
-                    http_response_builder_send(response_builder);
-                } else {
+                {
+                    int ret = auth_verify(&auth, request);
+                    if (ret < 0) {
+                        http_response_builder_status(response_builder, 500);
+                        http_response_builder_send(response_builder);
+                        break;
+                    }
+                    if (ret == 1) {
+                        http_response_builder_status(response_builder, 401);
+                        http_response_builder_send(response_builder);
+                        break;
+                    }
+
                     char buf[1<<10];
-                    int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
                         http_response_builder_status(response_builder, 500); // TODO: better error code
                         http_response_builder_send(response_builder);
@@ -207,12 +209,21 @@ int main(void)
                 }
                 break;
             case HTTP_METHOD_DELETE:
-                if (!is_request_signed(request)) {
-                    http_response_builder_status(response_builder, 401);
-                    http_response_builder_send(response_builder);
-                } else {
+                {
+                    int ret = auth_verify(&auth, request);
+                    if (ret < 0) {
+                        http_response_builder_status(response_builder, 500);
+                        http_response_builder_send(response_builder);
+                        break;
+                    }
+                    if (ret == 1) {
+                        http_response_builder_status(response_builder, 401);
+                        http_response_builder_send(response_builder);
+                        break;
+                    }
+
                     char buf[1<<10];
-                    int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
                         http_response_builder_status(response_builder, 500); // TODO: better error code
                         http_response_builder_send(response_builder);

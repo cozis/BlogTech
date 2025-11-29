@@ -104,6 +104,7 @@ typedef struct {
     HTTP_String country;
     HTTP_String org;
     bool agreed_to_terms_of_service;
+    bool dont_verify_cert;
 
     // State machine variable
     ACME_State state;
@@ -131,6 +132,8 @@ typedef struct {
 
     // This holds account URL and key.
     ACME_Account account;
+
+    HTTP_String order_url;
 
     // When an order is created but the challenges
     // are yet to be completed, these fields are

@@ -155,8 +155,11 @@
 
 #ifndef ACME_SERVER_URL
 // TODO: comment
-#define ACME_SERVER_URL "https://acme-v02.api.letsencrypt.org"
+#define ACME_SERVER_URL "https://0.0.0.0:14000/dir"
+//#define ACME_SERVER_URL "https://acme-v02.api.letsencrypt.org/directory"
 #endif
+
+#define ACME_LOG(fmt, ...) fprintf(stderr, "ACME :: " fmt, #__VA_ARGS__);
 
 // Helper function to compare two JSON_String values
 static bool json_streq(JSON_String s1, JSON_String s2)
@@ -167,21 +170,24 @@ static bool json_streq(JSON_String s1, JSON_String s2)
 typedef struct {
 
     bool error;
+    bool dont_verify_cert;
     HTTP_String url;
 
     JWS_Builder jws_builder;
-    char        jws_buffer[1<<9];
+    char        jws_buffer[1<<10];
 
 } RequestBuilder;
 
 // NOTE: The url argument must be valid until request_builder_send
 //       is called.
 static void request_builder_init(RequestBuilder *builder,
-    ACME_Account account, HTTP_String nonce, HTTP_String url)
+    ACME_Account account, HTTP_String nonce, bool dont_verify_cert,
+    HTTP_String url)
 {
     assert(account.key);
 
     builder->error = false;
+    builder->dont_verify_cert = dont_verify_cert;
     builder->url = url;
 
     jws_builder_init(&builder->jws_builder,
@@ -231,6 +237,9 @@ static int request_builder_send(RequestBuilder *builder, HTTP_Client *client)
     HTTP_String jws = { builder->jws_buffer, ret };
 
     HTTP_RequestBuilder http_builder = http_client_get_builder(client);
+    http_request_builder_set_user(http_builder, NULL); // TODO: should set pointer to the acme struct?
+    http_request_builder_trace(http_builder, true);
+    http_request_builder_insecure(http_builder, builder->dont_verify_cert);
     http_request_builder_method(http_builder, HTTP_METHOD_POST);
     http_request_builder_target(http_builder, builder->url);
     http_request_builder_header(http_builder, HTTP_STR("User-Agent: BlogTech")); // TODO: better user agnet
@@ -255,6 +264,7 @@ int acme_init(ACME *acme, HTTP_String email,
     acme->country = (HTTP_String){NULL, 0};  // Empty by default
     acme->org = (HTTP_String){NULL, 0};      // Empty by default
 
+    acme->dont_verify_cert = true; // TODO
     acme->agreed_to_terms_of_service = false;
 
     acme->state = ACME_STATE_DIRECTORY;
@@ -302,6 +312,10 @@ int acme_init(ACME *acme, HTTP_String email,
 
     acme->resolved_challenges = 0;
 
+    // TODO: before requesting a certificate, the ACME client should
+    //       send plain HTTP requests to itself through the domains
+    //       specified by the user to check whether it's entitled to
+    //       the certificates or not.
     if (send_directory_request(acme, client) < 0)
         return -1;
 
@@ -316,6 +330,11 @@ void acme_free(ACME *acme)
     if (acme->nonce.ptr != NULL) {
         free(acme->nonce.ptr);
     }
+}
+
+void acme_dont_verify_cert(ACME *acme)
+{
+    acme->dont_verify_cert = true;
 }
 
 void acme_agree_to_terms_of_service(ACME *acme)
@@ -384,8 +403,10 @@ static int send_directory_request(ACME *acme, HTTP_Client *client)
 {
     HTTP_RequestBuilder builder = http_client_get_builder(client);
     http_request_builder_set_user(builder, acme);
+    http_request_builder_trace(builder, true);
+    http_request_builder_insecure(builder, acme->dont_verify_cert);
     http_request_builder_method(builder, HTTP_METHOD_GET);
-    http_request_builder_target(builder, HTTP_STR(ACME_SERVER_URL "/directory"));
+    http_request_builder_target(builder, HTTP_STR(ACME_SERVER_URL));
     if (http_request_builder_send(builder) < 0)
         return -1;
     return 0;
@@ -404,7 +425,9 @@ static int send_first_nonce_request(ACME *acme, HTTP_Client *client)
 {
     HTTP_RequestBuilder builder = http_client_get_builder(client);
     http_request_builder_set_user(builder, acme);
-    http_request_builder_method(builder, HTTP_METHOD_HEAD);
+    http_request_builder_trace(builder, true);
+    http_request_builder_insecure(builder, acme->dont_verify_cert);
+    http_request_builder_method(builder, HTTP_METHOD_GET);
     http_request_builder_target(builder, acme->urls.new_nonce);
     if (http_request_builder_send(builder) < 0)
         return -1;
@@ -484,7 +507,7 @@ static int send_account_creation_request(ACME *acme, HTTP_Client *client)
         return -1;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, acme->urls.new_account);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->urls.new_account);
     request_builder_write(&builder, "{\"contact\":[\"mailto:", -1);
     request_builder_write(&builder, acme->email.ptr, acme->email.len);
     request_builder_write(&builder, "\"],\"termsOfServiceAgreed\":", -1);
@@ -521,7 +544,7 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
 static int send_order_creation_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, acme->urls.new_order);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->urls.new_order);
     request_builder_write(&builder, "{\"identifiers\":[", -1);
     for (int i = 0; i < acme->num_domains; i++) {
         if (i > 0)
@@ -547,6 +570,11 @@ static bool certificate_exists(ACME *acme)
 static bool all_challenges_completed(ACME *acme)
 {
     return acme->resolved_challenges == acme->num_domains;
+}
+
+static bool acquired_certificate(ACME *acme)
+{
+    return false; // TODO
 }
 
 static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
@@ -602,7 +630,7 @@ static int send_next_challenge_info_request(ACME *acme, HTTP_Client *client)
     HTTP_String auth_url = acme->domains[acme->resolved_challenges].authorization_url;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, auth_url);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, auth_url);
     request_builder_write(&builder, "{}", -1);
     return request_builder_send(&builder, client);
 }
@@ -663,7 +691,7 @@ static int send_next_challenge_begin_request(ACME *acme, HTTP_Client *client)
     HTTP_String challenge_url = acme->domains[acme->resolved_challenges].challenge_url;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, challenge_url);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, challenge_url);
     request_builder_write(&builder, "{}", -1);
     return request_builder_send(&builder, client);
 }
@@ -685,7 +713,7 @@ static int send_challenge_status_request(ACME *acme, HTTP_Client *client)
     assert(acme->resolved_challenges < acme->num_domains);
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, acme->domains[acme->resolved_challenges].challenge_url);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url);
     request_builder_write(&builder, "{}", -1);
     return request_builder_send(&builder, client);
 }
@@ -805,7 +833,7 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
      // TODO: CSR needs to be base64url-encoded
 
      RequestBuilder builder;
-     request_builder_init(&builder, acme->account, acme->nonce, acme->finalize_url);
+     request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->finalize_url);
      request_builder_write(&builder, "{\"csr\":\"", -1);
      request_builder_write(&builder, csr, csr_len);
      request_builder_write(&builder, "\"}", -1);
@@ -841,7 +869,7 @@ static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
 static int send_certificate_poll_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, acme->order_url);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->order_url);
     request_builder_write(&builder, "{}", -1);
     return request_builder_send(&builder, client);
 }
@@ -858,7 +886,7 @@ static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response
 static int send_certificate_download_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce, acme->certificate_url);
+    request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->certificate_url);
     request_builder_write(&builder, "{}", -1);
     return request_builder_send(&builder, client);
 }
