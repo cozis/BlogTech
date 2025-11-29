@@ -35,8 +35,15 @@ typedef enum {
     // Finalizing the order
     ACME_STATE_FINALIZE,
 
+    // Requesting the certificate processing state
+    ACME_STATE_CERTIFICATE_POLL,
+
+    // Waiting some time before requesting the certificate
+    // state again
+    ACME_STATE_CERTIFICATE_POLL_WAIT,
+
     // Requesting the certificate
-    ACME_STATE_CERTIFICATE,
+    ACME_STATE_CERTIFICATE_DOWNLOAD,
 
     // A certificate was created, so we can go
     // idle until it expires.

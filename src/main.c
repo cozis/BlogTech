@@ -66,7 +66,6 @@ int main(void)
         fprintf(stderr, "Couldn't initialize ACME client\n");
         return -1;
     }
-
     if (agree_to_terms_of_service)
         acme_agree_to_terms_of_service(&acme);
 
@@ -103,8 +102,7 @@ int main(void)
         HTTP_Response *response;
         http_client_process_events(&client, client_reg);
         while (http_client_next_response(&client, &result, &user, &response)) {
-            acme_process_response(&acme, result, response,
-                &client, &server);
+            acme_process_response(&acme, result, response, &client, &server);
             http_free_response(response);
         }
 

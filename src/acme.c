@@ -151,7 +151,6 @@
 #include <json.h>
 
 #include "acme.h"
-#include "auth.h"
 #include "jws.h"
 
 #ifndef ACME_SERVER_URL
@@ -234,6 +233,7 @@ static int request_builder_send(RequestBuilder *builder, HTTP_Client *client)
     HTTP_RequestBuilder http_builder = http_client_get_builder(client);
     http_request_builder_method(http_builder, HTTP_METHOD_POST);
     http_request_builder_target(http_builder, builder->url);
+    http_request_builder_header(http_builder, HTTP_STR("User-Agent: BlogTech")); // TODO: better user agnet
     http_request_builder_header(http_builder, HTTP_STR("Content-Type: application/jose+json"));
     http_request_builder_body(http_builder, jws);
     if (http_request_builder_send(http_builder) < 0)
@@ -316,6 +316,11 @@ void acme_free(ACME *acme)
     if (acme->nonce.ptr != NULL) {
         free(acme->nonce.ptr);
     }
+}
+
+void acme_agree_to_terms_of_service(ACME *acme)
+{
+    acme->agreed_to_terms_of_service = true;
 }
 
 static int parse_urls(HTTP_String body, ACME_URLSet *urls)
@@ -563,6 +568,8 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (finalize_url.len == 0)
         return -1;
 
+    // TODO: save finalize_url
+
     JSON *auths = json_get_field(json, JSON_STR("authorizations"));
     if (auths == NULL || json_get_type(auths) != JSON_TYPE_ARRAY)
         return -1;
@@ -625,7 +632,7 @@ static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *respo
     JSON *challenge = challenges->head;
     while (challenge) {
         JSON_String type = json_get_string(json_get_field(challenge, JSON_STR("type")));
-        if (type.len == 3 && !memcmp(type.ptr, "http-01", 7))
+        if (type.len == 7 && !memcmp(type.ptr, "http-01", 7))
             break;
         challenge = challenge->next;
     }
@@ -705,8 +712,11 @@ static int complete_challenge_status_request(ACME *acme, HTTP_Response *response
     if (json_match(json, &error, "{'status': ?}", &status) != 0)
         return -1;
 
-    // If status is "valid", move to next challenge
     HTTP_String status_http = { status.ptr, status.len };
+
+    if (http_streq(status_http, HTTP_STR("invalid")))
+        return -1;
+
     if (http_streq(status_http, HTTP_STR("valid"))) {
         acme->resolved_challenges++;
         *challenge_completed = true;
@@ -821,26 +831,31 @@ static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
 
     JSON_String status = json_get_string(json_get_field(json, JSON_STR("status")));
 
-    if (json_streq(status, JSON_STR("processing"))) {
-        // TODO
-    } else {
-
-        if (!json_streq(status, JSON_STR("valid")))
-            return -1;
-
-        // TODO
-    }
-
-    JSON_String cert_url;
-    if (json_match(json, &error, "{'certificate': ?}", &cert_url) == 0) {
-        acme->certificate_url.ptr = cert_url.ptr;
-        acme->certificate_url.len = cert_url.len;
-    }
+    if (!json_streq(status, JSON_STR("processing")) &&
+        !json_streq(status, JSON_STR("valid")))
+        return -1;
 
     return 0;
 }
 
-static int send_certificate_request(ACME *acme, HTTP_Client *client)
+static int send_certificate_poll_request(ACME *acme, HTTP_Client *client)
+{
+    RequestBuilder builder;
+    request_builder_init(&builder, acme->account, acme->nonce, acme->order_url);
+    request_builder_write(&builder, "{}", -1);
+    return request_builder_send(&builder, client);
+}
+
+static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response)
+{
+    if (extract_nonce(acme, response) < 0)
+        return -1;
+
+    // TODO
+    return 0;
+}
+
+static int send_certificate_download_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce, acme->certificate_url);
@@ -848,7 +863,7 @@ static int send_certificate_request(ACME *acme, HTTP_Client *client)
     return request_builder_send(&builder, client);
 }
 
-static int complete_certificate_request(ACME *acme, HTTP_Response *response)
+static int complete_certificate_download_request(ACME *acme, HTTP_Response *response)
 {
     if (response->status != 200)
         return -1;
@@ -869,6 +884,8 @@ int acme_timeout(ACME *acme)
         return 1000;
     case ACME_STATE_WAIT:
         return 86400000; // 24 hours in milliseconds
+    case ACME_STATE_CERTIFICATE_POLL_WAIT:
+        return 1000;
     default:
         return -1;
     }
@@ -895,6 +912,15 @@ void acme_process_timeout(ACME *acme, HTTP_Client *client)
             acme->state = ACME_STATE_CREATE_CERT;
         }
         break;
+    case ACME_STATE_CERTIFICATE_POLL_WAIT:
+        {
+            if (send_certificate_poll_request(acme, client) < 0) {
+                acme->state = ACME_STATE_ERROR;
+                break;
+            }
+            acme->state = ACME_STATE_CERTIFICATE_POLL;
+        }
+        break;
     }
 }
 
@@ -903,14 +929,15 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
     HTTP_Server *server)
 {
     HTTP_String path = request->url.path;
-    HTTP_String prefix = HTTP_STR(".well-known/acme-challenge/");
+    HTTP_String prefix = HTTP_STR("/.well-known/acme-challenge/");
 
     // Check if path starts with prefix
     if (path.len < prefix.len || memcmp(path.ptr, prefix.ptr, prefix.len) != 0)
         return false;
 
-    if (acme->state != ACME_STATE_CHALLENGE_1 &&
-        acme->state != ACME_STATE_CHALLENGE_3) {
+    if (acme->state != ACME_STATE_CHALLENGE_2 &&
+        acme->state != ACME_STATE_CHALLENGE_3 &&
+        acme->state != ACME_STATE_CHALLENGE_4) {
         http_response_builder_status(builder, 404);
         http_response_builder_send(builder);
     } else {
@@ -1118,24 +1145,44 @@ void acme_process_response(ACME *acme, int result,
                 acme->state = ACME_STATE_ERROR;
                 break;
             }
-            if (send_certificate_request(acme, client) < 0) {
+            if (send_certificate_poll_request(acme, client) < 0) {
                 acme->state = ACME_STATE_ERROR;
                 break;
             }
-            acme->state = ACME_STATE_CERTIFICATE;
+            acme->state = ACME_STATE_CERTIFICATE_POLL;
         }
         break;
-    case ACME_STATE_CERTIFICATE:
+    case ACME_STATE_CERTIFICATE_POLL:
         {
             if (result != HTTP_OK) {
                 acme->state = ACME_STATE_ERROR;
                 break;
             }
-            if (complete_certificate_request(acme, response) < 0) {
+            if (complete_certificate_poll_request(acme, response) < 0) {
                 acme->state = ACME_STATE_ERROR;
                 break;
             }
-            // Now wait for the certificate to expire
+            if (acquired_certificate(acme)) {
+                if (send_certificate_download_request(acme, client) < 0) {
+                    acme->state = ACME_STATE_ERROR;
+                    break;
+                }
+                acme->state = ACME_STATE_CERTIFICATE_DOWNLOAD;
+            } else {
+                acme->state = ACME_STATE_CERTIFICATE_POLL_WAIT;
+            }
+        }
+        break;
+    case ACME_STATE_CERTIFICATE_DOWNLOAD:
+        {
+            if (result != HTTP_OK) {
+                acme->state = ACME_STATE_ERROR;
+                break;
+            }
+            if (complete_certificate_download_request(acme, response) < 0) {
+                acme->state = ACME_STATE_ERROR;
+                break;
+            }
             acme->state = ACME_STATE_WAIT;
         }
         break;
@@ -1143,9 +1190,4 @@ void acme_process_response(ACME *acme, int result,
         // Do nothing
         break;
     }
-}
-
-void acme_agree_to_terms_of_service(ACME *acme)
-{
-    acme->agreed_to_terms_of_service = true;
 }
