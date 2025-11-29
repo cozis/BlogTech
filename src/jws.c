@@ -16,7 +16,7 @@
 // Translates the "len" bytes pointed by "buf" to Base64URL
 // in the buffer itself and returns the number of written
 // bytes. Note that the result is not null-terminated.
-int jws_base64url_encode_inplace(uint8_t *buf, int len, int cap)
+static int base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad)
 {
     // The number of output bytes is equal to ceil(len/3)*4
     if (len > INT_MAX / 4 * 3)
@@ -64,6 +64,11 @@ int jws_base64url_encode_inplace(uint8_t *buf, int len, int cap)
         buf[widx+1] = table[((buf[ridx+0] << 4) | (buf[ridx+1] >> 4)) & 0x3F];
         buf[widx+2] = table[((buf[ridx+1] << 2) | (buf[ridx+2] >> 6)) & 0x3F];
         buf[widx+3] = table[buf[ridx+2] & 0x3F];
+    }
+
+    if (!pad) {
+        while (olen > 0 && buf[olen-1] == '=')
+            olen--;
     }
 
     return olen;
@@ -307,10 +312,11 @@ void jws_builder_flush(JWS_Builder *builder)
                 return;
             }
 
-            int prot_len = jws_base64url_encode_inplace(
+            int prot_len = base64url_encode_inplace(
                 builder->dst + builder->prot_off,
                 builder->len - builder->prot_off,
-                builder->cap - builder->prot_off);
+                builder->cap - builder->prot_off,
+                false);
             if (prot_len < 0) {
                 // Buffer isn't large enough to hold
                 // the Base64URL-encoded version of the
@@ -319,10 +325,6 @@ void jws_builder_flush(JWS_Builder *builder)
                 builder->reason = JWS_ERROR_OOM;
                 return;
             }
-
-            // Remove padding
-            while (prot_len > 0 && builder->dst[builder->prot_off + prot_len - 1] == '=')
-                prot_len--;
 
             builder->len = builder->prot_off + prot_len;
             builder->prot_len = prot_len;
@@ -342,10 +344,11 @@ void jws_builder_flush(JWS_Builder *builder)
         break;
     case JWS_BUILDER_STATE_PAYLOAD:
         {
-            int pay_len = jws_base64url_encode_inplace(
+            int pay_len = base64url_encode_inplace(
                 builder->dst + builder->pay_off,
                 builder->len - builder->pay_off,
-                builder->cap - builder->pay_off);
+                builder->cap - builder->pay_off,
+                false);
             if (pay_len < 0) {
                 // Buffer isn't large enough to hold
                 // the Base64URL-encoded version of the
@@ -354,10 +357,6 @@ void jws_builder_flush(JWS_Builder *builder)
                 builder->reason = JWS_ERROR_OOM;
                 return;
             }
-
-            // Remove padding
-            while (pay_len > 0 && builder->dst[builder->pay_off + pay_len - 1] == '=')
-                pay_len--;
 
             builder->len = builder->pay_off + pay_len;
             builder->pay_len = pay_len;
@@ -398,20 +397,17 @@ void jws_builder_flush(JWS_Builder *builder)
             }
             builder->len += ret;
 
-            ret = jws_base64url_encode_inplace(
+            ret = base64url_encode_inplace(
                 builder->dst + sign_off,
                 builder->len - sign_off,
-                builder->cap - sign_off);
+                builder->cap - sign_off,
+                false);
             if (ret < 0) {
                 // Signature didn't fit in the buffer
                 builder->state = JWS_BUILDER_STATE_ERROR;
                 builder->reason = JWS_ERROR_OOM;
                 return;
             }
-
-            // Remove padding
-            while (ret > 0 && builder->dst[sign_off + ret - 1] == '=')
-                ret--;
 
             builder->len = sign_off + ret;
 
@@ -444,7 +440,40 @@ int jws_builder_result(JWS_Builder *builder)
     return builder->len;
 }
 
-int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
+#define JWK_RSA_N_BITS 4096
+#define JWK_RSA_E_BITS 24
+#define JWK_EC_BITS 521
+
+#define JWK_RSA_N_BYTES CEIL(JWK_RSA_N_BITS, 8)
+#define JWK_RSA_E_BYTES CEIL(JWK_RSA_E_BITS, 8)
+
+#define JWK_EC_BYTES CEIL(JWK_EC_BITS, 8)
+
+#define JWK_RSA_N_BASE64_BYTES BASE64URL_LEN(JWK_RSA_N_BYTES)
+#define JWK_RSA_E_BASE64_BYTES BASE64URL_LEN(JWK_RSA_E_BYTES)
+
+#define JWK_EC_BASE64_BYTES BASE64URL_LEN(JWK_EC_BYTES)
+
+typedef struct {
+    bool is_rsa;
+    union {
+        struct {
+            int nlen;
+            int elen;
+            uint8_t n[JWK_RSA_N_BASE64_BYTES];
+            uint8_t e[JWK_RSA_E_BASE64_BYTES];
+        } rsa;
+        struct {
+            const char *crv;
+            int xlen;
+            int ylen;
+            uint8_t x[JWK_EC_BASE64_BYTES];
+            uint8_t y[JWK_EC_BASE64_BYTES];
+        } ec;
+    };
+} JWK;
+
+static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
 {
     int type = EVP_PKEY_id(pkey);
     if (type == EVP_PKEY_RSA) {
@@ -452,55 +481,45 @@ int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
         const RSA *rsa = EVP_PKEY_get0_RSA(pkey);
         if (rsa == NULL)
             return -1;
+        jwk->is_rsa = true;
 
         const BIGNUM *n, *e, *d;
         RSA_get0_key(rsa, &n, &e, &d);
 
-        uint8_t nbuf[BASE64URL_LEN(512)];
-        int nlen = BN_num_bytes(n);
-        if (nlen > (int) sizeof(nbuf))
+        jwk->rsa.nlen = BN_num_bytes(n);
+        if (jwk->rsa.nlen > (int) sizeof(jwk->rsa.n))
             return -1;
-        if (BN_bn2bin(n, nbuf) != nlen)
-            return -1;
-
-        nlen = jws_base64url_encode_inplace(nbuf, nlen, (int) sizeof(nbuf));
-        if (nlen < 0)
+        if (BN_bn2bin(n, jwk->rsa.n) != jwk->rsa.nlen)
             return -1;
 
-        while (nlen > 0 && nbuf[nlen-1] == '=')
-            nlen--;
-
-        uint8_t ebuf[BASE64URL_LEN(8)];
-        int elen = BN_num_bytes(e);
-        if (elen > (int) sizeof(ebuf))
+        jwk->rsa.nlen = base64url_encode_inplace(jwk->rsa.n,
+            jwk->rsa.nlen, (int) sizeof(jwk->rsa.n), false);
+        if (jwk->rsa.nlen < 0)
             return -1;
-        if (BN_bn2bin(e, ebuf) != elen)
+
+        jwk->rsa.elen = BN_num_bytes(e);
+        if (jwk->rsa.elen > (int) sizeof(jws->rsa.e))
+            return -1;
+        if (BN_bn2bin(e, jws->rsa.e) != jwk->rsa.elen)
            return -1;
 
-        elen = jws_base64url_encode_inplace(ebuf, elen, (int) sizeof(ebuf));
-        if (elen < 0)
+        jwk->rsa.elen = base64url_encode_inplace(jws->rsa.e,
+            jwk->rsa.elen, (int) sizeof(jws->rsa.e), false);
+        if (jwk->rsa.elen < 0)
             return -1;
-
-        while (elen > 0 && ebuf[elen-1] == '=')
-            elen--;
-
-        jws_builder_write(jws_builder, "{\"kty\":\"RSA\",\"n\":\"", -1);
-        jws_builder_write(jws_builder, nbuf, nlen);
-        jws_builder_write(jws_builder, "\",\"e\":\"", -1);
-        jws_builder_write(jws_builder, ebuf, elen);
-        jws_builder_write(jws_builder, "\"}", -1);
 
     } else if (type == EVP_PKEY_EC) {
 
         const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
         if (ec == NULL)
             return -1;
+        jwk->is_rsa = false;
 
         const EC_GROUP *group = EC_KEY_get0_group(ec);
         if (group == NULL)
             return -1;
 
-        char *crv;
+        const char *crv;
         int coord_size;
         int nid = EC_GROUP_get_curve_name(group);
         switch (nid) {
@@ -519,6 +538,7 @@ int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
         default:
             return -1;
         }
+        jwk->ec.crv = crv;
 
         const EC_POINT *point = EC_KEY_get0_public_key(ec);
         if (point == NULL)
@@ -555,15 +575,14 @@ int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
 
         assert(coord_size <= MAX_COORD_SIZE);
 
-        uint8_t xbuf[BASE64URL_LEN(MAX_COORD_SIZE)];
-        int xlen = BN_num_bytes(x);
-        if (xlen > (int) sizeof(xbuf)) {
+        jwk->ec.xlen = BN_num_bytes(x);
+        if (jwk->ec.xlen > (int) sizeof(jwk->ec.x)) {
             BN_free(y);
             BN_free(x);
             BN_CTX_free(ctx);
             return -1;
         }
-        assert(xlen <= sizeof(xbuf));
+        assert(jwk->ec.xlen <= sizeof(jwk->ec.x));
 
         // BN_bn2bin will drop any leading zeros for the number,
         // so if the coordinate needs a maximum of 521 bits but
@@ -571,67 +590,136 @@ int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
         // bits. The JWK spec wants the coordinates to be encoded
         // with precisely the same length, so we need to pad the
         // left side of the buffer with zeros.
-        memset(xbuf, 0, coord_size - xlen);
-        if (BN_bn2bin(x, xbuf + coord_size - xlen) != xlen) {
+        memset(jwk->ec.x, 0, coord_size - jwk->ec.xlen);
+        if (BN_bn2bin(x, jwk->ec.x + coord_size - jwk->ec.xlen) != jwk->ec.xlen) {
             BN_free(y);
             BN_free(x);
             BN_CTX_free(ctx);
             return -1;
         }
-        xlen = coord_size;
+        jwk->ec.xlen = coord_size;
 
-        xlen = jws_base64url_encode_inplace(xbuf, xlen, (int) sizeof(xbuf));
-        if (xlen < 0) {
-            BN_free(y);
-            BN_free(x);
-            BN_CTX_free(ctx);
-            return -1;
-        }
-
-        while (xlen > 0 && xbuf[xlen-1] == '=')
-            xlen--;
-
-        uint8_t ybuf[BASE64URL_LEN(MAX_COORD_SIZE)];
-        int ylen = BN_num_bytes(y);
-        if (ylen > (int) sizeof(ybuf)) {
+        jwk->ec.xlen = base64url_encode_inplace(jwk->ec.x, jwk->ec.xlen,
+            (int) sizeof(jwk->ec.x), false);
+        if (jwk->ec.xlen < 0) {
             BN_free(y);
             BN_free(x);
             BN_CTX_free(ctx);
             return -1;
         }
 
-        memset(ybuf, 0, coord_size - ylen);
-        if (BN_bn2bin(y, ybuf + coord_size - ylen) != ylen) {
-            BN_free(y);
-            BN_free(x);
-            BN_CTX_free(ctx);
-            return -1;
-        }
-        ylen = coord_size;
-
-        ylen = jws_base64url_encode_inplace(ybuf, ylen, (int) sizeof(ybuf));
-        if (ylen < 0) {
+        jwk->ec.ylen = BN_num_bytes(y);
+        if (jwk->ec.ylen > (int) sizeof(jwk->ec.y)) {
             BN_free(y);
             BN_free(x);
             BN_CTX_free(ctx);
             return -1;
         }
 
-        while (ylen > 0 && ybuf[ylen-1] == '=')
-            ylen--;
+        memset(jwk->ec.y, 0, coord_size - jwk->ec.ylen);
+        if (BN_bn2bin(y, jwk->ec.y + coord_size - jwk->ec.ylen) != jwk->ec.ylen) {
+            BN_free(y);
+            BN_free(x);
+            BN_CTX_free(ctx);
+            return -1;
+        }
+        jwk->ec.ylen = coord_size;
 
-        jws_builder_write(jws_builder, "{\"kty\":\"EC\",\"crv\":\"", -1);
-        jws_builder_write(jws_builder, crv, -1);
-        jws_builder_write(jws_builder, "\",\"x\":\"", -1);
-        jws_builder_write(jws_builder, xbuf, xlen);
-        jws_builder_write(jws_builder, "\",\"y\":\"", -1);
-        jws_builder_write(jws_builder, ybuf, ylen);
-        jws_builder_write(jws_builder, "\"}", -1);
+        jwk->ec.ylen = base64url_encode_inplace(jwk->ec.y,
+            jwk->ec.ylen, (int) sizeof(jwk->ec.y), false);
+        if (jwk->ec.ylen < 0) {
+            BN_free(y);
+            BN_free(x);
+            BN_CTX_free(ctx);
+            return -1;
+        }
 
         BN_free(y);
         BN_free(x);
         BN_CTX_free(ctx);
+
+    } else {
+
+        // Unknown key type
+        return -1;
     }
 
     return 0;
+}
+
+int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
+{
+    JWK jwk;
+    if (parse_jwk(&jwk, pkey) < 0)
+        return -1;
+
+    if (jwk.is_rsa) {
+        jws_builder_write(jws_builder, "{\"kty\":\"RSA\",\"n\":\"", -1);
+        jws_builder_write(jws_builder, jwk.rsa.n, jwk.rsa.nlen);
+        jws_builder_write(jws_builder, "\",\"e\":\"", -1);
+        jws_builder_write(jws_builder, jwk.rsa.e, jwk.rsa.elen);
+        jws_builder_write(jws_builder, "\"}", -1);
+    } else {
+        jws_builder_write(jws_builder, "{\"kty\":\"EC\",\"crv\":\"", -1);
+        jws_builder_write(jws_builder, jwk.ec.crv, -1);
+        jws_builder_write(jws_builder, "\",\"x\":\"", -1);
+        jws_builder_write(jws_builder, jwk.ec.x, jwk.ec.xlen);
+        jws_builder_write(jws_builder, "\",\"y\":\"", -1);
+        jws_builder_write(jws_builder, jwk.ec.y, jwk.ec.ylen);
+        jws_builder_write(jws_builder, "\"}", -1);
+    }
+
+    return 0;
+}
+
+int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
+{
+    JWK jwk;
+    if (parse_jwk(&jwk, pkey) < 0)
+        return -1;
+
+    char buf[1<<10]; // TODO: choose a proper capacity
+    int len;
+
+    if (jwk.is_rsa) {
+        len = snprintf(buf, sizeof(buf),
+            "{\"e\":\"%.*s\",\"kty\":\"RSA\",\"n\":\"%.*s\"}",
+            jwk.rsa.elen, jwk.rsa.e,
+            jwk.rsa.nlen, jwk.rsa.n);
+    } else {
+        len = snprintf(buf, sizeof(buf),
+            "{\"crv\":\"%s\",\"kty\":\"EC\",\"x\":\"%.*s\",\"y\":\"%.*s\"}",
+            jwk.ec.crv,
+            jwk.ec.xlen, jwk.ec.x,
+            jwk.ec.ylen, jwk.ec.y);
+    }
+    if (len < 0 || len >= (int) sizeof(buf))
+        return -1;
+
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (ctx == NULL)
+        return -1;
+
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
+    if (EVP_DigestUpdate(ctx, buf, len) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
+    if (cap < EVP_MAX_MD_SIZE) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+    unsigned int hlen;
+    if (EVP_DigestFinal(ctx, dst, &hlen) != 1 || hlen > INT_MAX) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
+    EVP_MD_CTX_free(ctx);
+    return base64url_encode_inplace(dst, (int) hlen, cap);
 }

@@ -994,7 +994,18 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
             http_response_builder_send(builder);
             return true;
         }
-        HTTP_String thumbprint = HTTP_STR("..."); // TODO: calculate thumbprint
+
+        // A raw SHA256 hash is 32 bytes, so the Base64URL encoded
+        // version is ceil(32/3)*4=44
+        char thumbprint_buf[44];
+        int thumbprint_len = jwk_thumbprint(acme->account_key, thumbprint_buf, sizeof(thumbprint_buf));
+        if (thumbprint_len < 0) {
+            http_response_builder_status(builder, 500);
+            http_response_builder_send(builder);
+            return true;
+        }
+        HTTP_String thumbprint = { thumbprint_buf, thumbprint_len };
+
         http_response_builder_status(builder, 200);
         http_response_builder_body(builder, expected_token);
         http_response_builder_body(builder, HTTP_STR("."));
