@@ -81,6 +81,9 @@ typedef struct {
 
     // User parameters
     HTTP_String email;
+    HTTP_String common_name;
+    HTTP_String country;
+    HTTP_String org;
     bool agreed_to_terms_of_service;
 
     // State machine variable

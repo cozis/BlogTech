@@ -70,7 +70,7 @@ void jws_builder_init(JWS_Builder *builder,
 void jws_builder_allow_none(JWS_Builder *builder);
 
 void jws_builder_write(JWS_Builder *builder,
-    char *str, int len);
+    const char *str, int len);
 
 void jws_builder_flush(JWS_Builder *builder);
 

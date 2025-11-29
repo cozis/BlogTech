@@ -159,6 +159,12 @@
 #define ACME_SERVER_URL "https://acme-v02.api.letsencrypt.org"
 #endif
 
+// Helper function to compare two JSON_String values
+static bool json_streq(JSON_String s1, JSON_String s2)
+{
+    return s1.len == s2.len && memcmp(s1.ptr, s2.ptr, s1.len) == 0;
+}
+
 static int send_directory_request(ACME *acme, HTTP_Client *client);
 
 int acme_init(ACME *acme, HTTP_String email,
@@ -166,6 +172,12 @@ int acme_init(ACME *acme, HTTP_String email,
     HTTP_Client *client)
 {
     acme->email = email; // TODO: copy
+
+    // Initialize certificate fields - use first domain as common name
+    acme->common_name = num_domains > 0 ? domains[0] : (HTTP_String){NULL, 0};
+    acme->country = (HTTP_String){NULL, 0};  // Empty by default
+    acme->org = (HTTP_String){NULL, 0};      // Empty by default
+
     acme->agreed_to_terms_of_service = false;
 
     acme->state = ACME_STATE_DIRECTORY;
@@ -1182,7 +1194,7 @@ void acme_process_response(ACME *acme, int result,
                 acme->state = ACME_STATE_ERROR;
                 break;
             }
-            if (complete_finalize_request(acme, response) < 0) {
+            if (complete_finalize_order_request(acme, response) < 0) {
                 acme->state = ACME_STATE_ERROR;
                 break;
             }

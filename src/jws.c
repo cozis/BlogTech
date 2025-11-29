@@ -3,6 +3,7 @@
 #include <string.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/ec.h>
 
 #include <json.h>
 #include "jws.h"
@@ -118,12 +119,12 @@ void jws_builder_allow_none(JWS_Builder *builder)
     builder->allow_none = true;
 }
 
-void jws_builder_write(JWS_Builder *builder, char *str, int len)
+void jws_builder_write(JWS_Builder *builder, const char *str, int len)
 {
     if (builder->state == JWS_BUILDER_STATE_COMPLETE ||
         builder->state == JWS_BUILDER_STATE_ERROR)
         return;
-    append(builder, str, len);
+    append(builder, (char*)str, len);
 }
 
 static bool key_and_alg_compat(EVP_PKEY *key, JWS_Alg alg)
@@ -498,13 +499,13 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             return -1;
 
         jwk->rsa.elen = BN_num_bytes(e);
-        if (jwk->rsa.elen > (int) sizeof(jws->rsa.e))
+        if (jwk->rsa.elen > (int) sizeof(jwk->rsa.e))
             return -1;
-        if (BN_bn2bin(e, jws->rsa.e) != jwk->rsa.elen)
+        if (BN_bn2bin(e, jwk->rsa.e) != jwk->rsa.elen)
            return -1;
 
-        jwk->rsa.elen = base64url_encode_inplace(jws->rsa.e,
-            jwk->rsa.elen, (int) sizeof(jws->rsa.e), false);
+        jwk->rsa.elen = base64url_encode_inplace(jwk->rsa.e,
+            jwk->rsa.elen, (int) sizeof(jwk->rsa.e), false);
         if (jwk->rsa.elen < 0)
             return -1;
 
@@ -675,7 +676,7 @@ int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey)
 int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
 {
     JWK jwk;
-    if (parse_jwk(&jwk, pkey) < 0)
+    if (parse_jwk(&jwk, key) < 0)
         return -1;
 
     char buf[1<<10]; // TODO: choose a proper capacity
@@ -721,5 +722,5 @@ int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
     }
 
     EVP_MD_CTX_free(ctx);
-    return base64url_encode_inplace(dst, (int) hlen, cap);
+    return base64url_encode_inplace(dst, (int) hlen, cap, false);
 }
