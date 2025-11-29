@@ -23,7 +23,7 @@ int main(void)
     HTTP_String email = HTTP_STR("some@email.com");
     HTTP_String domains[] = {
         HTTP_STR("example.com"),
-        HTTP_STR("*.example.cpm"),
+        HTTP_STR("*.example.com"),
     };
 
     HTTP_Client client;

@@ -167,6 +167,17 @@ static bool json_streq(JSON_String s1, JSON_String s2)
     return s1.len == s2.len && memcmp(s1.ptr, s2.ptr, s1.len) == 0;
 }
 
+static HTTP_String allocstr(HTTP_String s)
+{
+    char *p = malloc(s.len);
+    if (p == NULL) {
+        assert(0); // TODO
+    }
+    memcpy(p, s.ptr, s.len);
+    s.ptr = p;
+    return s;
+}
+
 typedef struct {
 
     bool error;
@@ -531,7 +542,7 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
     if (idx == -1)
         return -1; // Location header missing
 
-    acme->account.url = response->headers[idx].value; // TODO: perform a copy
+    acme->account.url = allocstr(response->headers[idx].value);
 
     // The account was created so we can store the key
     // TODO:
@@ -584,6 +595,11 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (extract_nonce(acme, response) < 0)
         return -1;
 
+    int i = http_find_header(response->headers, response->num_headers, HTTP_STR("Location"));
+    if (i < 0)
+        return -1;
+    acme->order_url = allocstr(response->headers[i].value);
+
     // Parse the order response to get authorizations and finalize URL
     char pool[1<<13];
     JSON_Error error;
@@ -596,7 +612,7 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (finalize_url.len == 0)
         return -1;
 
-    // TODO: save finalize_url
+    acme->finalize_url = allocstr((HTTP_String) { finalize_url.ptr, finalize_url.len });
 
     JSON *auths = json_get_field(json, JSON_STR("authorizations"));
     if (auths == NULL || json_get_type(auths) != JSON_TYPE_ARRAY)
@@ -605,18 +621,18 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (auths->len != acme->num_domains)
         return -1;
 
-    int i = 0;
+    int j = 0;
     JSON *item = auths->head;
     while (item) {
 
-        JSON_String auth_url = json_get_string(item);
-        if (auth_url.len == 0)
+        JSON_String tmp = json_get_string(item);
+        if (tmp.len == 0)
             return -1;
+        HTTP_String auth_url = { tmp.ptr, tmp.len };
 
-        acme->domains[i].authorization_url.ptr = auth_url.ptr; // TODO: copy
-        acme->domains[i].authorization_url.len = auth_url.len;
+        acme->domains[j].authorization_url = allocstr(auth_url);
 
-        i++;
+        j++;
         item = item->next;
     }
 
@@ -631,7 +647,7 @@ static int send_next_challenge_info_request(ACME *acme, HTTP_Client *client)
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, auth_url);
-    request_builder_write(&builder, "{}", -1);
+    request_builder_write(&builder, "", 0);
     return request_builder_send(&builder, client);
 }
 
@@ -667,19 +683,18 @@ static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *respo
     if (challenge == NULL)
         return -1; // No http-01 challenge
 
-    JSON_String token = json_get_string(json_get_field(challenge, JSON_STR("token")));
-    if (token.len == 0)
+    JSON_String tmp = json_get_string(json_get_field(challenge, JSON_STR("token")));
+    if (tmp.len == 0)
         return -1;
+    HTTP_String token = { tmp.ptr, tmp.len };
 
-    JSON_String url = json_get_string(json_get_field(challenge, JSON_STR("url")));
-    if (url.len == 0)
+    tmp = json_get_string(json_get_field(challenge, JSON_STR("url")));
+    if (tmp.len == 0)
         return -1;
+    HTTP_String url = { tmp.ptr, tmp.len };
 
-    // TODO: these should be copied
-    acme->domains[acme->resolved_challenges].challenge_token.ptr = token.ptr;
-    acme->domains[acme->resolved_challenges].challenge_token.len = token.len;
-    acme->domains[acme->resolved_challenges].challenge_url.ptr = url.ptr;
-    acme->domains[acme->resolved_challenges].challenge_url.len = url.len;
+    acme->domains[acme->resolved_challenges].challenge_token = allocstr(token);
+    acme->domains[acme->resolved_challenges].challenge_url = allocstr(url);
 
     return 0;
 }
