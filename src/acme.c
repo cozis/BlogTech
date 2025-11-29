@@ -159,45 +159,6 @@
 #define ACME_SERVER_URL "https://acme-v02.api.letsencrypt.org"
 #endif
 
-// ACME state flow:
-//   1. Request the endpoint list
-//   2. Get a nonce
-//   3. Create an account
-//   4. Create an order
-//   5. Request the first challenge
-//   6. Request the second challenge
-//
-// HTTP request is available:
-//   state == STATE_PERFORM_CHALLENGE:
-//     Request the status of the current challenge
-//     state = STATE_POLL_CHALLENGE_RESULT
-//
-// HTTP response is available:
-//
-//   state == STATE_DIRECTORY:
-//     The response contains the list of endpoints. Cache them.
-//     Request a nonce
-//     state = STATE_FIRST_NONCE;
-//
-//   state == STATE_FIRST_NONCE:
-//     Store the nonce
-//     Request an account
-//     state = STATE_CREATE_ACCOUNT
-//
-//   state == STATE_CREATE_ACCOUNT:
-//     The account was created
-//     Request an order
-//     state = STATE_CREATE_ORDER
-//
-//   state == STATE_CREATE_ORDER:
-//     The order was created
-//     Store the list of challenges
-//     Request the first challenge to be performed
-//     state = STATE_CHALLENGE_REQUEST
-//
-//
-//
-
 static int send_directory_request(ACME *acme, HTTP_Client *client);
 
 int acme_init(ACME *acme, HTTP_String email,
@@ -230,10 +191,19 @@ int acme_init(ACME *acme, HTTP_String email,
     acme->nonce.ptr = NULL;
     acme->nonce.len = 0;
 
+    // TODO: Try loading the account URL from acme/account_url.txt and
+    //       the keys from acme/keys.pem. If one of the files is missing,
+    //       delete the other one and set the variables to empty. If
+    //       reading them failed for some other reason, fail the initialization.
     acme->account_url.ptr = NULL;
     acme->account_url.len = 0;
-
     acme->account_key = NULL;
+
+    // TODO: If the account wasn't loaded, set the certificate field
+    //       to empty and delete acme/certificate.pem. If the account
+    //       was loaded but acme/certificate.pem doesn't exist, set
+    //       the certificate field to empty. If the file couldn't be
+    //       loaded for some other reason, fail the initialization.
 
     acme->finalize_url.ptr = NULL;
     acme->finalize_url.len = 0;
@@ -329,6 +299,8 @@ static int send_directory_request(ACME *acme, HTTP_Client *client)
 
 static int complete_directory_request(ACME *acme, HTTP_Response *response)
 {
+    // TODO: check status
+
     if (parse_urls(response->body, &acme->urls) < 0)
         return -1;
     return 0;
@@ -376,8 +348,47 @@ static int complete_first_nonce_request(ACME *acme, HTTP_Response *response)
     return 0;
 }
 
+#include <openssl/ec.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+
+static int generate_account_key(ACME *acme)
+{
+    // Create context for key generation
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+    if (!pctx)
+        return -1;
+
+    // Initialize key generation
+    if (EVP_PKEY_keygen_init(pctx) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+
+    // Set the curve to P-256 (prime256v1/secp256r1)
+    if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_X9_62_prime256v1) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+
+    // Generate the key pair
+    EVP_PKEY *pkey = NULL;
+    if (EVP_PKEY_keygen(pctx, &pkey) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+    acme->account_key = pkey;
+
+    EVP_PKEY_CTX_free(pctx);
+    return 0;
+}
+
 static int send_account_creation_request(ACME *acme, HTTP_Client *client)
 {
+    if (generate_account_key(acme) < 0)
+        return -1;
+
     char jws_buf[1<<9];
     int  jws_len;
 
@@ -420,14 +431,19 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
     if (response->status != 201 && response->status != 200)
         return -1;
 
+    if (extract_nonce(acme, response) < 0)
+        return -1;
+
     int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Location"));
     if (idx == -1)
         return -1; // Location header missing
 
     acme->account_url = response->headers[idx].value; // TODO: perform a copy
 
-    if (extract_nonce(acme, response) < 0)
-        return -1;
+    // The account was created so we can store the key
+    // TODO:
+    //   - write the acme->account_key to acme/keys.pem
+    //   - write the acme->account_url to acme/account_url.txt
 
     return 0;
 }
@@ -488,7 +504,8 @@ static bool all_challenges_completed(ACME *acme)
 
 static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
 {
-    // Update nonce
+    // TODO: check status
+
     if (extract_nonce(acme, response) < 0)
         return -1;
 
@@ -563,6 +580,8 @@ static int send_next_challenge_info_request(ACME *acme, HTTP_Client *client)
 static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *response)
 {
     assert(acme->resolved_challenges < acme->num_domains);
+
+    // TODO: check status
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -641,6 +660,8 @@ static int complete_next_challenge_begin_request(ACME *acme, HTTP_Response *resp
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
+    // TODO: check status
+
     if (extract_nonce(acme, response) < 0)
         return -1;
 
@@ -685,6 +706,8 @@ static int complete_challenge_status_request(ACME *acme, HTTP_Response *response
 {
     *challenge_completed = false;
 
+    // TODO: check status
+
     if (extract_nonce(acme, response) < 0)
         return -1;
 
@@ -711,24 +734,101 @@ static int complete_challenge_status_request(ACME *acme, HTTP_Response *response
     return 0;
 }
 
+static int
+create_certificate_signing_request(EVP_PKEY *pkey,
+    HTTP_String common_name, HTTP_String country,
+    HTTP_String org, char *dst, int cap)
+{
+    // Create the CSR structure
+    X509_REQ *req = X509_REQ_new();
+    if (!req)
+        return -1;
+
+    // Set version (version 0 for CSR)
+    if (!X509_REQ_set_version(req, 0L)) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    // Get the subject name
+    X509_NAME *name = X509_REQ_get_subject_name(req);
+    if (!name) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    // Add subject fields
+    if (country.len > 0)
+        X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
+            (unsigned char *)country.ptr, country.len, -1, 0);
+
+    if (org.len > 0)
+        X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
+            (unsigned char *)org.ptr, org.len, -1, 0);
+
+    if (common_name.len > 0)
+        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+            (unsigned char *)common_name.ptr, common_name.len, -1, 0);
+
+    // Set the public key
+    if (!X509_REQ_set_pubkey(req, pkey)) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    // Sign the CSR with the private key
+    if (!X509_REQ_sign(req, pkey, EVP_sha256())) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    // Get required length
+    int len = i2d_X509_REQ(req, NULL);
+    if (len < 0) {
+        // TODO
+        return -1;
+    }
+    if (len > cap) {
+        // TODO
+        return -1;
+    }
+
+    // Actually encode
+    unsigned char *p = dst;  // i2d_X509_REQ advances the pointer
+    len = i2d_X509_REQ(req, &p);
+    if (len < 0) {
+        // TODO
+        return -1;
+    }
+
+    return len;
+}
+
 static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
 {
-    // This should send a CSR to the finalize URL
-    // For now, placeholder implementation
+    char csr[1<<12];
+    int csr_len = create_certificate_signing_request(acme->account_key,
+        acme->common_name, acme->country, acme->org, csr, sizeof(csr));
+    if (csr_len < 0)
+        return -1;
+     // TODO: CSR needs to be base64url-encoded
+
     char jws_buf[1<<12];
     int  jws_len;
 
     JWS_Builder jws_builder;
     jws_builder_init(&jws_builder, acme->account_key, true, jws_buf, (int) sizeof(jws_buf));
-    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", sizeof("{\"alg\":\"ES256\",\"kid\":\"")-1);
+    jws_builder_write(&jws_builder, "{\"alg\":\"ES256\",\"kid\":\"", -1);
     jws_builder_write(&jws_builder, acme->account_url.ptr, acme->account_url.len);
-    jws_builder_write(&jws_builder, "\",\"nonce\":\"", sizeof("\",\"nonce\":\"")-1);
+    jws_builder_write(&jws_builder, "\",\"nonce\":\"", -1);
     jws_builder_write(&jws_builder, acme->nonce.ptr, acme->nonce.len);
-    jws_builder_write(&jws_builder, "\",\"url\":\"", sizeof("\",\"url\":\"")-1);
+    jws_builder_write(&jws_builder, "\",\"url\":\"", -1);
     jws_builder_write(&jws_builder, acme->finalize_url.ptr, acme->finalize_url.len);
     jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
     jws_builder_flush(&jws_builder);
-    jws_builder_write(&jws_builder, "{\"csr\":\"<placeholder_csr>\"}", sizeof("{\"csr\":\"<placeholder_csr>\"}")-1);
+    jws_builder_write(&jws_builder, "{\"csr\":\"", -1);
+    jws_builder_write(&jws_builder, csr, csr_len);
+    jws_builder_write(&jws_builder, "\"}", -1);
     jws_builder_flush(&jws_builder);
     jws_len = jws_builder_result(&jws_builder);
     if (jws_len < 0)
@@ -745,10 +845,14 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
     return 0;
 }
 
-static int complete_finalize_request(ACME *acme, HTTP_Response *response)
+static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
 {
-    // Update nonce
-    extract_nonce(acme, response);
+    // TODO: check status
+
+    if (extract_nonce(acme, response) < 0)
+        return -1;
+
+    // The finalization request returns an update order object
 
     // Parse response to get certificate URL
     char pool[1<<13];
@@ -757,6 +861,18 @@ static int complete_finalize_request(ACME *acme, HTTP_Response *response)
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
     if (json == NULL)
         return -1;
+
+    JSON_String status = json_get_string(json_get_field(json, JSON_STR("status")));
+
+    if (json_streq(status, JSON_STR("processing"))) {
+        // TODO
+    } else {
+
+        if (!json_streq(status, JSON_STR("valid")))
+            return -1;
+
+        // TODO
+    }
 
     JSON_String cert_url;
     if (json_match(json, &error, "{'certificate': ?}", &cert_url) == 0) {
@@ -782,7 +898,7 @@ static int send_certificate_request(ACME *acme, HTTP_Client *client)
     jws_builder_write(&jws_builder, acme->certificate_url.ptr, acme->certificate_url.len);
     jws_builder_write(&jws_builder, "\"}", sizeof("\"}")-1);
     jws_builder_flush(&jws_builder);
-    jws_builder_write(&jws_builder, "", 0);
+    jws_builder_write(&jws_builder, "{}", -1);
     jws_builder_flush(&jws_builder);
     jws_len = jws_builder_result(&jws_builder);
     if (jws_len < 0)
@@ -801,12 +917,15 @@ static int send_certificate_request(ACME *acme, HTTP_Client *client)
 
 static int complete_certificate_request(ACME *acme, HTTP_Response *response)
 {
-    // Update nonce
-    extract_nonce(acme, response);
+    if (response->status != 200)
+        return -1;
 
-    // The response body contains the certificate
-    // Store it or process it as needed
-    // For now, we just mark success
+    if (extract_nonce(acme, response) < 0)
+        return -1;
+
+    HTTP_String certificate = response->body;
+
+    // TODO: store the certificate
     return 0;
 }
 
