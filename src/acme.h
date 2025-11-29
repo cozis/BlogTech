@@ -49,6 +49,18 @@ typedef enum {
 #define ACME_DOMAIN_LIMIT 32
 
 typedef struct {
+
+    // This is the account URL. It's set if and
+    // only if an account was created.
+    HTTP_String url;
+
+    // Key pair for the account. This is generated
+    // before requesting an account to be created.
+    EVP_PKEY *key;
+
+} ACME_Account;
+
+typedef struct {
     HTTP_String new_account;
     HTTP_String new_nonce;
     HTTP_String new_order;
@@ -110,13 +122,8 @@ typedef struct {
     // request.
     HTTP_String nonce;
 
-    // This is the account URL. It's set if and
-    // only if an account was created.
-    HTTP_String account_url;
-
-    // Key pair for the account. This is generated
-    // before requesting an account to be created.
-    EVP_PKEY *account_key;
+    // This holds account URL and key.
+    ACME_Account account;
 
     // When an order is created but the challenges
     // are yet to be completed, these fields are
