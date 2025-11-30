@@ -14,16 +14,15 @@
 int main(void)
 {
     HTTP_String document_root = HTTP_STR("docroot");
-    HTTP_String listen_addr   = HTTP_STR("127.0.0.1");
-    uint16_t    listen_port   = 8080;
+    HTTP_String listen_addr   = HTTP_STR("");
+    uint16_t    listen_port   = 5002;
     bool        reuse_addr    = true;
     bool        trace_bytes   = true;
     bool        agree_to_terms_of_service = true;
 
     HTTP_String email = HTTP_STR("some@email.com");
     HTTP_String domains[] = {
-        HTTP_STR("example.com"),
-        HTTP_STR("*.example.com"),
+        HTTP_STR("testdomain.local"),
     };
 
     HTTP_Client client;

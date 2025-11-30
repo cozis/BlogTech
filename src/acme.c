@@ -723,7 +723,8 @@ static int complete_next_challenge_begin_request(ACME *acme, HTTP_Response *resp
     return 0;
 }
 
-static int send_challenge_status_request(ACME *acme, HTTP_Client *client)
+static int send_challenge_status_request(ACME *acme,
+    HTTP_Client *client)
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
@@ -733,7 +734,8 @@ static int send_challenge_status_request(ACME *acme, HTTP_Client *client)
     return request_builder_send(&builder, client);
 }
 
-static int complete_challenge_status_request(ACME *acme, HTTP_Response *response, bool *challenge_completed)
+static int complete_challenge_status_request(ACME *acme,
+    HTTP_Response *response, bool *challenge_completed)
 {
     *challenge_completed = false;
 

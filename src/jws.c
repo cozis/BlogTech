@@ -836,16 +836,23 @@ int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
         return -1;
     }
 
-    if (cap < EVP_MAX_MD_SIZE) {
+    if (sizeof(buf) < EVP_MAX_MD_SIZE) {
         EVP_MD_CTX_free(ctx);
         return -1;
     }
     unsigned int hlen;
-    if (EVP_DigestFinal(ctx, dst, &hlen) != 1 || hlen > INT_MAX) {
+    if (EVP_DigestFinal(ctx, buf, &hlen) != 1 || hlen > INT_MAX) {
         EVP_MD_CTX_free(ctx);
         return -1;
     }
 
+    len = base64url_encode_inplace(buf, (int) hlen, sizeof(buf), false);
+    if (len < 0) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
+    memcpy(dst, buf, len);
     EVP_MD_CTX_free(ctx);
-    return base64url_encode_inplace(dst, (int) hlen, cap, false);
+    return len;
 }
