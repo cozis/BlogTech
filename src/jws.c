@@ -19,7 +19,7 @@
 // Translates the "len" bytes pointed by "buf" to Base64URL
 // in the buffer itself and returns the number of written
 // bytes. Note that the result is not null-terminated.
-static int base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad)
+int jws_base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad)
 {
     // The number of output bytes is equal to ceil(len/3)*4
     if (len > INT_MAX / 4 * 3)
@@ -449,7 +449,7 @@ void jws_builder_flush(JWS_Builder *builder)
                 return;
             }
 
-            int prot_len = base64url_encode_inplace(
+            int prot_len = jws_base64url_encode_inplace(
                 builder->dst + builder->prot_off,
                 builder->len - builder->prot_off,
                 builder->cap - builder->prot_off,
@@ -481,7 +481,7 @@ void jws_builder_flush(JWS_Builder *builder)
         break;
     case JWS_BUILDER_STATE_PAYLOAD:
         {
-            int pay_len = base64url_encode_inplace(
+            int pay_len = jws_base64url_encode_inplace(
                 builder->dst + builder->pay_off,
                 builder->len - builder->pay_off,
                 builder->cap - builder->pay_off,
@@ -534,7 +534,7 @@ void jws_builder_flush(JWS_Builder *builder)
             }
             builder->len += ret;
 
-            ret = base64url_encode_inplace(
+            ret = jws_base64url_encode_inplace(
                 builder->dst + sign_off,
                 builder->len - sign_off,
                 builder->cap - sign_off,
@@ -632,7 +632,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             return -1;
         }
 
-        jwk->rsa.nlen = base64url_encode_inplace(jwk->rsa.n,
+        jwk->rsa.nlen = jws_base64url_encode_inplace(jwk->rsa.n,
             jwk->rsa.nlen, (int) sizeof(jwk->rsa.n), false);
         if (jwk->rsa.nlen < 0) {
             BN_free(n);
@@ -654,7 +654,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             return -1;
         }
 
-        jwk->rsa.elen = base64url_encode_inplace(jwk->rsa.e,
+        jwk->rsa.elen = jws_base64url_encode_inplace(jwk->rsa.e,
             jwk->rsa.elen, (int) sizeof(jwk->rsa.e), false);
         if (jwk->rsa.elen < 0) {
             BN_free(e);
@@ -730,7 +730,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         }
         jwk->ec.xlen = coord_size;
 
-        jwk->ec.xlen = base64url_encode_inplace(jwk->ec.x, jwk->ec.xlen,
+        jwk->ec.xlen = jws_base64url_encode_inplace(jwk->ec.x, jwk->ec.xlen,
             (int) sizeof(jwk->ec.x), false);
         if (jwk->ec.xlen < 0) {
             BN_free(y);
@@ -753,7 +753,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         }
         jwk->ec.ylen = coord_size;
 
-        jwk->ec.ylen = base64url_encode_inplace(jwk->ec.y,
+        jwk->ec.ylen = jws_base64url_encode_inplace(jwk->ec.y,
             jwk->ec.ylen, (int) sizeof(jwk->ec.y), false);
         if (jwk->ec.ylen < 0) {
             BN_free(y);
@@ -846,7 +846,7 @@ int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
         return -1;
     }
 
-    len = base64url_encode_inplace(buf, (int) hlen, sizeof(buf), false);
+    len = jws_base64url_encode_inplace(buf, (int) hlen, sizeof(buf), false);
     if (len < 0) {
         EVP_MD_CTX_free(ctx);
         return -1;

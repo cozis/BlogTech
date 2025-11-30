@@ -161,6 +161,39 @@
 
 #define ACME_LOG(fmt, ...) fprintf(stderr, "ACME :: " fmt, #__VA_ARGS__);
 
+#define TRACE_STATE_TRANSITIONS
+
+#ifndef TRACE_STATE_TRANSITIONS
+#define CHANGE_STATE(var, state) var = state;
+#else
+static char *state_str(ACME_State state)
+{
+    switch (state) {
+        case ACME_STATE_DIRECTORY     : return "DIRECTORY";
+        case ACME_STATE_FIRST_NONCE   : return "FIRST_NONCE";
+        case ACME_STATE_CREATE_ACCOUNT: return "CREATE_ACCOUNT";
+        case ACME_STATE_CREATE_CERT   : return "CREATE_CERT";
+        case ACME_STATE_CHALLENGE_1   : return "CHALLENGE_1";
+        case ACME_STATE_CHALLENGE_2   : return "CHALLENGE_2";
+        case ACME_STATE_CHALLENGE_3   : return "CHALLENGE_3";
+        case ACME_STATE_CHALLENGE_4   : return "CHALLENGE_4";
+        case ACME_STATE_FINALIZE      : return "FINALIZE";
+        case ACME_STATE_CERTIFICATE_POLL     : return "CERTIFICATE_POLL";
+        case ACME_STATE_CERTIFICATE_POLL_WAIT: return "CERTIFICATE_POLL_WAIT";
+        case ACME_STATE_CERTIFICATE_DOWNLOAD : return "CERTIFICATE_DOWNLOAD";
+        case ACME_STATE_WAIT          : return "WAIT";
+        case ACME_STATE_ERROR         : return "ERROR";
+    }
+    return "???";
+}
+#define CHANGE_STATE(var, state) {            \
+        printf("%s -> %s (at %s:%d)\n",       \
+            state_str(var), state_str(state), \
+            __FILE__, __LINE__);              \
+        var = state;                          \
+    }
+#endif
+
 // Helper function to compare two JSON_String values
 static bool json_streq(JSON_String s1, JSON_String s2)
 {
@@ -176,6 +209,53 @@ static HTTP_String allocstr(HTTP_String s)
     memcpy(p, s.ptr, s.len);
     s.ptr = p;
     return s;
+}
+
+typedef uint64_t Time;
+#define INVALID_TIME UINT64_MAX
+
+// Returns the current time in milliseconds since
+// an unspecified time in the past (useful to calculate
+// elapsed time intervals)
+static Time get_current_time(void)
+{
+#ifdef _WIN32
+    {
+        int64_t count;
+        int64_t freq;
+        int ok;
+
+        ok = QueryPerformanceCounter((LARGE_INTEGER*) &count);
+        if (!ok) return INVALID_TIME;
+
+        ok = QueryPerformanceFrequency((LARGE_INTEGER*) &freq);
+        if (!ok) return INVALID_TIME;
+
+        uint64_t res = 1000 * (double) count / freq;
+        return res;
+    }
+#else
+    {
+        struct timespec time;
+
+        if (clock_gettime(CLOCK_REALTIME, &time))
+            return INVALID_TIME;
+
+        uint64_t res;
+
+        uint64_t sec = time.tv_sec;
+        if (sec > UINT64_MAX / 1000)
+            return INVALID_TIME;
+        res = sec * 1000;
+
+        uint64_t nsec = time.tv_nsec;
+        if (res > UINT64_MAX - nsec / 1000000)
+            return INVALID_TIME;
+        res += nsec / 1000000;
+
+        return res;
+    }
+#endif
 }
 
 typedef struct {
@@ -730,7 +810,7 @@ static int send_challenge_status_request(ACME *acme,
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url);
-    request_builder_write(&builder, "{}", -1);
+    request_builder_write(&builder, "", 0);
     return request_builder_send(&builder, client);
 }
 
@@ -847,7 +927,10 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
         acme->common_name, acme->country, acme->org, csr, sizeof(csr));
     if (csr_len < 0)
         return -1;
-     // TODO: CSR needs to be base64url-encoded
+
+    csr_len = jws_base64url_encode_inplace(csr, csr_len, sizeof(csr), false);
+    if (csr_len < 0)
+        return -1;
 
      RequestBuilder builder;
      request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->finalize_url);
@@ -922,7 +1005,7 @@ static int complete_certificate_download_request(ACME *acme, HTTP_Response *resp
     return 0;
 }
 
-int acme_timeout(ACME *acme)
+static int current_state_timeout(ACME *acme)
 {
     switch (acme->state) {
     case ACME_STATE_CHALLENGE_3:
@@ -936,34 +1019,67 @@ int acme_timeout(ACME *acme)
     }
 }
 
+static int next_timeout(ACME *acme, Time current_time)
+{
+    int total = current_state_timeout(acme);
+    if (total < 0)
+        return total;
+
+    uint64_t elapsed = (current_time - acme->state_change_time);
+    if (elapsed > (uint64_t) total)
+        return 0;
+
+    return total - (int) elapsed;
+}
+
+int acme_next_timeout(ACME *acme)
+{
+    uint64_t current_time = get_current_time();
+    if (current_time == INVALID_TIME) {
+        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+        return -1;
+    }
+
+    return next_timeout(acme, current_time);
+}
+
 void acme_process_timeout(ACME *acme, HTTP_Client *client)
 {
+    uint64_t current_time = get_current_time();
+    if (current_time == INVALID_TIME) {
+        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+        return;
+    }
+
+    if (next_timeout(acme, current_time) != 0)
+        return;
+
     switch (acme->state) {
     case ACME_STATE_CHALLENGE_3:
         {
             if (send_challenge_status_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CHALLENGE_4;
+            CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_4);
         }
         break;
     case ACME_STATE_WAIT:
         {
             if (send_order_creation_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CREATE_CERT;
+            CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
         }
         break;
     case ACME_STATE_CERTIFICATE_POLL_WAIT:
         {
             if (send_certificate_poll_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CERTIFICATE_POLL;
+            CHANGE_STATE(acme->state, ACME_STATE_CERTIFICATE_POLL);
         }
         break;
     }
@@ -1023,138 +1139,146 @@ void acme_process_response(ACME *acme, int result,
     HTTP_Response *response, HTTP_Client *client,
     HTTP_Server *server)
 {
+    uint64_t current_time = get_current_time();
+    if (current_time == INVALID_TIME) {
+        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+        return;
+    }
+
     switch (acme->state) {
     case ACME_STATE_DIRECTORY:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_directory_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
             if (send_first_nonce_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_FIRST_NONCE;
+            CHANGE_STATE(acme->state, ACME_STATE_FIRST_NONCE);
         }
         break;
     case ACME_STATE_FIRST_NONCE:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_first_nonce_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
             if (account_exists(acme)) {
                 if (certificate_exists(acme)) {
                     // A certificate exists. Wait for it to expire.
-                    acme->state = ACME_STATE_WAIT;
+                    CHANGE_STATE(acme->state, ACME_STATE_WAIT);
+                    acme->state_change_time = current_time;
                 } else {
                     // No certificate associated to this instance. Create one.
                     if (send_order_creation_request(acme, client) < 0) {
-                        acme->state = ACME_STATE_ERROR;
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                         break;
                     }
-                    acme->state = ACME_STATE_CREATE_CERT;
+                    CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
                 }
             } else {
                 // No account associated to this instance. Create one.
                 if (send_account_creation_request(acme, client) < 0) {
-                    acme->state = ACME_STATE_ERROR;
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                     break;
                 }
-                acme->state = ACME_STATE_CREATE_ACCOUNT;
+                CHANGE_STATE(acme->state, ACME_STATE_CREATE_ACCOUNT);
             }
         }
         break;
     case ACME_STATE_CREATE_ACCOUNT:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_account_creation_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
             // If no account existed, surely a certificate doesn't
             // exist either, so create one.
             if (send_order_creation_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CREATE_CERT;
+            CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
         }
         break;
     case ACME_STATE_CREATE_CERT:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_order_creation_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
             // The order was create. Now we need to perform
             // the challanges.
             if (send_next_challenge_info_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CHALLENGE_1;
+            CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_1);
         }
         break;
     case ACME_STATE_CHALLENGE_1:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_next_challenge_info_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (send_next_challenge_begin_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CHALLENGE_2;
+            CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_2);
         }
         break;
     case ACME_STATE_CHALLENGE_2:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_next_challenge_begin_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CHALLENGE_3;
+            CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_3);
+            acme->state_change_time = current_time;
         }
         break;
     case ACME_STATE_CHALLENGE_4:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
             bool challenge_completed;
             if (complete_challenge_status_request(acme, response, &challenge_completed) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
 
@@ -1162,73 +1286,76 @@ void acme_process_response(ACME *acme, int result,
                 if (all_challenges_completed(acme)) {
                     // Finalize the order
                     if (send_finalize_order_request(acme, client) < 0) {
-                        acme->state = ACME_STATE_ERROR;
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                         break;
                     }
-                    acme->state = ACME_STATE_FINALIZE;
+                    CHANGE_STATE(acme->state, ACME_STATE_FINALIZE);
                 } else {
                     // Next challenge
                     if (send_next_challenge_info_request(acme, client) < 0) {
-                        acme->state = ACME_STATE_ERROR;
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                         break;
                     }
-                    acme->state = ACME_STATE_CHALLENGE_1;
+                    CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_1);
                 }
             } else {
                 // Go back to waiting
-                acme->state = ACME_STATE_CHALLENGE_3;
+                CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_3);
+                acme->state_change_time = current_time;
             }
         }
         break;
     case ACME_STATE_FINALIZE:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_finalize_order_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (send_certificate_poll_request(acme, client) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_CERTIFICATE_POLL;
+            CHANGE_STATE(acme->state, ACME_STATE_CERTIFICATE_POLL);
         }
         break;
     case ACME_STATE_CERTIFICATE_POLL:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_certificate_poll_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (acquired_certificate(acme)) {
                 if (send_certificate_download_request(acme, client) < 0) {
-                    acme->state = ACME_STATE_ERROR;
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                     break;
                 }
-                acme->state = ACME_STATE_CERTIFICATE_DOWNLOAD;
+                CHANGE_STATE(acme->state, ACME_STATE_CERTIFICATE_DOWNLOAD);
             } else {
-                acme->state = ACME_STATE_CERTIFICATE_POLL_WAIT;
+                CHANGE_STATE(acme->state, ACME_STATE_CERTIFICATE_POLL_WAIT);
+                acme->state_change_time = current_time;
             }
         }
         break;
     case ACME_STATE_CERTIFICATE_DOWNLOAD:
         {
             if (result != HTTP_OK) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
             if (complete_certificate_download_request(acme, response) < 0) {
-                acme->state = ACME_STATE_ERROR;
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            acme->state = ACME_STATE_WAIT;
+            CHANGE_STATE(acme->state, ACME_STATE_WAIT);
+            acme->state_change_time = current_time;
         }
         break;
     default:

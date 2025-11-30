@@ -147,6 +147,11 @@ typedef struct {
     // the order can be finalized.
     int resolved_challenges;
 
+    // When the ACME client moves to a state that
+    // requires a timeout, this field is set to the
+    // strting time.
+    uint64_t state_change_time;
+
 } ACME;
 
 int acme_init(ACME *acme, HTTP_String email,
@@ -157,7 +162,7 @@ void acme_free(ACME *acme);
 
 void acme_agree_to_terms_of_service(ACME *acme);
 
-int acme_timeout(ACME *acme);
+int acme_next_timeout(ACME *acme);
 
 void acme_process_timeout(ACME *acme, HTTP_Client *client);
 

@@ -11,6 +11,17 @@
 #include "acme.h"
 #include "file_system.h"
 
+static int pick_timeout(int *arr, int num)
+{
+    int ret = -1;
+    for (int i = 0; i < num; i++)
+        if (arr[i] > -1) {
+            if (ret == -1 || ret > arr[num])
+                ret = arr[num];
+        }
+    return ret;
+}
+
 int main(void)
 {
     HTTP_String document_root = HTTP_STR("docroot");
@@ -82,12 +93,22 @@ int main(void)
         };
         http_client_register_events(&client, &client_reg);
 
+        int timeouts[3];
+        timeouts[0] = -1; // Server timeout
+        timeouts[1] = -1; // Client timeout
+        timeouts[2] = acme_next_timeout(&acme); // Acme timeout
+        int timeout = pick_timeout(timeouts, 3);
+
+        printf("ACME timeout %d\n", timeouts[2]); // TODO: cleanup
+
         if (server_reg.num_polled > 0 &&
             client_reg.num_polled > 0) {
             int num_polled = server_reg.num_polled
                             + client_reg.num_polled;
-            POLL(polled, num_polled, -1);
+            POLL(polled, num_polled, timeout);
         }
+
+        acme_process_timeout(&acme, &client);
 
         int result;
         void *user;
