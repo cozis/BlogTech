@@ -16,8 +16,8 @@ static int pick_timeout(int *arr, int num)
     int ret = -1;
     for (int i = 0; i < num; i++)
         if (arr[i] > -1) {
-            if (ret == -1 || ret > arr[num])
-                ret = arr[num];
+            if (ret == -1 || ret > arr[i])
+                ret = arr[i];
         }
     return ret;
 }
