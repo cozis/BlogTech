@@ -662,7 +662,7 @@ static bool all_challenges_completed(ACME *acme)
 
 static bool acquired_certificate(ACME *acme)
 {
-    return false; // TODO
+    return acme->certificate_url.len > 0;
 }
 
 static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
@@ -1054,8 +1054,6 @@ static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
         return -1;
 
     // The finalization request returns an update order object
-
-    // Parse response to get certificate URL
     char pool[1<<13];
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
@@ -1076,7 +1074,7 @@ static int send_certificate_poll_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->order_url);
-    request_builder_write(&builder, "{}", -1);
+    request_builder_write(&builder, "", 0);
     return request_builder_send(&builder, client);
 }
 
@@ -1085,7 +1083,25 @@ static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response
     if (extract_nonce(acme, response) < 0)
         return -1;
 
-    // TODO
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return -1;
+
+    JSON_String status = json_get_string(json_get_field(json, JSON_STR("status")));
+    if (json_streq(status, JSON_STR("valid"))) {
+
+        JSON_String certificate_url = json_get_string(json_get_field(json, JSON_STR("certificate")));
+        if (certificate_url.len == 0)
+            return -1;
+        acme->certificate_url = allocstr((HTTP_String) { certificate_url.ptr, certificate_url.len });
+
+    } else if (!json_streq(status, JSON_STR("processing"))) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -1093,7 +1109,7 @@ static int send_certificate_download_request(ACME *acme, HTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->certificate_url);
-    request_builder_write(&builder, "{}", -1);
+    request_builder_write(&builder, "", 0);
     return request_builder_send(&builder, client);
 }
 
@@ -1551,6 +1567,7 @@ void acme_process_response(ACME *acme, int result,
                 break;
             }
 
+            bool certificate_acquired;
             if (complete_certificate_poll_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
