@@ -1135,6 +1135,26 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
     return true;
 }
 
+static bool is_invalid_nonce_response(HTTP_Response *response)
+{
+    if (response->status != 400)
+        return false;
+
+    char pool[1<<13];
+    JSON_Error error;
+    JSON_Arena arena = json_arena_init(pool, sizeof(pool));
+    JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
+    if (json == NULL)
+        return false;
+
+    JSON_String tmp = json_get_string(json_get_field(json, JSON_STR("type")));
+    HTTP_String type = { tmp.ptr, tmp.len };
+    if (!http_streq(type, HTTP_STR("urn:ietf:params:acme:error:badNonce")))
+        return false;
+
+    return true;
+}
+
 void acme_process_response(ACME *acme, int result,
     HTTP_Response *response, HTTP_Client *client,
     HTTP_Server *server)
@@ -1204,6 +1224,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_account_creation_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_account_creation_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1224,6 +1258,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_order_creation_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_order_creation_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1244,6 +1292,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_next_challenge_info_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_next_challenge_info_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1261,6 +1323,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_next_challenge_begin_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_next_challenge_begin_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1273,6 +1349,19 @@ void acme_process_response(ACME *acme, int result,
         {
             if (result != HTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                break;
+            }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_challenge_status_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
                 break;
             }
 
@@ -1311,6 +1400,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_finalize_order_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_finalize_order_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1328,6 +1431,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_certificate_poll_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_certificate_poll_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1350,6 +1467,20 @@ void acme_process_response(ACME *acme, int result,
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
+
+            if (is_invalid_nonce_response(response)) {
+                if (extract_nonce(acme, response) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                if (send_certificate_download_request(acme, client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                // Keep the current state
+                break;
+            }
+
             if (complete_certificate_download_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
