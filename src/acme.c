@@ -848,7 +848,7 @@ static int complete_challenge_status_request(ACME *acme,
 }
 
 static int
-create_certificate_signing_request(EVP_PKEY *pkey,
+create_certificate_signing_request(EVP_PKEY **out_pkey,
     HTTP_String *domains, int num_domains,
     HTTP_String country, HTTP_String org,
     char *dst, int cap)
@@ -856,14 +856,42 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     if (num_domains < 1)
         return -1;
 
+    // Generate a new key pair
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+    if (!pctx)
+        return -1;
+
+    // Initialize key generation
+    if (EVP_PKEY_keygen_init(pctx) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+
+    // Set the curve to P-256 (prime256v1/secp256r1)
+    if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_X9_62_prime256v1) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+
+    // Generate the key pair
+    EVP_PKEY *pkey = NULL;
+    if (EVP_PKEY_keygen(pctx, &pkey) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        return -1;
+    }
+    EVP_PKEY_CTX_free(pctx);
+
     // Create the CSR structure
     X509_REQ *req = X509_REQ_new();
-    if (!req)
+    if (!req) {
+        EVP_PKEY_free(pkey);
         return -1;
+    }
 
     // Set version (version 0 for CSR)
     if (!X509_REQ_set_version(req, 0L)) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -871,6 +899,7 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     X509_NAME *name = X509_REQ_get_subject_name(req);
     if (!name) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -896,6 +925,7 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     char *san_str = OPENSSL_malloc(san_len);
     if (!san_str) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -917,6 +947,7 @@ create_certificate_signing_request(EVP_PKEY *pkey,
 
     if (!san_ext) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -925,6 +956,7 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     if (!exts) {
         X509_EXTENSION_free(san_ext);
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
     sk_X509_EXTENSION_push(exts, san_ext);
@@ -934,12 +966,14 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     // Set the public key
     if (!X509_REQ_set_pubkey(req, pkey)) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
     // Sign the CSR with the private key
     if (!X509_REQ_sign(req, pkey, EVP_sha256())) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -947,6 +981,7 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     int len = i2d_X509_REQ(req, NULL);
     if (len < 0 || len > cap) {
         X509_REQ_free(req);
+        EVP_PKEY_free(pkey);
         return -1;
     }
 
@@ -954,6 +989,12 @@ create_certificate_signing_request(EVP_PKEY *pkey,
     unsigned char *out = (unsigned char *)dst;
     len = i2d_X509_REQ(req, &out);
     X509_REQ_free(req);
+
+    // Return the generated key pair via output parameter
+    if (out_pkey)
+        *out_pkey = pkey;
+    else
+        EVP_PKEY_free(pkey);
 
     return len;
 }
@@ -965,10 +1006,15 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
         domains[i] = acme->domains[i].name;
 
     char csr[1<<12];
-    int csr_len = create_certificate_signing_request(acme->account.key,
+    EVP_PKEY *cert_key = NULL;
+    int csr_len = create_certificate_signing_request(&cert_key,
         domains, acme->num_domains, acme->country, acme->org, csr, sizeof(csr));
     if (csr_len < 0)
         return -1;
+
+    // TODO: Store cert_key somewhere (e.g., in the ACME structure) to use
+    // it later when the certificate is downloaded. For now, we just generate
+    // the key and use it for the CSR, then free it.
 
     {
         // Parse DER into X509_REQ
@@ -982,15 +1028,22 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
     }
 
     csr_len = jws_base64url_encode_inplace(csr, csr_len, sizeof(csr), false);
-    if (csr_len < 0)
+    if (csr_len < 0) {
+        EVP_PKEY_free(cert_key);
         return -1;
+    }
 
      RequestBuilder builder;
      request_builder_init(&builder, acme->account, acme->nonce, acme->dont_verify_cert, acme->finalize_url);
      request_builder_write(&builder, "{\"csr\":\"", -1);
      request_builder_write(&builder, csr, csr_len);
      request_builder_write(&builder, "\"}", -1);
-     return request_builder_send(&builder, client);
+     int result = request_builder_send(&builder, client);
+
+     // Clean up the certificate key
+     EVP_PKEY_free(cert_key);
+
+     return result;
 }
 
 static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
