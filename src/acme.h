@@ -100,7 +100,6 @@ typedef struct {
 
     // User parameters
     HTTP_String email;
-    HTTP_String common_name;
     HTTP_String country;
     HTTP_String org;
     bool agreed_to_terms_of_service;
@@ -155,6 +154,7 @@ typedef struct {
 } ACME;
 
 int acme_init(ACME *acme, HTTP_String email,
+    HTTP_String country, HTTP_String org,
     HTTP_String *domains, int num_domains,
     HTTP_Client *client);
 

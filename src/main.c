@@ -31,7 +31,9 @@ int main(void)
     bool        trace_bytes   = true;
     bool        agree_to_terms_of_service = true;
 
-    HTTP_String email = HTTP_STR("some@email.com");
+    HTTP_String email   = HTTP_STR("some@email.com");
+    HTTP_String country = HTTP_STR("IT");
+    HTTP_String org     = HTTP_STR("Me");
     HTTP_String domains[] = {
         HTTP_STR("testdomain.local"),
     };
@@ -65,7 +67,7 @@ int main(void)
     }
 
     ACME acme;
-    if (acme_init(&acme, email, domains, HTTP_COUNT(domains), &client) < 0) {
+    if (acme_init(&acme, email, country, org, domains, HTTP_COUNT(domains), &client) < 0) {
         fprintf(stderr, "Couldn't initialize ACME client\n");
         return -1;
     }

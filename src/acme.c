@@ -345,15 +345,13 @@ static int request_builder_send(RequestBuilder *builder, HTTP_Client *client)
 static int send_directory_request(ACME *acme, HTTP_Client *client);
 
 int acme_init(ACME *acme, HTTP_String email,
+    HTTP_String country, HTTP_String org,
     HTTP_String *domains, int num_domains,
     HTTP_Client *client)
 {
-    acme->email = email; // TODO: copy
-
-    // Initialize certificate fields - use first domain as common name
-    acme->common_name = num_domains > 0 ? domains[0] : (HTTP_String){NULL, 0};
-    acme->country = (HTTP_String){NULL, 0};  // Empty by default
-    acme->org = (HTTP_String){NULL, 0};      // Empty by default
+    acme->email   = allocstr(email);
+    acme->country = allocstr(country);
+    acme->org     = allocstr(org);
 
     acme->dont_verify_cert = true; // TODO
     acme->agreed_to_terms_of_service = false;
@@ -363,8 +361,7 @@ int acme_init(ACME *acme, HTTP_String email,
     acme->num_domains = num_domains;
     for (int i = 0; i < num_domains; i++) {
 
-        acme->domains[i].name.ptr = domains[i].ptr; // TODO: this should be a copy
-        acme->domains[i].name.len = domains[i].len;
+        acme->domains[i].name = allocstr(domains[i]);
 
         acme->domains[i].challenge_token.ptr = NULL;
         acme->domains[i].challenge_token.len = 0;
@@ -852,9 +849,13 @@ static int complete_challenge_status_request(ACME *acme,
 
 static int
 create_certificate_signing_request(EVP_PKEY *pkey,
-    HTTP_String common_name, HTTP_String country,
-    HTTP_String org, char *dst, int cap)
+    HTTP_String *domains, int num_domains,
+    HTTP_String country, HTTP_String org,
+    char *dst, int cap)
 {
+    if (num_domains < 1)
+        return -1;
+
     // Create the CSR structure
     X509_REQ *req = X509_REQ_new();
     if (!req)
@@ -882,9 +883,53 @@ create_certificate_signing_request(EVP_PKEY *pkey,
         X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
             (unsigned char *)org.ptr, org.len, -1, 0);
 
-    if (common_name.len > 0)
+    // Use first domain as CN
+    if (domains[0].len > 0)
         X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-            (unsigned char *)common_name.ptr, common_name.len, -1, 0);
+            (unsigned char *)domains[0].ptr, domains[0].len, -1, 0);
+
+    // Build SAN string: "DNS:example.com,DNS:www.example.com,..."
+    int san_len = 0;
+    for (int i = 0; i < num_domains; i++)
+        san_len += 4 + domains[i].len + 1;  // "DNS:" + domain + ","
+
+    char *san_str = OPENSSL_malloc(san_len);
+    if (!san_str) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    char *p = san_str;
+    for (int i = 0; i < num_domains; i++) {
+        if (i > 0)
+            *p++ = ',';
+        memcpy(p, "DNS:", 4);
+        p += 4;
+        memcpy(p, domains[i].ptr, domains[i].len);
+        p += domains[i].len;
+    }
+    *p = '\0';
+
+    // Create SAN extension
+    X509_EXTENSION *san_ext = X509V3_EXT_conf_nid(NULL, NULL,
+        NID_subject_alt_name, san_str);
+    OPENSSL_free(san_str);
+
+    if (!san_ext) {
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    // Add extension to CSR
+    X509_EXTENSIONS *exts = sk_X509_EXTENSION_new_null();
+    if (!exts) {
+        X509_EXTENSION_free(san_ext);
+        X509_REQ_free(req);
+        return -1;
+    }
+    sk_X509_EXTENSION_push(exts, san_ext);
+    X509_REQ_add_extensions(req, exts);
+    sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
 
     // Set the public key
     if (!X509_REQ_set_pubkey(req, pkey)) {
@@ -900,33 +945,41 @@ create_certificate_signing_request(EVP_PKEY *pkey,
 
     // Get required length
     int len = i2d_X509_REQ(req, NULL);
-    if (len < 0) {
-        // TODO
-        return -1;
-    }
-    if (len > cap) {
-        // TODO
+    if (len < 0 || len > cap) {
+        X509_REQ_free(req);
         return -1;
     }
 
     // Actually encode
-    unsigned char *p = dst;  // i2d_X509_REQ advances the pointer
-    len = i2d_X509_REQ(req, &p);
-    if (len < 0) {
-        // TODO
-        return -1;
-    }
+    unsigned char *out = (unsigned char *)dst;
+    len = i2d_X509_REQ(req, &out);
+    X509_REQ_free(req);
 
     return len;
 }
 
 static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
 {
+    HTTP_String domains[ACME_DOMAIN_LIMIT];
+    for (int i = 0; i < acme->num_domains; i++)
+        domains[i] = acme->domains[i].name;
+
     char csr[1<<12];
     int csr_len = create_certificate_signing_request(acme->account.key,
-        acme->common_name, acme->country, acme->org, csr, sizeof(csr));
+        domains, acme->num_domains, acme->country, acme->org, csr, sizeof(csr));
     if (csr_len < 0)
         return -1;
+
+    {
+        // Parse DER into X509_REQ
+        const unsigned char *p = csr;  // d2i advances the pointer
+        X509_REQ *req = d2i_X509_REQ(NULL, &p, csr_len);
+        if (!req) {
+            assert(0); // TODO
+        }
+        PEM_write_X509_REQ(stdout, req);
+        X509_REQ_free(req);
+    }
 
     csr_len = jws_base64url_encode_inplace(csr, csr_len, sizeof(csr), false);
     if (csr_len < 0)
