@@ -1251,7 +1251,7 @@ static bool account_exists(ACME *acme)
 
 static bool certificate_exists(ACME *acme)
 {
-    return acme->certificate_url.len > 0;
+    return acme->certificate.len > 0;
 }
 
 static bool all_challenges_completed(ACME *acme)
@@ -1262,6 +1262,35 @@ static bool all_challenges_completed(ACME *acme)
 static bool acquired_certificate(ACME *acme)
 {
     return acme->certificate_url.len > 0;
+}
+
+// Free order-related memory to prepare for a new certificate order.
+// This prevents memory leaks when renewing certificates.
+static void reset_order_data(ACME *acme)
+{
+    // Free URLs from previous order
+    free(acme->order_url.ptr);
+    acme->order_url = (HTTP_String) { NULL, 0 };
+
+    free(acme->finalize_url.ptr);
+    acme->finalize_url = (HTTP_String) { NULL, 0 };
+
+    free(acme->certificate_url.ptr);
+    acme->certificate_url = (HTTP_String) { NULL, 0 };
+
+    // Free per-domain challenge data from previous order
+    for (int i = 0; i < acme->num_domains; i++) {
+        free(acme->domains[i].authorization_url.ptr);
+        acme->domains[i].authorization_url = (HTTP_String) { NULL, 0 };
+
+        free(acme->domains[i].challenge_token.ptr);
+        acme->domains[i].challenge_token = (HTTP_String) { NULL, 0 };
+
+        free(acme->domains[i].challenge_url.ptr);
+        acme->domains[i].challenge_url = (HTTP_String) { NULL, 0 };
+    }
+
+    acme->resolved_challenges = 0;
 }
 
 static int current_state_timeout(ACME *acme)
@@ -1325,6 +1354,8 @@ void acme_process_timeout(ACME *acme, HTTP_Client *client)
         break;
     case ACME_STATE_WAIT:
         {
+            // Free previous order data before starting a new certificate order
+            reset_order_data(acme);
             if (send_order_creation_request(acme, acme->client) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1365,7 +1396,10 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
         acme->state != ACME_STATE_CHALLENGE_4) {
         http_response_builder_status(builder, 404);
         http_response_builder_send(builder);
-    } else {
+        return true;
+    }
+
+    {
         if (acme->resolved_challenges == acme->num_domains) {
             http_response_builder_status(builder, 404);
             http_response_builder_send(builder);
@@ -1709,7 +1743,6 @@ void acme_process_response(ACME *acme, int result,
                 break;
             }
 
-            bool certificate_acquired;
             if (complete_certificate_poll_request(acme, response) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
