@@ -2,7 +2,7 @@
 #define ACME_INCLUDED
 
 #include <openssl/evp.h>
-#include <chttp.h>
+#include "chttp.h"
 
 #define ACME_DOMAIN_LIMIT 32
 
@@ -253,7 +253,8 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
     HTTP_ResponseBuilder builder);
 
 // Process an HTTP response directed to the ACME
-// client.
+// client. Returns true if a new certificate is
+// available.
 bool acme_process_response(ACME *acme, int result,
     HTTP_Response *response);
 

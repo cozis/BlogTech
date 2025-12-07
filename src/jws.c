@@ -7,8 +7,8 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 
-#include <json.h>
 #include "jws.h"
+#include "json.h"
 
 #define CEIL(X, Y) (((X) + (Y) - 1) / (Y))
 

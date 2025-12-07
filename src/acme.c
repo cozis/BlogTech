@@ -3,8 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include <json.h>
-
+#include "json.h"
 #include "acme.h"
 #include "jws.h"
 #include "file_system.h"
@@ -1454,13 +1453,12 @@ static bool is_invalid_nonce_response(HTTP_Response *response)
     return true;
 }
 
-void acme_process_response(ACME *acme, int result,
-    HTTP_Response *response)
+bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
 {
     uint64_t current_time = get_current_time();
     if (current_time == INVALID_TIME) {
         CHANGE_STATE(acme->state, ACME_STATE_ERROR);
-        return;
+        return false;
     }
 
     switch (acme->state) {

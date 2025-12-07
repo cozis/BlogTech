@@ -1,13 +1,14 @@
 #ifndef FILE_SYSTEM_INCLUDED
 #define FILE_SYSTEM_INCLUDED
 
-#include <chttp.h>
 #include <stdint.h>
 #include <stdbool.h>
 
 #ifndef _WIN32
 #include <dirent.h>
 #endif
+
+#include "chttp.h"
 
 #define ERROR_GENERIC        -1
 #define ERROR_FILE_NOT_FOUND -2
@@ -31,6 +32,7 @@ typedef struct {
 } DirectoryScanner;
 #endif
 
+bool file_exists(HTTP_String path);
 int  file_open(HTTP_String path, Handle *fd);
 void file_close(Handle fd);
 int  file_set_offset(Handle fd, int off);

@@ -17,6 +17,15 @@
 
 int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath);
 
+bool file_exists(HTTP_String path)
+{
+    // TODO: make a proper implementation of this
+    Handle fd;
+    int ret = file_open(path, &fd);
+    file_close(fd);
+    return ret == 0;
+}
+
 int file_open(HTTP_String path, Handle *fd)
 {
 #ifdef __linux__
