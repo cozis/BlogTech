@@ -31,9 +31,9 @@ int main(void)
     bool        trace_bytes   = true;
     bool        agree_to_terms_of_service = true;
 
-    HTTP_String email   = HTTP_STR("some@email.com");
-    HTTP_String country = HTTP_STR("IT");
-    HTTP_String org     = HTTP_STR("Me");
+    HTTP_String email        = HTTP_STR("some@email.com");
+    HTTP_String country      = HTTP_STR("IT");
+    HTTP_String organization = HTTP_STR("Me");
     HTTP_String domains[] = {
         HTTP_STR("testdomain.local"),
     };
@@ -66,13 +66,26 @@ int main(void)
         return -1;
     }
 
+    //HTTP_String acme_url = HTTP_STR("https://0.0.0.0:14000/dir");
+    HTTP_String acme_url = HTTP_STR("https://acme-v02.api.letsencrypt.org/directory");
+
+    ACME_Config acme_config;
+    acme_config_init(&acme_config,
+        &client,
+        acme_url,
+        email,
+        country,
+        organization,
+        domains[0]);
+    for (int i = 1; i < HTTP_COUNT(domains); i++)
+        acme_config_add_domain(&acme_config, domains[i]);
+    acme_config.agree_tos = true;
+
     ACME acme;
-    if (acme_init(&acme, email, country, org, domains, HTTP_COUNT(domains), &client) < 0) {
+    if (acme_init(&acme, &acme_config) < 0) {
         fprintf(stderr, "Couldn't initialize ACME client\n");
         return -1;
     }
-    if (agree_to_terms_of_service)
-        acme_agree_to_terms_of_service(&acme);
 
     for (;;) {
 
@@ -117,7 +130,7 @@ int main(void)
         HTTP_Response *response;
         http_client_process_events(&client, client_reg);
         while (http_client_next_response(&client, &result, &user, &response)) {
-            acme_process_response(&acme, result, response, &client, &server);
+            acme_process_response(&acme, result, response);
             http_free_response(response);
         }
 
@@ -126,8 +139,7 @@ int main(void)
         http_server_process_events(&server, server_reg);
         while (http_server_next_request(&server, &request, &response_builder)) {
 
-            if (acme_process_request(&acme, request,
-                response_builder, &client, &server))
+            if (acme_process_request(&acme, request, response_builder))
                 continue;
 
             switch (request->method) {
@@ -140,7 +152,7 @@ int main(void)
                         http_response_builder_send(response_builder);
                         break;
                     }
-                    string file_path = { buf, ret };
+                    HTTP_String file_path = { buf, ret };
 
                     http_response_builder_status(response_builder, 200); // TODO: better error code
 
@@ -203,7 +215,7 @@ int main(void)
                         http_response_builder_send(response_builder);
                         break;
                     }
-                    string file_path = { buf, ret };
+                    HTTP_String file_path = { buf, ret };
 
                     // TODO: delete the previous version if it exists
                     Handle fd;
@@ -251,7 +263,7 @@ int main(void)
                         http_response_builder_send(response_builder);
                         break;
                     }
-                    string file_path = { buf, ret };
+                    HTTP_String file_path = { buf, ret };
 
                     if (remove_file_or_dir(file_path) < 0) {
                         http_response_builder_status(response_builder, 500); // TODO: better error code

@@ -4,6 +4,52 @@
 #include <openssl/evp.h>
 #include <chttp.h>
 
+#define ACME_DOMAIN_LIMIT 32
+
+// RFC 8555 doesn't specify a length for a nonce string,
+// but the Pebble client implemented by Let's Encrypt is
+// 22 characters long. We allocate 100 bytes just to be
+// safe.
+#define ACME_NONCE_CAPACITY 100
+
+typedef struct {
+
+    /////////////////////////////////////////////
+    // General
+
+    HTTP_String directory_url;
+
+    bool dont_verify_cert;
+
+    /////////////////////////////////////////////
+    // Information
+
+    HTTP_String email;
+
+    HTTP_String country;
+    HTTP_String organization;
+
+    HTTP_String domains[ACME_DOMAIN_LIMIT];
+    int         num_domains;
+
+    bool        agree_tos;
+
+    /////////////////////////////////////////////
+    // File paths
+
+    HTTP_String account_key_file;
+    HTTP_String certificate_file;
+    HTTP_String certificate_key_file;
+
+    /////////////////////////////////////////////
+    // Misc
+
+    HTTP_Client *client;
+
+    bool error;
+
+} ACME_Config;
+
 typedef enum {
 
     // Waiting for the /directory object.
@@ -53,8 +99,6 @@ typedef enum {
     ACME_STATE_ERROR,
 } ACME_State;
 
-#define ACME_DOMAIN_LIMIT 32
-
 typedef struct {
 
     // This is the account URL. It's set if and
@@ -68,6 +112,9 @@ typedef struct {
 } ACME_Account;
 
 typedef struct {
+    // If new_account.ptr is NULL, the struct is
+    // uninitialized, else all URLs are allocated
+    // in a contiguous region starting at new_account.ptr
     HTTP_String new_account;
     HTTP_String new_nonce;
     HTTP_String new_order;
@@ -101,9 +148,15 @@ typedef struct {
     // User parameters
     HTTP_String email;
     HTTP_String country;
-    HTTP_String org;
-    bool agreed_to_terms_of_service;
-    bool dont_verify_cert;
+    HTTP_String organization;
+    bool        agree_tos;
+
+    HTTP_Client *client;
+    bool         dont_verify_cert;
+
+    HTTP_String account_key_file;
+    HTTP_String certificate_file;
+    HTTP_String certificate_key_file;
 
     // State machine variable
     ACME_State state;
@@ -115,6 +168,8 @@ typedef struct {
     int num_domains;
     ACME_Domain domains[ACME_DOMAIN_LIMIT];
 
+    HTTP_String directory_url;
+
     // List of endpoints for the ACME server.
     // This is set once at startup by requesting
     // the /directory endpoint.
@@ -125,8 +180,10 @@ typedef struct {
     // the /directory endpoint, a first nonce is
     // requested. The nonce is consumed at each
     // request but a new one is issued alongside
-    // every response. This if re-malloc'd at each
-    // request.
+    // every response.
+    // The nonce.ptr field is set equal to nonce_buf
+    // at startup and is never changed.
+    char nonce_buf[ACME_NONCE_CAPACITY];
     HTTP_String nonce;
 
     // This holds account URL and key.
@@ -141,6 +198,9 @@ typedef struct {
     HTTP_String finalize_url;
     HTTP_String certificate_url;
 
+    HTTP_String certificate;
+    HTTP_String certificate_key;
+
     // Number of challenges that were resolved.
     // When this value equals the domain count,
     // the order can be finalized.
@@ -153,25 +213,48 @@ typedef struct {
 
 } ACME;
 
-int acme_init(ACME *acme, HTTP_String email,
-    HTTP_String country, HTTP_String org,
-    HTTP_String *domains, int num_domains,
-    HTTP_Client *client);
+// Initialize a configuration object for an ACME
+// client session. The arguments of this function
+// are all the required parameters for a configuration,
+// and therefore can't be empty. Other fields of
+// the configuration struct (except for a couple)
+// are set to default values but may be set manually.
+void acme_config_init(ACME_Config *config,
+    HTTP_Client *client,
+    HTTP_String directory_url,
+    HTTP_String email,
+    HTTP_String country,
+    HTTP_String organization,
+    HTTP_String domain);
 
+// Add an additional domain to the ACME configuration.
+void acme_config_add_domain(ACME_Config *config,
+    HTTP_String domain);
+
+// Initialize the ACME client session. Returns 0 on
+// success and -1 on error.
+int acme_init(ACME *acme, ACME_Config *config);
+
+// Deinitialize the ACME client session.
 void acme_free(ACME *acme);
 
-void acme_agree_to_terms_of_service(ACME *acme);
-
+// Returns the number of milliseconds until the next
+// call to acme_process_timeout or -1 if no timeout
+// is pending.
 int acme_next_timeout(ACME *acme);
 
+// Process a timeout event
 void acme_process_timeout(ACME *acme, HTTP_Client *client);
 
+// Process an HTTP request. If the request wasn't
+// directed to the ACME client, false is returned.
+// If the request was processed, true is returned.
 bool acme_process_request(ACME *acme, HTTP_Request *request,
-    HTTP_ResponseBuilder builder, HTTP_Client *client,
-    HTTP_Server *server);
+    HTTP_ResponseBuilder builder);
 
+// Process an HTTP response directed to the ACME
+// client.
 void acme_process_response(ACME *acme, int result,
-    HTTP_Response *response, HTTP_Client *client,
-    HTTP_Server *server);
+    HTTP_Response *response);
 
 #endif // ACME_INCLUDED

@@ -1,6 +1,7 @@
 #ifndef FILE_SYSTEM_INCLUDED
 #define FILE_SYSTEM_INCLUDED
 
+#include <chttp.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -8,10 +9,8 @@
 #include <dirent.h>
 #endif
 
-typedef struct {
-    char *ptr;
-    int   len;
-} string;
+#define ERROR_GENERIC        -1
+#define ERROR_FILE_NOT_FOUND -2
 
 typedef struct {
     uint64_t data;
@@ -32,7 +31,7 @@ typedef struct {
 } DirectoryScanner;
 #endif
 
-int  file_open(string path, Handle *fd);
+int  file_open(HTTP_String path, Handle *fd);
 void file_close(Handle fd);
 int  file_set_offset(Handle fd, int off);
 int  file_get_offset(Handle fd, int *off);
@@ -42,15 +41,16 @@ int  file_sync(Handle fd);
 int  file_read(Handle fd, char *dst, int max);
 int  file_write(Handle fd, char *src, int len);
 int  file_size(Handle fd, size_t *len);
-int  file_write_atomic(string path, string content);
-int  create_dir(string path);
-int  rename_file_or_dir(string oldpath, string newpath);
-int  remove_file_or_dir(string path);
-int  get_full_path(string path, char *dst);
-int  file_read_all(string path, string *data);
+int  file_write_atomic(HTTP_String path, HTTP_String content);
+int  create_dir(HTTP_String path);
+int  rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath);
+int  remove_file_or_dir(HTTP_String path);
+int  get_full_path(HTTP_String path, char *dst);
+int  file_read_all(HTTP_String path, HTTP_String *data);
+int  file_write_all(HTTP_String path, HTTP_String data);
 
-int  directory_scanner_init(DirectoryScanner *scanner, string path);
-int  directory_scanner_next(DirectoryScanner *scanner, string *name);
+int  directory_scanner_init(DirectoryScanner *scanner, HTTP_String path);
+int  directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name);
 void directory_scanner_free(DirectoryScanner *scanner);
 
 #endif // FILE_SYSTEM_INCLUDED

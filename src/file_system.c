@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 #include <limits.h>
 #include <string.h>
 #include <assert.h>
@@ -14,9 +15,9 @@
 
 #include "file_system.h"
 
-int rename_file_or_dir(string oldpath, string newpath);
+int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath);
 
-int file_open(string path, Handle *fd)
+int file_open(HTTP_String path, Handle *fd)
 {
 #ifdef __linux__
     char zt[1<<10];
@@ -26,8 +27,11 @@ int file_open(string path, Handle *fd)
     zt[path.len] = '\0';
 
     int ret = open(zt, O_RDWR | O_CREAT | O_APPEND, 0644);
-    if (ret < 0)
+    if (ret < 0) {
+        if (errno == ENOENT)
+            return ERROR_FILE_NOT_FOUND;
         return -1;
+    }
 
     *fd = (Handle) { (uint64_t) ret };
     return 0;
@@ -47,8 +51,11 @@ int file_open(string path, Handle *fd)
         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
         NULL
     );
-    if (h == INVALID_HANDLE_VALUE)
+    if (h == INVALID_HANDLE_VALUE) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND)
+            return ERROR_FILE_NOT_FOUND;
         return -1;
+    }
 
     *fd = (Handle) { (uint64_t) h };
     return 0;
@@ -204,7 +211,7 @@ int file_size(Handle fd, size_t *len)
 #endif
 }
 
-int create_dir(string path)
+int create_dir(HTTP_String path)
 {
     char zt[PATH_MAX];
     if (path.len >= (int) sizeof(zt))
@@ -223,7 +230,7 @@ int create_dir(string path)
     return 0;
 }
 
-int rename_file_or_dir(string oldpath, string newpath)
+int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath)
 {
     char oldpath_zt[PATH_MAX];
     if (oldpath.len >= (int) sizeof(oldpath_zt))
@@ -242,7 +249,7 @@ int rename_file_or_dir(string oldpath, string newpath)
     return 0;
 }
 
-int remove_file_or_dir(string path)
+int remove_file_or_dir(HTTP_String path)
 {
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
@@ -255,7 +262,7 @@ int remove_file_or_dir(string path)
     return 0;
 }
 
-int get_full_path(string path, char *dst)
+int get_full_path(HTTP_String path, char *dst)
 {
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
@@ -280,7 +287,7 @@ int get_full_path(string path, char *dst)
     return 0;
 }
 
-int file_read_all(string path, string *data)
+int file_read_all(HTTP_String path, HTTP_String *data)
 {
     Handle fd;
     int ret = file_open(path, &fd);
@@ -311,14 +318,38 @@ int file_read_all(string path, string *data)
         copied += ret;
     }
 
-    *data = (string) { dst, len };
+    *data = (HTTP_String) { dst, len };
+    file_close(fd);
+    return 0;
+}
+
+int file_write_all(HTTP_String path, HTTP_String data)
+{
+    char *src = data.ptr;
+    int   len = data.len;
+
+    Handle fd;
+    int ret = file_open(path, &fd); // TODO: make sure file is opened with the correct flags
+    if (ret < 0)
+        return -1;
+
+    int copied = 0;
+    while (copied < len) {
+        ret = file_write(fd, src + copied, len - copied);
+        if (ret < 0) {
+            file_close(fd);
+            return -1;
+        }
+        copied += ret;
+    }
+
     file_close(fd);
     return 0;
 }
 
 #ifdef _WIN32
 
-int directory_scanner_init(DirectoryScanner *scanner, string path)
+int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
 {
     char pattern[PATH_MAX];
     int ret = snprintf(pattern, sizeof(pattern), "%.*s\\*", path.len, path.ptr);
@@ -339,7 +370,7 @@ int directory_scanner_init(DirectoryScanner *scanner, string path)
     return 0;
 }
 
-int directory_scanner_next(DirectoryScanner *scanner, string *name)
+int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
 {
     if (scanner->done)
         return 1;
@@ -357,7 +388,7 @@ int directory_scanner_next(DirectoryScanner *scanner, string *name)
     }
 
     char *p = scanner->find_data.cFileName;
-    *name = (string) { p, strlen(p) };
+    *name = (HTTP_String) { p, strlen(p) };
     return 0;
 }
 
@@ -368,7 +399,7 @@ void directory_scanner_free(DirectoryScanner *scanner)
 
 #else
 
-int directory_scanner_init(DirectoryScanner *scanner, string path)
+int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
 {
     char path_copy[PATH_MAX];
     if (path.len >= PATH_MAX)
@@ -386,7 +417,7 @@ int directory_scanner_init(DirectoryScanner *scanner, string path)
     return 0;
 }
 
-int directory_scanner_next(DirectoryScanner *scanner, string *name)
+int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
 {
     if (scanner->done)
         return 1;
@@ -397,7 +428,7 @@ int directory_scanner_next(DirectoryScanner *scanner, string *name)
         return 1;
     }
 
-    *name = (string) { scanner->e->d_name, strlen(scanner->e->d_name) };
+    *name = (HTTP_String) { scanner->e->d_name, strlen(scanner->e->d_name) };
     return 0;
 }
 
