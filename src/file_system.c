@@ -21,12 +21,12 @@ bool file_exists(HTTP_String path)
 {
     // TODO: make a proper implementation of this
     Handle fd;
-    int ret = file_open(path, &fd);
+    int ret = file_open(path, &fd, FILE_OPEN_READ);
     file_close(fd);
     return ret == 0;
 }
 
-int file_open(HTTP_String path, Handle *fd)
+int file_open(HTTP_String path, Handle *fd, FileOpenMode mode)
 {
 #ifdef __linux__
     char zt[1<<10];
@@ -35,7 +35,17 @@ int file_open(HTTP_String path, Handle *fd)
     memcpy(zt, path.ptr, path.len);
     zt[path.len] = '\0';
 
-    int ret = open(zt, O_RDWR | O_CREAT | O_APPEND, 0644);
+    int flags = 0;
+    switch (mode) {
+    case FILE_OPEN_READ:
+        flags = O_RDONLY;
+        break;
+    case FILE_OPEN_WRITE:
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+        break;
+    }
+
+    int ret = open(zt, flags, 0644);
     if (ret < 0) {
         if (errno == ENOENT)
             return ERROR_FILE_NOT_FOUND;
@@ -47,6 +57,9 @@ int file_open(HTTP_String path, Handle *fd)
 #endif
 
 #ifdef _WIN32
+
+    // TODO: use mode
+
     WCHAR wpath[MAX_PATH];
     MultiByteToWideChar(CP_UTF8, 0, path.ptr, path.len, wpath, MAX_PATH);
     wpath[path.len] = L'\0';
@@ -299,7 +312,7 @@ int get_full_path(HTTP_String path, char *dst)
 int file_read_all(HTTP_String path, HTTP_String *data)
 {
     Handle fd;
-    int ret = file_open(path, &fd);
+    int ret = file_open(path, &fd, FILE_OPEN_READ);
     if (ret < 0)
         return -1;
 
@@ -338,7 +351,7 @@ int file_write_all(HTTP_String path, HTTP_String data)
     int   len = data.len;
 
     Handle fd;
-    int ret = file_open(path, &fd); // TODO: make sure file is opened with the correct flags
+    int ret = file_open(path, &fd, FILE_OPEN_WRITE); // TODO: make sure file is opened with the correct flags
     if (ret < 0)
         return -1;
 

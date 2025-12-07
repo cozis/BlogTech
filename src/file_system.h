@@ -32,8 +32,13 @@ typedef struct {
 } DirectoryScanner;
 #endif
 
+typedef enum {
+    FILE_OPEN_WRITE,
+    FILE_OPEN_READ,
+} FileOpenMode;
+
 bool file_exists(HTTP_String path);
-int  file_open(HTTP_String path, Handle *fd);
+int  file_open(HTTP_String path, Handle *fd, FileOpenMode mode);
 void file_close(Handle fd);
 int  file_set_offset(Handle fd, int off);
 int  file_get_offset(Handle fd, int *off);

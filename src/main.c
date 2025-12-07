@@ -59,7 +59,8 @@ int main(int argc, char **argv)
         CONFIG_TARGET_STR ("cert-key-file",  &cert_key_file,  1, NULL),
         CONFIG_TARGET_BOOL("acme-enabled",   &acme_enabled,   1, NULL),
     };
-    config_load(targets, HTTP_COUNT(targets), config_text.ptr, config_text.len, argc, argv);
+    config_load(targets, HTTP_COUNT(targets),
+        config_text.ptr, config_text.len, argc, argv);
 
     running = 1;
 
@@ -87,6 +88,7 @@ int main(int argc, char **argv)
         free(config_text.ptr);
         return -1;
     }
+    printf("HTTP server on interface %.*s:%d\n", HTTP_UNPACK(http_addr), http_port);
 
     ACME acme;
     if (acme_enabled) {
@@ -109,7 +111,8 @@ int main(int argc, char **argv)
             CONFIG_TARGET_STR ("acme-org",       &acme_org,       1, NULL),
             CONFIG_TARGET_STR ("acme-domain",    acme_domains,    ACME_DOMAIN_LIMIT, &num_acme_domains),
         };
-        config_load(targets, HTTP_COUNT(targets), config_text.ptr, config_text.len, argc, argv);
+        config_load(targets, HTTP_COUNT(targets),
+            config_text.ptr, config_text.len, argc, argv);
 
         ACME_Config acme_config;
         acme_config_init(&acme_config, &client, acme_url, acme_email, acme_country, acme_org, acme_domains[0]);
@@ -134,6 +137,7 @@ int main(int argc, char **argv)
             free(config_text.ptr);
             return -1;
         }
+        printf("HTTPS server on interface %.*s:%d\n", HTTP_UNPACK(https_addr), https_port);
     }
 
     Auth auth;
@@ -221,10 +225,15 @@ int main(int argc, char **argv)
                     // TODO: As file_open is currently implemented, when a
                     //       file isn't found it's created, which is very bad
                     Handle fd;
-                    ret = file_open(file_path, &fd);
+                    ret = file_open(file_path, &fd, FILE_OPEN_READ);
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        if (ret == ERROR_FILE_NOT_FOUND) {
+                            http_response_builder_status(response_builder, 404); // TODO: better error code
+                            http_response_builder_send(response_builder);
+                        } else {
+                            http_response_builder_status(response_builder, 500); // TODO: better error code
+                            http_response_builder_send(response_builder);
+                        }
                         break;
                     }
                     size_t len;
@@ -281,7 +290,7 @@ int main(int argc, char **argv)
 
                     // TODO: delete the previous version if it exists
                     Handle fd;
-                    ret = file_open(file_path, &fd);
+                    ret = file_open(file_path, &fd, FILE_OPEN_WRITE);
                     if (ret < 0) {
                         http_response_builder_status(response_builder, 500); // TODO: better error code
                         http_response_builder_send(response_builder);
