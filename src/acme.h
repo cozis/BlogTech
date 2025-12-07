@@ -254,7 +254,7 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
 
 // Process an HTTP response directed to the ACME
 // client.
-void acme_process_response(ACME *acme, int result,
+bool acme_process_response(ACME *acme, int result,
     HTTP_Response *response);
 
 #endif // ACME_INCLUDED

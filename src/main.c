@@ -11,6 +11,8 @@
 #include "acme.h"
 #include "file_system.h"
 
+sig_atomic_t running = 0;
+
 static int pick_timeout(int *arr, int num)
 {
     int ret = -1;
@@ -24,19 +26,27 @@ static int pick_timeout(int *arr, int num)
 
 int main(void)
 {
-    HTTP_String document_root = HTTP_STR("docroot");
-    HTTP_String listen_addr   = HTTP_STR("");
-    uint16_t    listen_port   = 5002;
-    bool        reuse_addr    = true;
-    bool        trace_bytes   = true;
-    bool        agree_to_terms_of_service = true;
-
+    HTTP_String document_root   = HTTP_STR("docroot");
+    HTTP_String listen_addr     = HTTP_STR("");
+    uint16_t    listen_port     = 5002;
+    bool        reuse_addr      = true;
+    bool        trace_bytes     = true;
+    HTTP_String tls_listen_addr = HTTP_STR("");
+    uint16_t    tls_listen_port = 8433;
+    HTTP_String cert_file       = HTTP_STR("cert.pem");
+    HTTP_String cert_key_file   = HTTP_STR("cert_key.pem");
+    HTTP_String acme_key_file   = HTTP_STR("acme_key.pem");
+    bool        acme_agree_tos  = true;
+    //HTTP_String acme_url = HTTP_STR("https://0.0.0.0:14000/dir");
+    HTTP_String acme_url = HTTP_STR("https://acme-v02.api.letsencrypt.org/directory");
     HTTP_String email        = HTTP_STR("some@email.com");
     HTTP_String country      = HTTP_STR("IT");
     HTTP_String organization = HTTP_STR("Me");
     HTTP_String domains[] = {
         HTTP_STR("testdomain.local"),
     };
+
+    running = 1;
 
     HTTP_Client client;
     int ret = http_client_init(&client);
@@ -60,26 +70,31 @@ int main(void)
         return -1;
     }
 
+    if (file_exists(cert_file)) {
+        ret = http_server_listen_tls(&server,
+            tls_listen_addr, tls_listen_port,
+            cert_file, cert_key_file);
+        if (ret < 0) {
+            fprintf(stderr, "Couldn't start listening (%s)\n", http_strerror(ret));
+            return -1;
+        }
+    }
+
     Auth auth;
     if (auth_init(&auth) < 0) {
         fprintf(stderr, "Couldn't initialize authentication system\n");
         return -1;
     }
 
-    //HTTP_String acme_url = HTTP_STR("https://0.0.0.0:14000/dir");
-    HTTP_String acme_url = HTTP_STR("https://acme-v02.api.letsencrypt.org/directory");
-
     ACME_Config acme_config;
-    acme_config_init(&acme_config,
-        &client,
-        acme_url,
-        email,
-        country,
-        organization,
-        domains[0]);
+    acme_config_init(&acme_config, &client, acme_url, email,
+        country, organization, domains[0]);
     for (int i = 1; i < HTTP_COUNT(domains); i++)
         acme_config_add_domain(&acme_config, domains[i]);
-    acme_config.agree_tos = true;
+    acme_config.agree_tos = acme_agree_tos;
+    acme_config.account_key_file = acme_key_file;
+    acme_config.certificate_file = cert_file;
+    acme_config.certificate_key_file = cert_key_file;
 
     ACME acme;
     if (acme_init(&acme, &acme_config) < 0) {
@@ -87,7 +102,8 @@ int main(void)
         return -1;
     }
 
-    for (;;) {
+    bool restart = false;
+    while (running) {
 
         #define POLL_CAPACITY (HTTP_CLIENT_POLL_CAPACITY + HTTP_SERVER_POLL_CAPACITY)
 
@@ -130,8 +146,12 @@ int main(void)
         HTTP_Response *response;
         http_client_process_events(&client, client_reg);
         while (http_client_next_response(&client, &result, &user, &response)) {
-            acme_process_response(&acme, result, response);
+            bool new_certificate = acme_process_response(&acme, result, response);
             http_free_response(response);
+            if (new_certificate) {
+                running = 0;
+                restart = true;
+            }
         }
 
         HTTP_Request *request;
@@ -294,5 +314,7 @@ int main(void)
     acme_free(&acme);
     http_server_free(&server);
     http_client_free(&client);
+    if (restart)
+        execv(argv[0], argv);
     return 0;
 }

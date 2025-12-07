@@ -1785,12 +1785,17 @@ void acme_process_response(ACME *acme, int result,
             }
             CHANGE_STATE(acme->state, ACME_STATE_WAIT);
             acme->state_change_time = current_time;
+            return true;
         }
         break;
     default:
         // Do nothing
         break;
     }
+
+    // All branches except the one that obtained a
+    // certificate arrive here
+    return false;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
