@@ -2,6 +2,7 @@
 
 int auth_init(Auth *auth)
 {
+    auth->admin_key = NULL;
     for (int i = 0; i < MAX_NONCES; i++)
         auth->nonces[i].value = BAD_NONCE;
     return 0;
@@ -9,6 +10,8 @@ int auth_init(Auth *auth)
 
 void auth_free(Auth *auth)
 {
+    if (auth->admin_key)
+        EVP_PKEY_free(auth->admin_key);
 }
 
 // Returns 0 if the request is verified, 1 if the request is

@@ -60,13 +60,15 @@ static bool json_streq(JSON_String s1, JSON_String s2)
 
 static HTTP_String allocstr(HTTP_String s)
 {
+    if (s.len == 0)
+        return (HTTP_String) { NULL, 0 };
+
     char *p = malloc(s.len);
-    if (p == NULL) {
-        assert(0); // TODO
-    }
+    if (p == NULL)
+        return (HTTP_String) { NULL, 0 };
+
     memcpy(p, s.ptr, s.len);
-    s.ptr = p;
-    return s;
+    return (HTTP_String) { p, s.len };
 }
 
 typedef uint64_t Time;
@@ -492,6 +494,24 @@ int acme_init(ACME *acme, ACME_Config *config)
     if (config->error)
         return -1;
 
+    // Initialize all pointer fields to NULL for safe cleanup via acme_free()
+    acme->directory_url.ptr = NULL;
+    acme->urls.new_account.ptr = NULL;
+    acme->account.url.ptr = NULL;
+    acme->account.key = NULL;
+    acme->order_url.ptr = NULL;
+    acme->finalize_url.ptr = NULL;
+    acme->certificate_url.ptr = NULL;
+    acme->certificate.ptr = NULL;
+    acme->certificate_key.ptr = NULL;
+    acme->num_domains = 0;
+    for (int i = 0; i < ACME_DOMAIN_LIMIT; i++) {
+        acme->domains[i].name.ptr = NULL;
+        acme->domains[i].authorization_url.ptr = NULL;
+        acme->domains[i].challenge_token.ptr = NULL;
+        acme->domains[i].challenge_url.ptr = NULL;
+    }
+
     // First, do a shallow copy of all string fields
     acme->directory_url = config->directory_url;
     acme->email = config->email;
@@ -524,8 +544,10 @@ int acme_init(ACME *acme, ACME_Config *config)
     }
     acme->num_domains = config->num_domains;
     batch2[config->num_domains] = NULL;
-    if (!batch_allocate_strings(batch2))
+    if (!batch_allocate_strings(batch2)) {
+        free(acme->directory_url.ptr);
         return -1;
+    }
 
     // Now set everything else
 
@@ -535,8 +557,6 @@ int acme_init(ACME *acme, ACME_Config *config)
     acme->agree_tos = config->agree_tos;
 
     acme->state = ACME_STATE_DIRECTORY;
-
-    acme->urls.new_account.ptr = NULL;
 
     acme->nonce = (HTTP_String) { acme->nonce_buf, 0 };
 
@@ -551,19 +571,15 @@ int acme_init(ACME *acme, ACME_Config *config)
     HTTP_String account_key;
     int ret = file_read_all(config->account_key_file, &account_key);
     if (ret < 0) {
-        if (ret == ERROR_FILE_NOT_FOUND) {
-            acme->account.url = (HTTP_String) { NULL, 0 };
-            acme->account.key = NULL;
-        } else {
-            free(acme->directory_url.ptr);
-            free(acme->domains[0].name.ptr);
+        if (ret != ERROR_FILE_NOT_FOUND) {
+            acme_free(acme);
             return -1;
         }
+        // File not found - continue without account
     } else {
         EVP_PKEY *key = parse_private_key(account_key);
         if (key == NULL)
-            remove_file_or_dir(account_key);
-        acme->account.url = (HTTP_String) { NULL, 0 };
+            remove_file_or_dir(acme->account_key_file);
         acme->account.key = key;
         free(account_key.ptr);
     }
@@ -572,38 +588,25 @@ int acme_init(ACME *acme, ACME_Config *config)
     // If only part of the expected data is present on the file system, we
     // delete it and start from scratch. If an error occurs, we just drop
     // what we are doing and fail.
-    if (acme->account.key == NULL) {
-        acme->certificate = (HTTP_String) { NULL, 0 };
-        acme->certificate_file = (HTTP_String) { NULL, 0 };
-    } else {
+    if (acme->account.key != NULL) {
         HTTP_String certificate;
-        int ret = file_read_all(acme->certificate_file, &certificate);
+        ret = file_read_all(acme->certificate_file, &certificate);
         if (ret < 0) {
-            if (ret == ERROR_FILE_NOT_FOUND) {
-                acme->certificate = (HTTP_String) { NULL, 0 };
-                acme->certificate_file = (HTTP_String) { NULL, 0 };
-            } else {
-                if (acme->account.key)
-                    EVP_PKEY_free(acme->account.key);
-                free(acme->directory_url.ptr);
-                free(acme->domains[0].name.ptr);
+            if (ret != ERROR_FILE_NOT_FOUND) {
+                acme_free(acme);
                 return -1;
             }
+            // File not found - continue without certificate
         } else {
             HTTP_String certificate_key;
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
             if (ret < 0) {
                 free(certificate.ptr);
-                if (ret == ERROR_FILE_NOT_FOUND) {
-                    acme->certificate = (HTTP_String) { NULL, 0 };
-                    acme->certificate_key = (HTTP_String) { NULL, 0 };
-                } else {
-                    if (acme->account.key)
-                        EVP_PKEY_free(acme->account.key);
-                    free(acme->directory_url.ptr);
-                    free(acme->domains[0].name.ptr);
+                if (ret != ERROR_FILE_NOT_FOUND) {
+                    acme_free(acme);
                     return -1;
                 }
+                // File not found - continue without certificate key
             } else {
                 acme->certificate = certificate;
                 acme->certificate_key = certificate_key;
@@ -620,10 +623,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     //       specified by the user to check whether it's entitled to
     //       the certificates or not.
     if (send_directory_request(acme, acme->client) < 0) {
-        if (acme->account.key)
-            EVP_PKEY_free(acme->account.key);
-        free(acme->directory_url.ptr);
-        free(acme->domains[0].name.ptr);
+        acme_free(acme);
         return -1;
     }
 
@@ -632,7 +632,39 @@ int acme_init(ACME *acme, ACME_Config *config)
 
 void acme_free(ACME *acme)
 {
-    // TODO
+    // Free the account key (OpenSSL)
+    if (acme->account.key)
+        EVP_PKEY_free(acme->account.key);
+
+    // Free the batch-allocated config strings
+    // (directory_url, email, country, organization, account_key_file,
+    // certificate_file, certificate_key_file are all in one contiguous block)
+    free(acme->directory_url.ptr);
+
+    // Free the batch-allocated domain names
+    // (all domain names are in one contiguous block starting at domains[0].name)
+    if (acme->num_domains > 0)
+        free(acme->domains[0].name.ptr);
+
+    // Free the URL set (all URLs in one contiguous block)
+    free(acme->urls.new_account.ptr);
+
+    // Free individually allocated URLs (via allocstr)
+    free(acme->account.url.ptr);
+    free(acme->order_url.ptr);
+    free(acme->finalize_url.ptr);
+    free(acme->certificate_url.ptr);
+
+    // Free per-domain challenge data (each allocated via allocstr)
+    for (int i = 0; i < acme->num_domains; i++) {
+        free(acme->domains[i].authorization_url.ptr);
+        free(acme->domains[i].challenge_token.ptr);
+        free(acme->domains[i].challenge_url.ptr);
+    }
+
+    // Free certificate data
+    free(acme->certificate.ptr);
+    free(acme->certificate_key.ptr);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -796,6 +828,8 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
         return -1; // Location header missing
 
     acme->account.url = allocstr(response->headers[idx].value);
+    if (acme->account.url.ptr == NULL)
+        return -1; // Allocation failed
 
     BIO *bio = BIO_new(BIO_s_mem());
     if (!bio)
@@ -850,6 +884,8 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (i < 0)
         return -1;
     acme->order_url = allocstr(response->headers[i].value);
+    if (acme->order_url.ptr == NULL)
+        return -1;
 
     // Parse the order response to get authorizations and finalize URL
     char pool[1<<13];
@@ -864,6 +900,8 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
         return -1;
 
     acme->finalize_url = allocstr((HTTP_String) { finalize_url.ptr, finalize_url.len });
+    if (acme->finalize_url.ptr == NULL)
+        return -1;
 
     JSON *auths = json_get_field(json, JSON_STR("authorizations"));
     if (auths == NULL || json_get_type(auths) != JSON_TYPE_ARRAY)
@@ -882,6 +920,8 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
         HTTP_String auth_url = { tmp.ptr, tmp.len };
 
         acme->domains[j].authorization_url = allocstr(auth_url);
+        if (acme->domains[j].authorization_url.ptr == NULL)
+            return -1;
 
         j++;
         item = item->next;
@@ -949,7 +989,12 @@ static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *respo
     HTTP_String url = { tmp.ptr, tmp.len };
 
     acme->domains[acme->resolved_challenges].challenge_token = allocstr(token);
+    if (acme->domains[acme->resolved_challenges].challenge_token.ptr == NULL)
+        return -1;
+
     acme->domains[acme->resolved_challenges].challenge_url = allocstr(url);
+    if (acme->domains[acme->resolved_challenges].challenge_url.ptr == NULL)
+        return -1;
 
     return 0;
 }
@@ -1153,6 +1198,8 @@ static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response
         if (certificate_url.len == 0)
             return -1;
         acme->certificate_url = allocstr((HTTP_String) { certificate_url.ptr, certificate_url.len });
+        if (acme->certificate_url.ptr == NULL)
+            return -1;
 
     } else if (!json_streq(status, JSON_STR("processing"))) {
         return -1;
