@@ -22,7 +22,8 @@ bool file_exists(HTTP_String path)
     // TODO: make a proper implementation of this
     Handle fd;
     int ret = file_open(path, &fd, FILE_OPEN_READ);
-    file_close(fd);
+    if (ret == 0)
+        file_close(fd);
     return ret == 0;
 }
 

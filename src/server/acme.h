@@ -2,7 +2,7 @@
 #define ACME_INCLUDED
 
 #include <openssl/evp.h>
-#include "chttp.h"
+#include "../common/chttp.h"
 
 #define ACME_DOMAIN_LIMIT 32
 

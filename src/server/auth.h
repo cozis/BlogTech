@@ -2,7 +2,7 @@
 #define AUTH_INCLUDED
 
 #include <openssl/evp.h>
-#include <chttp.h>
+#include "../common/chttp.h"
 
 #define BAD_NONCE 0
 #define MAX_NONCES 32

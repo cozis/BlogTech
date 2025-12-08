@@ -8,7 +8,7 @@
 #include <dirent.h>
 #endif
 
-#include "chttp.h"
+#include "chttp.h" // Only needed for HTTP_String
 
 #define ERROR_GENERIC        -1
 #define ERROR_FILE_NOT_FOUND -2
