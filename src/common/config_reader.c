@@ -152,9 +152,16 @@ static int read_value_from_cmdline(ConfigReader *reader,
     int   len = strlen(src);
     int   cur = 0;
 
-    if (cur == len || src[cur] != '-') {
-        printf("Config Warning: Option doesn't start with '-'\n");
+    if (cur == len) {
+        printf("Config Warning: Option is empty\n");
         return -1;
+    }
+
+    if (src[cur] != '-') {
+        // Unnamed option
+        *name = (HTTP_String) { NULL, 0 };
+        *value = (HTTP_String) { src, len };
+        return 1;
     }
     cur++;
 

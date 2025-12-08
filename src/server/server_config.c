@@ -146,7 +146,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                     bad_config = true;
                 } else {
                     config->acme_org = value;
-                    have_acme_org = false;
+                    have_acme_org = true;
                 }
             } else if (http_streq(name, HTTP_STR("acme-domain"))) {
                 if (value.len == 0) {

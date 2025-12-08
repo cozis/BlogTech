@@ -103,7 +103,7 @@ int main_server(int argc, char **argv)
         }
     }
 
-    if (file_exists(server_config.cert_file)) {
+    if (server_config.https_enabled && file_exists(server_config.cert_file)) {
         ret = http_server_listen_tls(&server,
             server_config.https_addr,
             server_config.https_port,
