@@ -1,22 +1,18 @@
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-
-#include "jws.h"
-#include "json.h"
 #include "acme.h"
-#include "../common/file_system.h"
+#include "../lib/jws.h"
+#include "../lib/file_system.h"
+#include "../3p/json.h"
+#include <string.h>
+
+// Helper to compare JSON_String values
+static inline bool json_streq(JSON_String a, JSON_String b)
+{
+    return a.len == b.len && (a.len == 0 || memcmp(a.ptr, b.ptr, a.len) == 0);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////
 // Configurations & Utilities
 //////////////////////////////////////////////////////////////////////////////////////
-
-#ifndef ACME_SERVER_URL
-// TODO: comment
-#define ACME_SERVER_URL "https://0.0.0.0:14000/dir"
-//#define ACME_SERVER_URL "https://acme-v02.api.letsencrypt.org/directory"
-#endif
 
 //#define TRACE_STATE_TRANSITIONS
 
@@ -50,72 +46,6 @@ static char *state_str(ACME_State state)
         var = state;                          \
     }
 #endif
-
-// Helper function to compare two JSON_String values
-static bool json_streq(JSON_String s1, JSON_String s2)
-{
-    return s1.len == s2.len && memcmp(s1.ptr, s2.ptr, s1.len) == 0;
-}
-
-static HTTP_String allocstr(HTTP_String s)
-{
-    if (s.len == 0)
-        return (HTTP_String) { NULL, 0 };
-
-    char *p = malloc(s.len);
-    if (p == NULL)
-        return (HTTP_String) { NULL, 0 };
-
-    memcpy(p, s.ptr, s.len);
-    return (HTTP_String) { p, s.len };
-}
-
-typedef uint64_t Time;
-#define INVALID_TIME UINT64_MAX
-
-// Returns the current time in milliseconds since
-// an unspecified time in the past (useful to calculate
-// elapsed time intervals)
-static Time get_current_time(void)
-{
-#ifdef _WIN32
-    {
-        int64_t count;
-        int64_t freq;
-        int ok;
-
-        ok = QueryPerformanceCounter((LARGE_INTEGER*) &count);
-        if (!ok) return INVALID_TIME;
-
-        ok = QueryPerformanceFrequency((LARGE_INTEGER*) &freq);
-        if (!ok) return INVALID_TIME;
-
-        uint64_t res = 1000 * (double) count / freq;
-        return res;
-    }
-#else
-    {
-        struct timespec time;
-
-        if (clock_gettime(CLOCK_REALTIME, &time))
-            return INVALID_TIME;
-
-        uint64_t res;
-
-        uint64_t sec = time.tv_sec;
-        if (sec > UINT64_MAX / 1000)
-            return INVALID_TIME;
-        res = sec * 1000;
-
-        uint64_t nsec = time.tv_nsec;
-        if (res > UINT64_MAX - nsec / 1000000)
-            return INVALID_TIME;
-        res += nsec / 1000000;
-
-        return res;
-    }
-#endif
-}
 
 //////////////////////////////////////////////////////////////////////////////////////
 // OpenSSL
@@ -159,8 +89,8 @@ static int generate_account_key(ACME_Account *account)
 
 static int
 create_certificate_signing_request(EVP_PKEY **out_pkey,
-    HTTP_String *domains, int num_domains,
-    HTTP_String country, HTTP_String org,
+    string *domains, int num_domains,
+    string country, string org,
     char *dst, int cap)
 {
     if (num_domains < 1)
@@ -309,7 +239,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     return len;
 }
 
-static EVP_PKEY *parse_private_key(HTTP_String str)
+static EVP_PKEY *parse_private_key(string str)
 {
     BIO *bio = BIO_new_mem_buf(str.ptr, str.len);
     if (bio == NULL)
@@ -327,9 +257,9 @@ static EVP_PKEY *parse_private_key(HTTP_String str)
 
 typedef struct {
 
-    bool error;
-    bool dont_verify_cert;
-    HTTP_String url;
+    bool   error;
+    bool   dont_verify_cert;
+    string url;
 
     JWS_Builder jws_builder;
     char        jws_buffer[1<<10];
@@ -340,8 +270,8 @@ typedef struct {
 //       is called.
 static void
 request_builder_init(RequestBuilder *builder,
-    ACME_Account account, HTTP_String nonce,
-    bool dont_verify_cert, HTTP_String url)
+    ACME_Account account, string nonce,
+    bool dont_verify_cert, string url)
 {
     assert(account.key);
 
@@ -378,7 +308,7 @@ request_builder_init(RequestBuilder *builder,
 }
 
 static void
-request_builder_write(RequestBuilder *builder, HTTP_String str)
+request_builder_write(RequestBuilder *builder, string str)
 {
     if (builder->error)
         return;
@@ -386,7 +316,7 @@ request_builder_write(RequestBuilder *builder, HTTP_String str)
 }
 
 static int
-request_builder_send(RequestBuilder *builder, HTTP_Client *client)
+request_builder_send(RequestBuilder *builder, CHTTP_Client *client)
 {
     if (builder->error)
         return -1;
@@ -395,18 +325,18 @@ request_builder_send(RequestBuilder *builder, HTTP_Client *client)
     int ret = jws_builder_result(&builder->jws_builder);
     if (ret < 0)
         return -1;
-    HTTP_String jws = { builder->jws_buffer, ret };
+    string jws = { builder->jws_buffer, ret };
 
-    HTTP_RequestBuilder http_builder = http_client_get_builder(client);
-    http_request_builder_set_user(http_builder, NULL); // TODO: should set pointer to the acme struct?
-    http_request_builder_trace(http_builder, true);
-    http_request_builder_insecure(http_builder, builder->dont_verify_cert);
-    http_request_builder_method(http_builder, HTTP_METHOD_POST);
-    http_request_builder_target(http_builder, builder->url);
-    http_request_builder_header(http_builder, HTTP_STR("User-Agent: BlogTech")); // TODO: better user agnet
-    http_request_builder_header(http_builder, HTTP_STR("Content-Type: application/jose+json"));
-    http_request_builder_body(http_builder, jws);
-    if (http_request_builder_send(http_builder) < 0)
+    CHTTP_RequestBuilder http_builder = chttp_client_get_builder(client);
+    chttp_request_builder_set_user(http_builder, NULL); // TODO: should set pointer to the acme struct?
+    chttp_request_builder_trace(http_builder, true);
+    chttp_request_builder_insecure(http_builder, builder->dont_verify_cert);
+    chttp_request_builder_method(http_builder, CHTTP_METHOD_POST);
+    chttp_request_builder_target(http_builder, S2H(builder->url));
+    chttp_request_builder_header(http_builder, CHTTP_STR("User-Agent: BlogTech")); // TODO: better user agnet
+    chttp_request_builder_header(http_builder, CHTTP_STR("Content-Type: application/jose+json"));
+    chttp_request_builder_body(http_builder, S2H(jws));
+    if (chttp_request_builder_send(http_builder) < 0)
         return -1;
 
     return 0;
@@ -416,15 +346,15 @@ request_builder_send(RequestBuilder *builder, HTTP_Client *client)
 // ACME object management
 //////////////////////////////////////////////////////////////////////////////////////
 
-static int send_directory_request(ACME *acme, HTTP_Client *client);
+static int send_directory_request(ACME *acme, CHTTP_Client *client);
 
 void acme_config_init(ACME_Config *config,
-    HTTP_Client *client,
-    HTTP_String directory_url,
-    HTTP_String email,
-    HTTP_String country,
-    HTTP_String organization,
-    HTTP_String domain)
+    CHTTP_Client *client,
+    string directory_url,
+    string email,
+    string country,
+    string organization,
+    string domain)
 {
     if (client == NULL
         || 0 == directory_url.len
@@ -446,16 +376,16 @@ void acme_config_init(ACME_Config *config,
     config->num_domains = 1;
     config->agree_tos = false;
 
-    config->account_key_file = HTTP_STR("account_secret_key.pem");
-    config->certificate_file = HTTP_STR("certificate.pem");
-    config->certificate_key_file = HTTP_STR("certificate_secret_key.pem");
+    config->account_key_file = S("account_secret_key.pem");
+    config->certificate_file = S("certificate.pem");
+    config->certificate_key_file = S("certificate_secret_key.pem");
 
     config->client = client;
     config->error = false;
 }
 
 void acme_config_add_domain(ACME_Config *config,
-    HTTP_String domain)
+    string domain)
 {
     if (config->error)
         return;
@@ -469,7 +399,7 @@ void acme_config_add_domain(ACME_Config *config,
 }
 
 static bool
-batch_allocate_strings(HTTP_String **s)
+batch_allocate_strings(string **s)
 {
     int total_len = 0;
     for (int i = 0; s[i] != NULL; i++)
@@ -521,7 +451,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     acme->certificate_key_file = config->certificate_key_file;
 
     // Then, batch allocate replacements
-    HTTP_String *batch[] = {
+    string *batch[] = {
         &acme->directory_url,
         &acme->email,
         &acme->country,
@@ -536,7 +466,7 @@ int acme_init(ACME *acme, ACME_Config *config)
 
     // Now, do the same for the domain names
 
-    HTTP_String *batch2[ACME_DOMAIN_LIMIT+1];
+    string *batch2[ACME_DOMAIN_LIMIT+1];
     for (int i = 0; i < config->num_domains; i++) {
         acme->domains[i].name = config->domains[i];
         batch2[i] = &acme->domains[i].name;
@@ -557,7 +487,7 @@ int acme_init(ACME *acme, ACME_Config *config)
 
     acme->state = ACME_STATE_DIRECTORY;
 
-    acme->nonce = (HTTP_String) { acme->nonce_buf, 0 };
+    acme->nonce = (string) { acme->nonce_buf, 0 };
 
     //////////////////////////////////////////////////////////////
     // Load the account key from the file system.
@@ -567,7 +497,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     // error, we fail on the spot. If the key does exists but its
     // contents are invalid, we delete the file and continue without
     // an account.
-    HTTP_String account_key;
+    string account_key;
     int ret = file_read_all(config->account_key_file, &account_key);
     if (ret < 0) {
         if (ret != ERROR_FILE_NOT_FOUND) {
@@ -588,7 +518,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     // delete it and start from scratch. If an error occurs, we just drop
     // what we are doing and fail.
     if (acme->account.key != NULL) {
-        HTTP_String certificate;
+        string certificate;
         ret = file_read_all(acme->certificate_file, &certificate);
         if (ret < 0) {
             if (ret != ERROR_FILE_NOT_FOUND) {
@@ -597,7 +527,7 @@ int acme_init(ACME *acme, ACME_Config *config)
             }
             // File not found - continue without certificate
         } else {
-            HTTP_String certificate_key;
+            string certificate_key;
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
             if (ret < 0) {
                 free(certificate.ptr);
@@ -670,7 +600,7 @@ void acme_free(ACME *acme)
 // Request generators & response handlers
 //////////////////////////////////////////////////////////////////////////////////////
 
-static int parse_urls(HTTP_String body, ACME_URLSet *urls)
+static int parse_urls(string body, ACME_URLSet *urls)
 {
     char pool[1<<13];
 
@@ -727,49 +657,49 @@ static int parse_urls(HTTP_String body, ACME_URLSet *urls)
     return 0;
 }
 
-static int send_directory_request(ACME *acme, HTTP_Client *client)
+static int send_directory_request(ACME *acme, CHTTP_Client *client)
 {
-    HTTP_RequestBuilder builder = http_client_get_builder(client);
-    http_request_builder_set_user(builder, acme);
-    http_request_builder_trace(builder, true);
-    http_request_builder_insecure(builder, acme->dont_verify_cert);
-    http_request_builder_method(builder, HTTP_METHOD_GET);
-    http_request_builder_target(builder, acme->directory_url);
-    if (http_request_builder_send(builder) < 0)
+    CHTTP_RequestBuilder builder = chttp_client_get_builder(client);
+    chttp_request_builder_set_user(builder, acme);
+    chttp_request_builder_trace(builder, true);
+    chttp_request_builder_insecure(builder, acme->dont_verify_cert);
+    chttp_request_builder_method(builder, CHTTP_METHOD_GET);
+    chttp_request_builder_target(builder, S2H(acme->directory_url));
+    if (chttp_request_builder_send(builder) < 0)
         return -1;
     return 0;
 }
 
-static int complete_directory_request(ACME *acme, HTTP_Response *response)
+static int complete_directory_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 200)
         return -1;
 
-    if (parse_urls(response->body, &acme->urls) < 0)
+    if (parse_urls(H2S(response->body), &acme->urls) < 0)
         return -1;
     return 0;
 }
 
-static int send_first_nonce_request(ACME *acme, HTTP_Client *client)
+static int send_first_nonce_request(ACME *acme, CHTTP_Client *client)
 {
-    HTTP_RequestBuilder builder = http_client_get_builder(client);
-    http_request_builder_set_user(builder, acme);
-    http_request_builder_trace(builder, true);
-    http_request_builder_insecure(builder, acme->dont_verify_cert);
-    http_request_builder_method(builder, HTTP_METHOD_GET);
-    http_request_builder_target(builder, acme->urls.new_nonce);
-    if (http_request_builder_send(builder) < 0)
+    CHTTP_RequestBuilder builder = chttp_client_get_builder(client);
+    chttp_request_builder_set_user(builder, acme);
+    chttp_request_builder_trace(builder, true);
+    chttp_request_builder_insecure(builder, acme->dont_verify_cert);
+    chttp_request_builder_method(builder, CHTTP_METHOD_GET);
+    chttp_request_builder_target(builder, S2H(acme->urls.new_nonce));
+    if (chttp_request_builder_send(builder) < 0)
         return -1;
     return 0;
 }
 
-static int extract_nonce(ACME *acme, HTTP_Response *response)
+static int extract_nonce(ACME *acme, CHTTP_Response *response)
 {
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Replay-Nonce"));
+    int idx = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Replay-Nonce"));
     if (idx == -1)
         return -1; // Response doesn't have a nonce
 
-    HTTP_String nonce = response->headers[idx].value;
+    string nonce = H2S(response->headers[idx].value);
     if (nonce.len > (int) sizeof(acme->nonce_buf))
         return -1; // Nonce is larger than the buffer
 
@@ -782,7 +712,7 @@ static int extract_nonce(ACME *acme, HTTP_Response *response)
     return 0;
 }
 
-static int complete_first_nonce_request(ACME *acme, HTTP_Response *response)
+static int complete_first_nonce_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 204)
         return -1;
@@ -794,7 +724,7 @@ static int complete_first_nonce_request(ACME *acme, HTTP_Response *response)
     return 0;
 }
 
-static int send_account_creation_request(ACME *acme, HTTP_Client *client)
+static int send_account_creation_request(ACME *acme, CHTTP_Client *client)
 {
     if (generate_account_key(&acme->account) < 0)
         return -1;
@@ -803,16 +733,16 @@ static int send_account_creation_request(ACME *acme, HTTP_Client *client)
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, acme->urls.new_account);
 
-    request_builder_write(&builder, HTTP_STR("{\"contact\":[\"mailto:"));
+    request_builder_write(&builder, S("{\"contact\":[\"mailto:"));
     request_builder_write(&builder, acme->email);
-    request_builder_write(&builder, HTTP_STR("\"],\"termsOfServiceAgreed\":"));
-    request_builder_write(&builder, acme->agree_tos ? HTTP_STR("true") : HTTP_STR("false"));
-    request_builder_write(&builder, HTTP_STR("}"));
+    request_builder_write(&builder, S("\"],\"termsOfServiceAgreed\":"));
+    request_builder_write(&builder, acme->agree_tos ? S("true") : S("false"));
+    request_builder_write(&builder, S("}"));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_account_creation_request(ACME *acme, HTTP_Response *response)
+static int complete_account_creation_request(ACME *acme, CHTTP_Response *response)
 {
     // The server returns 201 if it created an account
     // and 200 if it already existed.
@@ -822,11 +752,11 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
     if (extract_nonce(acme, response) < 0)
         return -1;
 
-    int idx = http_find_header(response->headers, response->num_headers, HTTP_STR("Location"));
+    int idx = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Location"));
     if (idx == -1)
         return -1; // Location header missing
 
-    acme->account.url = allocstr(response->headers[idx].value);
+    acme->account.url = allocstr(H2S(response->headers[idx].value));
     if (acme->account.url.ptr == NULL)
         return -1; // Allocation failed
 
@@ -843,7 +773,7 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
     long pem_len = BIO_get_mem_data(bio, &pem_buf);
 
     // The account was created so we can store the key
-    if (file_write_all(acme->account_key_file, (HTTP_String) { pem_buf, pem_len }) < 0) {
+    if (file_write_all(acme->account_key_file, (string) { pem_buf, pem_len }) < 0) {
         BIO_free(bio);
         return -1;
     }
@@ -852,26 +782,26 @@ static int complete_account_creation_request(ACME *acme, HTTP_Response *response
     return 0;
 }
 
-static int send_order_creation_request(ACME *acme, HTTP_Client *client)
+static int send_order_creation_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, acme->urls.new_order);
 
-    request_builder_write(&builder, HTTP_STR("{\"identifiers\":["));
+    request_builder_write(&builder, S("{\"identifiers\":["));
     for (int i = 0; i < acme->num_domains; i++) {
         if (i > 0)
-            request_builder_write(&builder, HTTP_STR(","));
-        request_builder_write(&builder, HTTP_STR("{\"type\":\"dns\",\"value\":\""));
+            request_builder_write(&builder, S(","));
+        request_builder_write(&builder, S("{\"type\":\"dns\",\"value\":\""));
         request_builder_write(&builder, acme->domains[i].name);
-        request_builder_write(&builder, HTTP_STR("\"}"));
+        request_builder_write(&builder, S("\"}"));
     }
-    request_builder_write(&builder, HTTP_STR("]}"));
+    request_builder_write(&builder, S("]}"));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
+static int complete_order_creation_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 201)
         return -1;
@@ -879,10 +809,10 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (extract_nonce(acme, response) < 0)
         return -1;
 
-    int i = http_find_header(response->headers, response->num_headers, HTTP_STR("Location"));
+    int i = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Location"));
     if (i < 0)
         return -1;
-    acme->order_url = allocstr(response->headers[i].value);
+    acme->order_url = allocstr(H2S(response->headers[i].value));
     if (acme->order_url.ptr == NULL)
         return -1;
 
@@ -898,7 +828,7 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     if (finalize_url.len == 0)
         return -1;
 
-    acme->finalize_url = allocstr((HTTP_String) { finalize_url.ptr, finalize_url.len });
+    acme->finalize_url = allocstr((string) { finalize_url.ptr, finalize_url.len });
     if (acme->finalize_url.ptr == NULL)
         return -1;
 
@@ -916,7 +846,7 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
         JSON_String tmp = json_get_string(item);
         if (tmp.len == 0)
             return -1;
-        HTTP_String auth_url = { tmp.ptr, tmp.len };
+        string auth_url = { tmp.ptr, tmp.len };
 
         acme->domains[j].authorization_url = allocstr(auth_url);
         if (acme->domains[j].authorization_url.ptr == NULL)
@@ -930,21 +860,21 @@ static int complete_order_creation_request(ACME *acme, HTTP_Response *response)
     return 0;
 }
 
-static int send_next_challenge_info_request(ACME *acme, HTTP_Client *client)
+static int send_next_challenge_info_request(ACME *acme, CHTTP_Client *client)
 {
     assert(acme->resolved_challenges < acme->num_domains);
-    HTTP_String auth_url = acme->domains[acme->resolved_challenges].authorization_url;
+    string auth_url = acme->domains[acme->resolved_challenges].authorization_url;
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, auth_url);
 
-    request_builder_write(&builder, HTTP_STR(""));
+    request_builder_write(&builder, S(""));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *response)
+static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *response)
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
@@ -980,12 +910,12 @@ static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *respo
     JSON_String tmp = json_get_string(json_get_field(challenge, JSON_STR("token")));
     if (tmp.len == 0)
         return -1;
-    HTTP_String token = { tmp.ptr, tmp.len };
+    string token = { tmp.ptr, tmp.len };
 
     tmp = json_get_string(json_get_field(challenge, JSON_STR("url")));
     if (tmp.len == 0)
         return -1;
-    HTTP_String url = { tmp.ptr, tmp.len };
+    string url = { tmp.ptr, tmp.len };
 
     acme->domains[acme->resolved_challenges].challenge_token = allocstr(token);
     if (acme->domains[acme->resolved_challenges].challenge_token.ptr == NULL)
@@ -998,22 +928,22 @@ static int complete_next_challenge_info_request(ACME *acme, HTTP_Response *respo
     return 0;
 }
 
-static int send_next_challenge_begin_request(ACME *acme, HTTP_Client *client)
+static int send_next_challenge_begin_request(ACME *acme, CHTTP_Client *client)
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
-    HTTP_String challenge_url = acme->domains[acme->resolved_challenges].challenge_url;
+    string challenge_url = acme->domains[acme->resolved_challenges].challenge_url;
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, challenge_url);
 
-    request_builder_write(&builder, HTTP_STR("{}"));
+    request_builder_write(&builder, S("{}"));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_next_challenge_begin_request(ACME *acme, HTTP_Response *response)
+static int complete_next_challenge_begin_request(ACME *acme, CHTTP_Response *response)
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
@@ -1027,7 +957,7 @@ static int complete_next_challenge_begin_request(ACME *acme, HTTP_Response *resp
 }
 
 static int send_challenge_status_request(ACME *acme,
-    HTTP_Client *client)
+    CHTTP_Client *client)
 {
     assert(acme->resolved_challenges < acme->num_domains);
 
@@ -1035,13 +965,13 @@ static int send_challenge_status_request(ACME *acme,
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url);
 
-    request_builder_write(&builder, HTTP_STR(""));
+    request_builder_write(&builder, S(""));
 
     return request_builder_send(&builder, acme->client);
 }
 
 static int complete_challenge_status_request(ACME *acme,
-    HTTP_Response *response, bool *challenge_completed)
+    CHTTP_Response *response, bool *challenge_completed)
 {
     *challenge_completed = false;
 
@@ -1064,12 +994,12 @@ static int complete_challenge_status_request(ACME *acme,
     if (json_match(json, &error, "{'status': ?}", &status) != 0)
         return -1;
 
-    HTTP_String status_http = { status.ptr, status.len };
+    string status_http = { status.ptr, status.len };
 
-    if (http_streq(status_http, HTTP_STR("invalid")))
+    if (chttp_streq(S2H(status_http), CHTTP_STR("invalid")))
         return -1;
 
-    if (http_streq(status_http, HTTP_STR("valid"))) {
+    if (chttp_streq(S2H(status_http), CHTTP_STR("valid"))) {
         acme->resolved_challenges++;
         *challenge_completed = true;
     }
@@ -1077,9 +1007,9 @@ static int complete_challenge_status_request(ACME *acme,
     return 0;
 }
 
-static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
+static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
 {
-    HTTP_String domains[ACME_DOMAIN_LIMIT];
+    string domains[ACME_DOMAIN_LIMIT];
     for (int i = 0; i < acme->num_domains; i++)
         domains[i] = acme->domains[i].name;
     int num_domains = acme->num_domains;
@@ -1104,7 +1034,7 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
     char *pem_buf;
     long pem_len = BIO_get_mem_data(bio, &pem_buf);
 
-    HTTP_String certificate_key = { pem_buf, pem_len };
+    string certificate_key = { pem_buf, pem_len };
     if (file_write_all(acme->certificate_key_file, certificate_key) < 0) {
         BIO_free(bio);
         EVP_PKEY_free(cert_key);
@@ -1126,20 +1056,20 @@ static int send_finalize_order_request(ACME *acme, HTTP_Client *client)
     csr_len = jws_base64url_encode_inplace(csr_buf, csr_len, sizeof(csr_buf), false);
     if (csr_len < 0)
         return -1;
-    HTTP_String csr = { csr_buf, csr_len };
+    string csr = { csr_buf, csr_len };
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, acme->finalize_url);
 
-    request_builder_write(&builder, HTTP_STR("{\"csr\":\""));
+    request_builder_write(&builder, S("{\"csr\":\""));
     request_builder_write(&builder, csr);
-    request_builder_write(&builder, HTTP_STR("\"}"));
+    request_builder_write(&builder, S("\"}"));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
+static int complete_finalize_order_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 200)
         return -1;
@@ -1164,18 +1094,18 @@ static int complete_finalize_order_request(ACME *acme, HTTP_Response *response)
     return 0;
 }
 
-static int send_certificate_poll_request(ACME *acme, HTTP_Client *client)
+static int send_certificate_poll_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account,
         acme->nonce, acme->dont_verify_cert, acme->order_url);
 
-    request_builder_write(&builder, HTTP_STR(""));
+    request_builder_write(&builder, S(""));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response)
+static int complete_certificate_poll_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 200)
         return -1;
@@ -1196,7 +1126,7 @@ static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response
         JSON_String certificate_url = json_get_string(json_get_field(json, JSON_STR("certificate")));
         if (certificate_url.len == 0)
             return -1;
-        acme->certificate_url = allocstr((HTTP_String) { certificate_url.ptr, certificate_url.len });
+        acme->certificate_url = allocstr((string) { certificate_url.ptr, certificate_url.len });
         if (acme->certificate_url.ptr == NULL)
             return -1;
 
@@ -1207,18 +1137,18 @@ static int complete_certificate_poll_request(ACME *acme, HTTP_Response *response
     return 0;
 }
 
-static int send_certificate_download_request(ACME *acme, HTTP_Client *client)
+static int send_certificate_download_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
         acme->dont_verify_cert, acme->certificate_url);
 
-    request_builder_write(&builder, HTTP_STR(""));
+    request_builder_write(&builder, S(""));
 
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_certificate_download_request(ACME *acme, HTTP_Response *response)
+static int complete_certificate_download_request(ACME *acme, CHTTP_Response *response)
 {
     if (response->status != 200)
         return -1;
@@ -1226,7 +1156,7 @@ static int complete_certificate_download_request(ACME *acme, HTTP_Response *resp
     if (extract_nonce(acme, response) < 0)
         return -1;
 
-    HTTP_String certificate = response->body;
+    string certificate = H2S(response->body);
     if (file_write_all(acme->certificate_file, certificate) < 0)
         return -1;
 
@@ -1269,24 +1199,24 @@ static void reset_order_data(ACME *acme)
 {
     // Free URLs from previous order
     free(acme->order_url.ptr);
-    acme->order_url = (HTTP_String) { NULL, 0 };
+    acme->order_url = (string) { NULL, 0 };
 
     free(acme->finalize_url.ptr);
-    acme->finalize_url = (HTTP_String) { NULL, 0 };
+    acme->finalize_url = (string) { NULL, 0 };
 
     free(acme->certificate_url.ptr);
-    acme->certificate_url = (HTTP_String) { NULL, 0 };
+    acme->certificate_url = (string) { NULL, 0 };
 
     // Free per-domain challenge data from previous order
     for (int i = 0; i < acme->num_domains; i++) {
         free(acme->domains[i].authorization_url.ptr);
-        acme->domains[i].authorization_url = (HTTP_String) { NULL, 0 };
+        acme->domains[i].authorization_url = (string) { NULL, 0 };
 
         free(acme->domains[i].challenge_token.ptr);
-        acme->domains[i].challenge_token = (HTTP_String) { NULL, 0 };
+        acme->domains[i].challenge_token = (string) { NULL, 0 };
 
         free(acme->domains[i].challenge_url.ptr);
-        acme->domains[i].challenge_url = (HTTP_String) { NULL, 0 };
+        acme->domains[i].challenge_url = (string) { NULL, 0 };
     }
 
     acme->resolved_challenges = 0;
@@ -1330,7 +1260,7 @@ int acme_next_timeout(ACME *acme)
     return next_timeout(acme, current_time);
 }
 
-void acme_process_timeout(ACME *acme, HTTP_Client *client)
+void acme_process_timeout(ACME *acme, CHTTP_Client *client)
 {
     uint64_t current_time = get_current_time();
     if (current_time == INVALID_TIME) {
@@ -1374,18 +1304,18 @@ void acme_process_timeout(ACME *acme, HTTP_Client *client)
     }
 }
 
-static bool starts_with(HTTP_String str, HTTP_String prefix)
+static bool starts_with(string str, string prefix)
 {
     if (str.len < prefix.len || memcmp(str.ptr, prefix.ptr, prefix.len) != 0)
         return false;
     return true;
 }
 
-bool acme_process_request(ACME *acme, HTTP_Request *request,
-    HTTP_ResponseBuilder builder)
+bool acme_process_request(ACME *acme, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder)
 {
-    HTTP_String path = request->url.path;
-    HTTP_String prefix = HTTP_STR("/.well-known/acme-challenge/");
+    string path = H2S(request->url.path);
+    string prefix = S("/.well-known/acme-challenge/");
 
     if (!starts_with(path, prefix))
         return false;
@@ -1393,23 +1323,23 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
     if (acme->state != ACME_STATE_CHALLENGE_2 &&
         acme->state != ACME_STATE_CHALLENGE_3 &&
         acme->state != ACME_STATE_CHALLENGE_4) {
-        http_response_builder_status(builder, 404);
-        http_response_builder_send(builder);
+        chttp_response_builder_status(builder, 404);
+        chttp_response_builder_send(builder);
         return true;
     }
 
     {
         if (acme->resolved_challenges == acme->num_domains) {
-            http_response_builder_status(builder, 404);
-            http_response_builder_send(builder);
+            chttp_response_builder_status(builder, 404);
+            chttp_response_builder_send(builder);
             return true;
         }
 
-        HTTP_String expected_token = acme->domains[acme->resolved_challenges].challenge_token;
-        HTTP_String token = { path.ptr + prefix.len, path.len - prefix.len };
-        if (!http_streq(token, expected_token)) {
-            http_response_builder_status(builder, 404);
-            http_response_builder_send(builder);
+        string expected_token = acme->domains[acme->resolved_challenges].challenge_token;
+        string token = { path.ptr + prefix.len, path.len - prefix.len };
+        if (!streq(token, expected_token)) {
+            chttp_response_builder_status(builder, 404);
+            chttp_response_builder_send(builder);
             return true;
         }
 
@@ -1418,22 +1348,22 @@ bool acme_process_request(ACME *acme, HTTP_Request *request,
         char buf[44];
         int len = jwk_thumbprint(acme->account.key, buf, sizeof(buf));
         if (len < 0) {
-            http_response_builder_status(builder, 500);
-            http_response_builder_send(builder);
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
             return true;
         }
-        HTTP_String thumbprint = { buf, len };
+        string thumbprint = { buf, len };
 
-        http_response_builder_status(builder, 200);
-        http_response_builder_body(builder, expected_token);
-        http_response_builder_body(builder, HTTP_STR("."));
-        http_response_builder_body(builder, thumbprint);
-        http_response_builder_send(builder);
+        chttp_response_builder_status(builder, 200);
+        chttp_response_builder_body(builder, S2H(expected_token));
+        chttp_response_builder_body(builder, CHTTP_STR("."));
+        chttp_response_builder_body(builder, S2H(thumbprint));
+        chttp_response_builder_send(builder);
     }
     return true;
 }
 
-static bool is_invalid_nonce_response(HTTP_Response *response)
+static bool is_invalid_nonce_response(CHTTP_Response *response)
 {
     if (response->status != 400)
         return false;
@@ -1446,14 +1376,14 @@ static bool is_invalid_nonce_response(HTTP_Response *response)
         return false;
 
     JSON_String tmp = json_get_string(json_get_field(json, JSON_STR("type")));
-    HTTP_String type = { tmp.ptr, tmp.len };
-    if (!http_streq(type, HTTP_STR("urn:ietf:params:acme:error:badNonce")))
+    string type = { tmp.ptr, tmp.len };
+    if (!chttp_streq(S2H(type), CHTTP_STR("urn:ietf:params:acme:error:badNonce")))
         return false;
 
     return true;
 }
 
-bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
+bool acme_process_response(ACME *acme, int result, CHTTP_Response *response)
 {
     uint64_t current_time = get_current_time();
     if (current_time == INVALID_TIME) {
@@ -1464,7 +1394,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
     switch (acme->state) {
     case ACME_STATE_DIRECTORY:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1482,7 +1412,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_FIRST_NONCE:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1516,7 +1446,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CREATE_ACCOUNT:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1550,7 +1480,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CREATE_CERT:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1584,7 +1514,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CHALLENGE_1:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1615,7 +1545,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CHALLENGE_2:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1643,7 +1573,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CHALLENGE_4:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1692,7 +1622,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_FINALIZE:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1723,7 +1653,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CERTIFICATE_POLL:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
@@ -1759,7 +1689,7 @@ bool acme_process_response(ACME *acme, int result, HTTP_Response *response)
         break;
     case ACME_STATE_CERTIFICATE_DOWNLOAD:
         {
-            if (result != HTTP_OK) {
+            if (result != CHTTP_OK) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }

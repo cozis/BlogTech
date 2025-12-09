@@ -1,14 +1,18 @@
-#include "file_system.h"
 #include "config_reader.h"
+#include "../lib/file_system.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 #ifndef DEFAULT_CONFIG_FILE
 #define DEFAULT_CONFIG_FILE "blogtech.conf"
 #endif
 
-static int read_config_file(int argc, char **argv, HTTP_String *text)
+static int read_config_file(int argc, char **argv, string *text)
 {
     bool no_config = false;
-    HTTP_String file = { NULL, 0 };
+    string file = { NULL, 0 };
     for (int i = 1; i < argc; i++) {
 
         if (!strcmp(argv[i], "--config")) {
@@ -18,23 +22,23 @@ static int read_config_file(int argc, char **argv, HTTP_String *text)
                 return -1;
             }
             no_config = false;
-            file = (HTTP_String) { argv[i], strlen(argv[i]) };
+            file = (string) { argv[i], strlen(argv[i]) };
             break;
         }
 
         if (!strcmp(argv[i], "--no-config")) {
             no_config = true;
-            file = (HTTP_String) { NULL, 0 };
+            file = (string) { NULL, 0 };
             break;
         }
     }
 
     if (!no_config && file.len == 0)
-        if (file_exists(HTTP_STR(DEFAULT_CONFIG_FILE)))
-            file = HTTP_STR(DEFAULT_CONFIG_FILE);
+        if (file_exists(S(DEFAULT_CONFIG_FILE)))
+            file = S(DEFAULT_CONFIG_FILE);
 
     if (file.len == 0)
-        *text = (HTTP_String) { NULL, 0 };
+        *text = (string) { NULL, 0 };
     else {
         int ret = file_read_all(file, text);
         if (ret < 0) {
@@ -74,7 +78,7 @@ consume_whitespace_and_comments(ConfigReader *reader)
 
 int config_reader_init(ConfigReader *reader, int argc, char **argv)
 {
-    HTTP_String text;
+    string text;
     int ret = read_config_file(argc, argv, &text);
     if (ret < 0)
         return -1;
@@ -94,7 +98,7 @@ void config_reader_free(ConfigReader *reader)
 }
 
 static int read_value_from_file(ConfigReader *reader,
-    HTTP_String *name, HTTP_String *value)
+    string *name, string *value)
 {
     // Either the source ended or we found something
     // that is not white space.
@@ -107,7 +111,7 @@ static int read_value_from_file(ConfigReader *reader,
     while (reader->cur < reader->len && !is_white_space(reader->src[reader->cur]))
         reader->cur++;
 
-    *name = (HTTP_String) {
+    *name = (string) {
         reader->src + off,
         reader->cur - off
     };
@@ -119,7 +123,7 @@ static int read_value_from_file(ConfigReader *reader,
         || reader->src[reader->cur] == '\n'
         || reader->src[reader->cur] == '\r'
         || reader->src[reader->cur] == '#') {
-        *value = (HTTP_String) { NULL, 0 };
+        *value = (string) { NULL, 0 };
     } else {
 
         off = reader->cur;
@@ -129,13 +133,13 @@ static int read_value_from_file(ConfigReader *reader,
             && reader->src[reader->cur] != '#')
             reader->cur++;
 
-        *value = (HTTP_String) {
+        *value = (string) {
             reader->src + off,
             reader->cur - off
         };
 
-        if (http_streq(*value, HTTP_STR("---")))
-            *value = (HTTP_String) { NULL, 0 };
+        if (streq(*value, S("---")))
+            *value = (string) { NULL, 0 };
     }
 
     consume_whitespace_and_comments(reader);
@@ -143,7 +147,7 @@ static int read_value_from_file(ConfigReader *reader,
 }
 
 static int read_value_from_cmdline(ConfigReader *reader,
-    HTTP_String *name, HTTP_String *value)
+    string *name, string *value)
 {
     if (reader->argidx == reader->argc)
         return 0;
@@ -159,8 +163,8 @@ static int read_value_from_cmdline(ConfigReader *reader,
 
     if (src[cur] != '-') {
         // Unnamed option
-        *name = (HTTP_String) { NULL, 0 };
-        *value = (HTTP_String) { src, len };
+        *name = (string) { NULL, 0 };
+        *value = (string) { src, len };
         return 1;
     }
     cur++;
@@ -189,19 +193,19 @@ static int read_value_from_cmdline(ConfigReader *reader,
         cur++;
     while (cur < len && src[cur] != '=');
 
-    *name = (HTTP_String) { src + off, cur - off };
+    *name = (string) { src + off, cur - off };
 
     if (cur == len) {
-        *value = (HTTP_String) { NULL, 0 };
+        *value = (string) { NULL, 0 };
     } else {
         cur++;
-        *value = (HTTP_String) { src + cur, len - cur };
+        *value = (string) { src + cur, len - cur };
     }
 
     return 1;
 }
 
-bool config_reader_next(ConfigReader *reader, HTTP_String *name, HTTP_String *value)
+bool config_reader_next(ConfigReader *reader, string *name, string *value)
 {
     int ret;
     do {
@@ -211,7 +215,7 @@ bool config_reader_next(ConfigReader *reader, HTTP_String *name, HTTP_String *va
 
         // Never return options that were consumed by the reader itself
         if (ret == 1) {
-            if (http_streq(*name, HTTP_STR("config")) || http_streq(*name, HTTP_STR("no-config")))
+            if (streq(*name, S("config")) || streq(*name, S("no-config")))
                 ret = -1;
         }
 
@@ -226,17 +230,17 @@ void config_reader_rewind(ConfigReader *reader)
     consume_whitespace_and_comments(reader);
 }
 
-void parse_config_value_yn(HTTP_String name, HTTP_String value,
+void parse_config_value_yn(string name, string value,
     bool *out, bool *bad_config)
 {
-    if (http_streq(value, HTTP_STR("yes")) || http_streq(value, HTTP_STR(""))) {
+    if (streq(value, S("yes")) || streq(value, S(""))) {
         *out = true;
-    } else if (http_streq(value, HTTP_STR("no"))) {
+    } else if (streq(value, S("no"))) {
         *out = false;
     } else {
         printf("Config Error: Unexpected value '%.*s' for option '%.*s' ('yes', 'no', or '' were expected)\n",
-            HTTP_UNPACK(value),
-            HTTP_UNPACK(name));
+            UNPACK(value),
+            UNPACK(name));
         *bad_config = true;
     }
 }
@@ -246,8 +250,8 @@ static bool is_digit(char c)
     return c >= '0' && c <= '9';
 }
 
-void parse_config_value_port(HTTP_String name, HTTP_String value,
-    uint16_t *out, bool *bad_config)
+void parse_config_value_port(string name, string value,
+    u16 *out, bool *bad_config)
 {
     char *src = value.ptr;
     int   len = value.len;
@@ -255,20 +259,20 @@ void parse_config_value_port(HTTP_String name, HTTP_String value,
 
     if (cur == len || !is_digit(src[cur])) {
         printf("Config Error: Option '%.*s' is not a valid port number\n",
-            HTTP_UNPACK(name));
+            UNPACK(name));
         *bad_config = true;
         return;
     }
 
-    uint16_t buf = src[cur] - '0';
+    u16 buf = src[cur] - '0';
     cur++;
 
     while (cur < len && is_digit(src[cur])) {
         int d = src[cur] - '0';
         cur++;
-        if (buf > (UINT16_MAX - d) / 10) {
+        if (buf > (U16_MAX - d) / 10) {
             printf("Config Error: Option '%.*s' is not a valid port number (must be in range [0, 65535])\n",
-                HTTP_UNPACK(name));
+                UNPACK(name));
             *bad_config = true;
             return;
         }
@@ -277,7 +281,7 @@ void parse_config_value_port(HTTP_String name, HTTP_String value,
 
     if (cur < len) {
         printf("Config Error: Option '%.*s' is not a valid port number\n",
-            HTTP_UNPACK(name));
+            UNPACK(name));
         *bad_config = true;
         return;
     }

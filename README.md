@@ -1,4 +1,4 @@
-# Blogtech
+# BlogTech
 A minimal static file server with automatic HTTPS via ACME (Let's Encrypt), plus a client for uploading content.
 
 ## Building
@@ -29,7 +29,7 @@ echo "<h1>Hello, world!</h1>" > docroot/index.html
 
 ## Usage
 
-Blogtech operates in two modes: `server` mode and `upload` (client) mode.
+BlogTech operates in two modes: `server` mode and `upload` (client) mode.
 
 ### Server Mode
 ```sh
@@ -45,7 +45,7 @@ Or use `-u` as shorthand for `--upload`. This PUTs each file to the remote serve
 
 ## Configuration
 
-Options can be specified via command line or configuration file. By default, Blogtech looks for `blogtech.conf` in the current directory
+Options can be specified via command line or configuration file. By default, BlogTech looks for `blogtech.conf` in the current directory
 ```
 # Use a specific config file
 ./blogtech --serve --config=/path/to/config.conf
@@ -80,9 +80,9 @@ openssl rand -base64 48 > password.txt
 ```
 
 Requests are authenticated using HMAC-SHA256 signatures. The client must include the following headers:
-- `X-Blogtech-Timestamp`: Unix epoch seconds when the request was created
-- `X-Blogtech-Expire`: Seconds until the request expires
-- `X-Blogtech-Nonce`: Unique value to prevent replay attacks
-- `X-Blogtech-Signature`: HMAC-SHA256 signature of the request
+- `X-BlogTech-Timestamp`: Unix epoch seconds when the request was created
+- `X-BlogTech-Expire`: Seconds until the request expires
+- `X-BlogTech-Nonce`: Unique value to prevent replay attacks
+- `X-BlogTech-Signature`: HMAC-SHA256 signature of the request
 
 If no password file is configured or the password is shorter than 32 characters, all PUT/DELETE requests will be rejected.

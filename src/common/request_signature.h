@@ -1,18 +1,17 @@
 #ifndef REQUEST_SIGNATURE_INCLUDED
 #define REQUEST_SIGNATURE_INCLUDED
 
-#include <stdint.h>
-#include "chttp.h"
+#include "../lib/http.h"
 
 int calculate_request_signature(
-    HTTP_Method method,
-    HTTP_String path,
-    HTTP_String host,
-    HTTP_String date,
-    uint32_t    expire,
-    HTTP_String nonce,
-    HTTP_String body,
-    HTTP_String secret,
-    char *dst);
+    CHTTP_Method method,
+    string path,
+    string host,
+    string date,
+    u32    expire,
+    string nonce,
+    string body,
+    string secret,
+    char*  dst);
 
 #endif // REQUEST_SIGNATURE_INCLUDED

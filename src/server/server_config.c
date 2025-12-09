@@ -1,24 +1,24 @@
-#include <stdio.h>
 #include "server_config.h"
 #include "../common/print_usage.h"
+#include "../lib/basic.h"
 
 int load_server_config(ConfigReader *reader, ServerConfig *config)
 {
     // Set default values
-    config->http_addr = HTTP_STR("127.0.0.1");
+    config->http_addr = S("127.0.0.1");
     config->http_port = 8080;
     config->reuse_addr = true;
     config->trace_bytes = false;
-    config->auth_password_file = HTTP_STR("");
+    config->auth_password_file = S("");
     config->https_enabled = false;
     config->acme_enabled = false;
 
     bool have_document_root = false;
 
     bool bad_config = false;
-    HTTP_String name, value;
+    string name, value;
     while (config_reader_next(reader, &name, &value)) {
-        if (http_streq(name, HTTP_STR("document-root"))) {
+        if (streq(name, S("document-root"))) {
             if (value.len == 0) {
                 printf("Config Error: Invalid document root\n");
                 bad_config = true;
@@ -26,21 +26,21 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                 config->document_root = value;
                 have_document_root = true;
             }
-        } else if (http_streq(name, HTTP_STR("reuse-addr"))) {
+        } else if (streq(name, S("reuse-addr"))) {
             parse_config_value_yn(name, value, &config->reuse_addr, &bad_config);
-        } else if (http_streq(name, HTTP_STR("trace-bytes"))) {
+        } else if (streq(name, S("trace-bytes"))) {
             parse_config_value_yn(name, value, &config->trace_bytes, &bad_config);
-        } else if (http_streq(name, HTTP_STR("http-addr"))) {
+        } else if (streq(name, S("http-addr"))) {
             config->http_addr = value;
-        } else if (http_streq(name, HTTP_STR("http-port"))) {
+        } else if (streq(name, S("http-port"))) {
             parse_config_value_port(name, value, &config->http_port, &bad_config);
-        } else if (http_streq(name, HTTP_STR("https-enabled"))) {
+        } else if (streq(name, S("https-enabled"))) {
             parse_config_value_yn(name, value, &config->https_enabled, &bad_config);
-        } else if (http_streq(name, HTTP_STR("acme-enabled"))) {
+        } else if (streq(name, S("acme-enabled"))) {
             parse_config_value_yn(name, value, &config->acme_enabled, &bad_config);
-        } else if (http_streq(name, HTTP_STR("auth-password-file"))) {
+        } else if (streq(name, S("auth-password-file"))) {
             config->auth_password_file = value;
-        } else if (http_streq(name, HTTP_STR("help")) || http_streq(name, HTTP_STR("h"))) {
+        } else if (streq(name, S("help")) || streq(name, S("h"))) {
             print_usage();
             return 0;
         }
@@ -53,7 +53,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
 
     if (config->https_enabled) {
 
-        config->https_addr = HTTP_STR("");
+        config->https_addr = S("");
         config->https_port = 8443;
 
         bool have_cert_file     = false;
@@ -61,11 +61,11 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
 
         config_reader_rewind(reader);
         while (config_reader_next(reader, &name, &value)) {
-            if (http_streq(name, HTTP_STR("https-addr"))) {
+            if (streq(name, S("https-addr"))) {
                 config->https_addr = value;
-            } else if (http_streq(name, HTTP_STR("https-port"))) {
+            } else if (streq(name, S("https-port"))) {
                 parse_config_value_port(name, value, &config->https_port, &bad_config);
-            } else if (http_streq(name, HTTP_STR("cert-file"))) {
+            } else if (streq(name, S("cert-file"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid certificate file\n");
                     bad_config = true;
@@ -73,7 +73,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                     config->cert_file = value;
                     have_cert_file = true;
                 }
-            } else if (http_streq(name, HTTP_STR("cert-key-file"))) {
+            } else if (streq(name, S("cert-key-file"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid certificate key file\n");
                     bad_config = true;
@@ -101,9 +101,9 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
             bad_config = true;
         }
 
-        config->acme_key_file  = HTTP_STR("acme_key.pem");
+        config->acme_key_file  = S("acme_key.pem");
         config->acme_agree_tos = false;
-        config->acme_url       = HTTP_STR("https://acme-v02.api.letsencrypt.org/directory");
+        config->acme_url       = S("https://acme-v02.api.letsencrypt.org/directory");
 
         bool have_acme_email   = false;
         bool have_acme_country = false;
@@ -111,23 +111,23 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
 
         config_reader_rewind(reader);
         while (config_reader_next(reader, &name, &value)) {
-            if (http_streq(name, HTTP_STR("acme-key-file"))) {
+            if (streq(name, S("acme-key-file"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid ACME key file\n");
                     bad_config = true;
                 } else {
                     config->acme_key_file = value;
                 }
-            } else if (http_streq(name, HTTP_STR("acme-agree-tos"))) {
+            } else if (streq(name, S("acme-agree-tos"))) {
                 parse_config_value_yn(name, value, &config->acme_agree_tos, &bad_config);
-            } else if (http_streq(name, HTTP_STR("acme-url"))) {
+            } else if (streq(name, S("acme-url"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid ACME server directory URL\n");
                     bad_config = true;
                 } else {
                     config->acme_url = value;
                 }
-            } else if (http_streq(name, HTTP_STR("acme-email"))) {
+            } else if (streq(name, S("acme-email"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid ACME E-Mail\n");
                     bad_config = true;
@@ -135,7 +135,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                     config->acme_email = value;
                     have_acme_email = true;
                 }
-            } else if (http_streq(name, HTTP_STR("acme-country"))) {
+            } else if (streq(name, S("acme-country"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid ACME country\n");
                     bad_config = true;
@@ -143,7 +143,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                     config->acme_country = value;
                     have_acme_country = true;
                 }
-            } else if (http_streq(name, HTTP_STR("acme-org"))) {
+            } else if (streq(name, S("acme-org"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid ACME organization\n");
                     bad_config = true;
@@ -151,7 +151,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
                     config->acme_org = value;
                     have_acme_org = true;
                 }
-            } else if (http_streq(name, HTTP_STR("acme-domain"))) {
+            } else if (streq(name, S("acme-domain"))) {
                 if (value.len == 0) {
                     printf("Config Error: Invalid domain\n");
                     bad_config = true;

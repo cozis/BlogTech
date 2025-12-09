@@ -2,7 +2,9 @@
 #define ACME_INCLUDED
 
 #include <openssl/evp.h>
-#include "../common/chttp.h"
+
+#include "../lib/time.h"
+#include "../lib/http.h"
 
 #define ACME_DOMAIN_LIMIT 32
 
@@ -17,34 +19,34 @@ typedef struct {
     /////////////////////////////////////////////
     // General
 
-    HTTP_String directory_url;
+    string directory_url;
 
-    bool dont_verify_cert;
+    bool   dont_verify_cert;
 
     /////////////////////////////////////////////
     // Information
 
-    HTTP_String email;
+    string email;
 
-    HTTP_String country;
-    HTTP_String organization;
+    string country;
+    string organization;
 
-    HTTP_String domains[ACME_DOMAIN_LIMIT];
-    int         num_domains;
+    string domains[ACME_DOMAIN_LIMIT];
+    int    num_domains;
 
-    bool        agree_tos;
+    bool   agree_tos;
 
     /////////////////////////////////////////////
     // File paths
 
-    HTTP_String account_key_file;
-    HTTP_String certificate_file;
-    HTTP_String certificate_key_file;
+    string account_key_file;
+    string certificate_file;
+    string certificate_key_file;
 
     /////////////////////////////////////////////
     // Misc
 
-    HTTP_Client *client;
+    CHTTP_Client *client;
 
     bool error;
 
@@ -103,7 +105,7 @@ typedef struct {
 
     // This is the account URL. It's set if and
     // only if an account was created.
-    HTTP_String url;
+    string url;
 
     // Key pair for the account. This is generated
     // before requesting an account to be created.
@@ -115,11 +117,11 @@ typedef struct {
     // If new_account.ptr is NULL, the struct is
     // uninitialized, else all URLs are allocated
     // in a contiguous region starting at new_account.ptr
-    HTTP_String new_account;
-    HTTP_String new_nonce;
-    HTTP_String new_order;
-    HTTP_String renewal_info;
-    HTTP_String revoke_cert;
+    string new_account;
+    string new_nonce;
+    string new_order;
+    string renewal_info;
+    string revoke_cert;
 } ACME_URLSet;
 
 // Represents a domain name that needs certifying
@@ -132,31 +134,31 @@ typedef struct {
     //
     // All "name" fields of the domain array are
     // mallocated in the same region.
-    HTTP_String name;
+    string name;
 
     // When a certificate is being issued and
     // the client is working on the challenges,
     // these fields are set.
-    HTTP_String challenge_token;
-    HTTP_String challenge_url;
-    HTTP_String authorization_url;
+    string challenge_token;
+    string challenge_url;
+    string authorization_url;
 
 } ACME_Domain;
 
 typedef struct {
 
     // User parameters
-    HTTP_String email;
-    HTTP_String country;
-    HTTP_String organization;
-    bool        agree_tos;
+    string email;
+    string country;
+    string organization;
+    bool   agree_tos;
 
-    HTTP_Client *client;
-    bool         dont_verify_cert;
+    CHTTP_Client *client;
+    bool          dont_verify_cert;
 
-    HTTP_String account_key_file;
-    HTTP_String certificate_file;
-    HTTP_String certificate_key_file;
+    string account_key_file;
+    string certificate_file;
+    string certificate_key_file;
 
     // State machine variable
     ACME_State state;
@@ -168,7 +170,7 @@ typedef struct {
     int num_domains;
     ACME_Domain domains[ACME_DOMAIN_LIMIT];
 
-    HTTP_String directory_url;
+    string directory_url;
 
     // List of endpoints for the ACME server.
     // This is set once at startup by requesting
@@ -183,23 +185,23 @@ typedef struct {
     // every response.
     // The nonce.ptr field is set equal to nonce_buf
     // at startup and is never changed.
-    char nonce_buf[ACME_NONCE_CAPACITY];
-    HTTP_String nonce;
+    char   nonce_buf[ACME_NONCE_CAPACITY];
+    string nonce;
 
     // This holds account URL and key.
     ACME_Account account;
 
-    HTTP_String order_url;
+    string order_url;
 
     // When an order is created but the challenges
     // are yet to be completed, these fields are
     // set to the finalization URL and certificate
     // URL. They are allocated in batch.
-    HTTP_String finalize_url;
-    HTTP_String certificate_url;
+    string finalize_url;
+    string certificate_url;
 
-    HTTP_String certificate;
-    HTTP_String certificate_key;
+    string certificate;
+    string certificate_key;
 
     // Number of challenges that were resolved.
     // When this value equals the domain count,
@@ -209,7 +211,7 @@ typedef struct {
     // When the ACME client moves to a state that
     // requires a timeout, this field is set to the
     // strting time.
-    uint64_t state_change_time;
+    Time state_change_time;
 
 } ACME;
 
@@ -220,16 +222,16 @@ typedef struct {
 // the configuration struct (except for a couple)
 // are set to default values but may be set manually.
 void acme_config_init(ACME_Config *config,
-    HTTP_Client *client,
-    HTTP_String directory_url,
-    HTTP_String email,
-    HTTP_String country,
-    HTTP_String organization,
-    HTTP_String domain);
+    CHTTP_Client *client,
+    string directory_url,
+    string email,
+    string country,
+    string organization,
+    string domain);
 
 // Add an additional domain to the ACME configuration.
 void acme_config_add_domain(ACME_Config *config,
-    HTTP_String domain);
+    string domain);
 
 // Initialize the ACME client session. Returns 0 on
 // success and -1 on error.
@@ -244,18 +246,18 @@ void acme_free(ACME *acme);
 int acme_next_timeout(ACME *acme);
 
 // Process a timeout event
-void acme_process_timeout(ACME *acme, HTTP_Client *client);
+void acme_process_timeout(ACME *acme, CHTTP_Client *client);
 
 // Process an HTTP request. If the request wasn't
 // directed to the ACME client, false is returned.
 // If the request was processed, true is returned.
-bool acme_process_request(ACME *acme, HTTP_Request *request,
-    HTTP_ResponseBuilder builder);
+bool acme_process_request(ACME *acme, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder);
 
 // Process an HTTP response directed to the ACME
 // client. Returns true if a new certificate is
 // available.
 bool acme_process_response(ACME *acme, int result,
-    HTTP_Response *response);
+    CHTTP_Response *response);
 
 #endif // ACME_INCLUDED

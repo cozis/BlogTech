@@ -8,78 +8,21 @@
 #include <openssl/param_build.h>
 
 #include "jws.h"
-#include "json.h"
+#include "encode.h"
+#include "../3p/json.h"
 
 #define CEIL(X, Y) (((X) + (Y) - 1) / (Y))
+
+// Wrapper for base64url encoding without padding
+int jws_base64url_encode_inplace(char *buf, int len, int cap, bool with_padding)
+{
+    Encoding enc = with_padding ? ENCODING_B64URLPL : ENCODING_B64URLNPL;
+    return encode_inplace(buf, len, 0, cap, enc);
+}
 
 // Number of bytes required to encode
 // N bytes as base64url
 #define BASE64URL_LEN(N) (CEIL(N, 3) * 4)
-
-// Translates the "len" bytes pointed by "buf" to Base64URL
-// in the buffer itself and returns the number of written
-// bytes. Note that the result is not null-terminated.
-int jws_base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad)
-{
-    // The number of output bytes is equal to ceil(len/3)*4
-    if (len > INT_MAX / 4 * 3)
-        return -1;
-    int olen = (len + 2) / 3 * 4;
-
-    if (cap < olen)
-        return -1;
-
-    if (olen == 0)
-        return 0;
-    assert(len > 0);
-
-    // Since the conversion happens in-place, we need to translate
-    // left to right to avoid overwriting the input with the output
-    int ridx = len; // Read index
-    int widx = olen; // Write index
-
-    static const char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789-_";
-
-    // First we handle the input bytes that don't form a full group
-    int rem = len % 3;
-    if (rem == 2) {
-        uint8_t b = buf[--ridx];
-        uint8_t a = buf[--ridx];
-        buf[--widx] = '=';
-        buf[--widx] = table[(b << 2) & 0x3F];
-        buf[--widx] = table[((a << 4) | (b >> 4)) & 0x3F];
-        buf[--widx] = table[a >> 2];
-    } else if (rem == 1) {
-        uint8_t a = buf[--ridx];
-        buf[--widx] = '=';
-        buf[--widx] = '=';
-        buf[--widx] = table[(a << 4) & 0x3F];
-        buf[--widx] = table[a >> 2];
-    }
-
-    while (ridx > 0) {
-        ridx -= 3;
-        widx -= 4;
-        uint8_t a = buf[ridx+0] >> 2;
-        uint8_t b = ((buf[ridx+0] << 4) | (buf[ridx+1] >> 4)) & 0x3F;
-        uint8_t c = ((buf[ridx+1] << 2) | (buf[ridx+2] >> 6)) & 0x3F;
-        uint8_t d = buf[ridx+2] & 0x3F;
-        buf[widx+0] = table[a];
-        buf[widx+1] = table[b];
-        buf[widx+2] = table[c];
-        buf[widx+3] = table[d];
-    }
-
-    if (!pad) {
-        while (olen > 0 && buf[olen-1] == '=')
-            olen--;
-    }
-
-    return olen;
-}
 
 static void
 append(JWS_Builder *builder, char *str, int len)

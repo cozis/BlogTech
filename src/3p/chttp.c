@@ -3,7 +3,7 @@
 // This file was generated automatically. Do not modify directly.
 //
 // Refer to the end of this file for the license
-#ifndef HTTP_DONT_INCLUDE
+#ifndef CHTTP_DONT_INCLUDE
 #include "chttp.h"
 #endif
 
@@ -11,7 +11,7 @@
 // src/basic.c
 ////////////////////////////////////////////////////////////////////////////////////////
 
-bool http_streq(HTTP_String s1, HTTP_String s2)
+bool chttp_streq(CHTTP_String s1, CHTTP_String s2)
 {
 	if (s1.len != s2.len)
 		return false;
@@ -30,7 +30,7 @@ static char to_lower(char c)
 	return c;
 }
 
-bool http_streqcase(HTTP_String s1, HTTP_String s2)
+bool chttp_streqcase(CHTTP_String s1, CHTTP_String s2)
 {
 	if (s1.len != s2.len)
 		return false;
@@ -42,7 +42,7 @@ bool http_streqcase(HTTP_String s1, HTTP_String s2)
 	return true;
 }
 
-HTTP_String http_trim(HTTP_String s)
+CHTTP_String chttp_trim(CHTTP_String s)
 {
 	int i = 0;
 	while (i < s.len && (s.ptr[i] == ' ' || s.ptr[i] == '\t'))
@@ -66,7 +66,7 @@ static bool is_printable(char c)
     return c >= ' ' && c <= '~';
 }
 
-void print_bytes(HTTP_String prefix, HTTP_String src)
+void print_bytes(CHTTP_String prefix, CHTTP_String src)
 {
     if (src.len == 0)
         return;
@@ -107,16 +107,16 @@ void print_bytes(HTTP_String prefix, HTTP_String src)
     putc('\n', stream);
 }
 
-char *http_strerror(int code)
+char *chttp_strerror(int code)
 {
     switch (code) {
-        case HTTP_OK: return "No error";
-        case HTTP_ERROR_UNSPECIFIED: return "Unspecified error";
-        case HTTP_ERROR_OOM: return "Out of memory";
-        case HTTP_ERROR_BADURL: return "Invalid URL";
-        case HTTP_ERROR_REQLIMIT: return "Parallel request limit reached";
-        case HTTP_ERROR_BADHANDLE: return "Invalid handle";
-        case HTTP_ERROR_NOTLS: return "TLS support not built-in";
+        case CHTTP_OK: return "No error";
+        case CHTTP_ERROR_UNSPECIFIED: return "Unspecified error";
+        case CHTTP_ERROR_OOM: return "Out of memory";
+        case CHTTP_ERROR_BADURL: return "Invalid URL";
+        case CHTTP_ERROR_REQLIMIT: return "Parallel request limit reached";
+        case CHTTP_ERROR_BADHANDLE: return "Invalid handle";
+        case CHTTP_ERROR_NOTLS: return "TLS support not built-in";
     }
     return "???";
 }
@@ -254,7 +254,7 @@ consume_absolute_path(Scanner *s)
 //   path-absolute = "/" [ segment-nz *( "/" segment ) ]
 //   path-rootless = segment-nz *( "/" segment )
 //   path-empty    = 0<pchar>
-static int parse_path(Scanner *s, HTTP_String *path, int abempty)
+static int parse_path(Scanner *s, CHTTP_String *path, int abempty)
 {
 	int start = s->cur;
 
@@ -301,7 +301,7 @@ static int parse_path(Scanner *s, HTTP_String *path, int abempty)
 		// (do nothing)
 	}
 
-	*path = (HTTP_String) {
+	*path = (CHTTP_String) {
 		s->src + start,
 		s->cur - start,
 	};
@@ -341,7 +341,7 @@ static void invert_bytes(void *p, int len)
 	}
 }
 
-static int parse_ipv4(Scanner *s, HTTP_IPv4 *ipv4)
+static int parse_ipv4(Scanner *s, CHTTP_IPv4 *ipv4)
 {
 	unsigned int out = 0;
 	int i = 0;
@@ -415,7 +415,7 @@ static int parse_ipv6_comp(Scanner *s)
 	return (int) buf;
 }
 
-static int parse_ipv6(Scanner *s, HTTP_IPv6 *ipv6)
+static int parse_ipv6(Scanner *s, CHTTP_IPv6 *ipv6)
 {
 	unsigned short head[8];
 	unsigned short tail[8];
@@ -485,7 +485,7 @@ static int is_regname(char c)
 	return is_unreserved(c) || is_sub_delim(c);
 }
 
-static int parse_regname(Scanner *s, HTTP_String *regname)
+static int parse_regname(Scanner *s, CHTTP_String *regname)
 {
 	if (s->cur == s->len || !is_regname(s->src[s->cur]))
 		return -1;
@@ -498,7 +498,7 @@ static int parse_regname(Scanner *s, HTTP_String *regname)
 	return 0;
 }
 
-static int parse_host(Scanner *s, HTTP_Host *host)
+static int parse_host(Scanner *s, CHTTP_Host *host)
 {
 	int ret;
 	if (s->cur < s->len && s->src[s->cur] == '[') {
@@ -506,13 +506,13 @@ static int parse_host(Scanner *s, HTTP_Host *host)
 		s->cur++;
 
 		int start = s->cur;
-		HTTP_IPv6 ipv6;
+		CHTTP_IPv6 ipv6;
 		ret = parse_ipv6(s, &ipv6);
 		if (ret < 0) return ret;
 
-		host->mode = HTTP_HOST_MODE_IPV6;
+		host->mode = CHTTP_HOST_MODE_IPV6;
 		host->ipv6 = ipv6;
-		host->text = (HTTP_String) { s->src + start, s->cur - start };
+		host->text = (CHTTP_String) { s->src + start, s->cur - start };
 
 		if (s->cur == s->len || s->src[s->cur] != ']')
 			return -1;
@@ -521,22 +521,22 @@ static int parse_host(Scanner *s, HTTP_Host *host)
 	} else {
 
 		int start = s->cur;
-		HTTP_IPv4 ipv4;
+		CHTTP_IPv4 ipv4;
 		ret = parse_ipv4(s, &ipv4);
 		if (ret >= 0) {
-			host->mode = HTTP_HOST_MODE_IPV4;
+			host->mode = CHTTP_HOST_MODE_IPV4;
 			host->ipv4 = ipv4;
 		} else {
 			s->cur = start;
 
-			HTTP_String regname;
+			CHTTP_String regname;
 			ret = parse_regname(s, &regname);
 			if (ret < 0) return ret;
 
-			host->mode = HTTP_HOST_MODE_NAME;
+			host->mode = CHTTP_HOST_MODE_NAME;
 			host->name = regname;
 		}
-		host->text = (HTTP_String) { s->src + start, s->cur - start };
+		host->text = (CHTTP_String) { s->src + start, s->cur - start };
 	}
 
 	return 0;
@@ -565,16 +565,16 @@ static int is_userinfo(char c)
 }
 
 // authority = [ userinfo "@" ] host [ ":" port ]
-static int parse_authority(Scanner *s, HTTP_Authority *authority)
+static int parse_authority(Scanner *s, CHTTP_Authority *authority)
 {
-	HTTP_String userinfo;
+	CHTTP_String userinfo;
 	{
 		int start = s->cur;
 
         CONSUME_OPTIONAL_SEQUENCE(s, is_userinfo);
 
 		if (s->cur < s->len && s->src[s->cur] == '@') {
-			userinfo = (HTTP_String) {
+			userinfo = (CHTTP_String) {
 				s->src + start,
 				s->cur - start
 			};
@@ -582,11 +582,11 @@ static int parse_authority(Scanner *s, HTTP_Authority *authority)
 		} else {
 			// Rollback
 			s->cur = start;
-			userinfo = (HTTP_String) {NULL, 0};
+			userinfo = (CHTTP_String) {NULL, 0};
 		}
 	}
 
-	HTTP_Host host;
+	CHTTP_Host host;
 	{
 		int ret = parse_host(s, &host);
 		if (ret < 0)
@@ -613,9 +613,9 @@ static int parse_authority(Scanner *s, HTTP_Authority *authority)
 	return 0;
 }
 
-static int parse_uri(Scanner *s, HTTP_URL *url, int allow_fragment)
+static int parse_uri(Scanner *s, CHTTP_URL *url, int allow_fragment)
 {
-	HTTP_String scheme = {0};
+	CHTTP_String scheme = {0};
 	{
 		int start = s->cur;
 		if (s->cur == s->len || !is_scheme_head(s->src[s->cur]))
@@ -623,7 +623,7 @@ static int parse_uri(Scanner *s, HTTP_URL *url, int allow_fragment)
 		do
 			s->cur++;
 		while (s->cur < s->len && is_scheme_body(s->src[s->cur]));
-		scheme = (HTTP_String) {
+		scheme = (CHTTP_String) {
 			s->src + start,
 			s->cur - start,
 		};
@@ -634,7 +634,7 @@ static int parse_uri(Scanner *s, HTTP_URL *url, int allow_fragment)
 	}
 
 	int abempty = 0;
-	HTTP_Authority authority = {0};
+	CHTTP_Authority authority = {0};
 	if (s->len - s->cur > 1
 		&& s->src[s->cur+0] == '/'
 		&& s->src[s->cur+1] == '/') {
@@ -647,29 +647,29 @@ static int parse_uri(Scanner *s, HTTP_URL *url, int allow_fragment)
 		abempty = 1;
 	}
 
-	HTTP_String path;
+	CHTTP_String path;
 	int ret = parse_path(s, &path, abempty);
 	if (ret < 0) return ret;
 
-	HTTP_String query = {0};
+	CHTTP_String query = {0};
 	if (s->cur < s->len && s->src[s->cur] == '?') {
 		int start = s->cur;
 		do
 			s->cur++;
 		while (s->cur < s->len && is_query(s->src[s->cur]));
-		query = (HTTP_String) {
+		query = (CHTTP_String) {
 			s->src + start,
 			s->cur - start,
 		};
 	}
 
-	HTTP_String fragment = {0};
+	CHTTP_String fragment = {0};
 	if (allow_fragment && s->cur < s->len && s->src[s->cur] == '#') {
 		int start = s->cur;
 		do
 			s->cur++;
 		while (s->cur < s->len && is_fragment(s->src[s->cur]));
-		fragment = (HTTP_String) {
+		fragment = (CHTTP_String) {
 			s->src + start,
 			s->cur - start,
 		};
@@ -688,7 +688,7 @@ static int parse_uri(Scanner *s, HTTP_URL *url, int allow_fragment)
 // host           = IP-literal / IPv4address / reg-name
 // IP-literal    = "[" ( IPv6address / IPvFuture  ) "]"
 // reg-name      = *( unreserved / pct-encoded / sub-delims )
-static int parse_authority_form(Scanner *s, HTTP_Host *host, int *port)
+static int parse_authority_form(Scanner *s, CHTTP_Host *host, int *port)
 {
 	int ret;
 
@@ -717,23 +717,23 @@ static int parse_authority_form(Scanner *s, HTTP_Host *host, int *port)
 	return 0;
 }
 
-static int parse_origin_form(Scanner *s, HTTP_String *path, HTTP_String *query)
+static int parse_origin_form(Scanner *s, CHTTP_String *path, CHTTP_String *query)
 {
 	int ret, start;
 
 	start = s->cur;
 	ret = consume_absolute_path(s);
 	if (ret < 0) return ret;
-	*path = (HTTP_String) { s->src + start, s->cur - start };
+	*path = (CHTTP_String) { s->src + start, s->cur - start };
 
 	if (s->cur < s->len && s->src[s->cur] == '?') {
 		start = s->cur;
 		do
 			s->cur++;
 		while (s->cur < s->len && is_query(s->src[s->cur]));
-		*query = (HTTP_String) { s->src + start, s->cur - start };
+		*query = (CHTTP_String) { s->src + start, s->cur - start };
 	} else
-		*query = (HTTP_String) { NULL, 0 };
+		*query = (CHTTP_String) { NULL, 0 };
 
 	return 0;
 }
@@ -748,11 +748,11 @@ static int parse_asterisk_form(Scanner *s)
 	return 0;
 }
 
-static int parse_request_target(Scanner *s, HTTP_URL *url)
+static int parse_request_target(Scanner *s, CHTTP_URL *url)
 {
 	int ret;
 
-	memset(url, 0, sizeof(HTTP_URL));
+	memset(url, 0, sizeof(CHTTP_URL));
 
 	// asterisk-form
 	ret = parse_asterisk_form(s);
@@ -770,7 +770,7 @@ static int parse_request_target(Scanner *s, HTTP_URL *url)
 	return -1;
 }
 
-bool consume_str(Scanner *scan, HTTP_String token)
+bool consume_str(Scanner *scan, CHTTP_String token)
 {
     assert(token.len > 0);
 
@@ -790,10 +790,10 @@ static int is_header_body(char c)
 	return is_vchar(c) || c == ' ' || c == '\t';
 }
 
-static int parse_headers(Scanner *s, HTTP_Header *headers, int max_headers)
+static int parse_headers(Scanner *s, CHTTP_Header *headers, int max_headers)
 {
 	int num_headers = 0;
-    while (!consume_str(s, HTTP_STR("\r\n"))) {
+    while (!consume_str(s, CHTTP_STR("\r\n"))) {
 
         // RFC 9112:
 		//   field-line = field-name ":" OWS field-value OWS
@@ -813,7 +813,7 @@ static int parse_headers(Scanner *s, HTTP_Header *headers, int max_headers)
 		do
 			s->cur++;
 		while (s->cur < s->len && is_tchar(s->src[s->cur]));
-		HTTP_String name = { s->src + start, s->cur - start };
+		CHTTP_String name = { s->src + start, s->cur - start };
 
 		if (s->cur == s->len || s->src[s->cur] != ':')
 			return -1; // ERROR
@@ -821,13 +821,13 @@ static int parse_headers(Scanner *s, HTTP_Header *headers, int max_headers)
 
         start = s->cur;
         CONSUME_OPTIONAL_SEQUENCE(s, is_header_body);
-		HTTP_String body = { s->src + start, s->cur - start };
-		body = http_trim(body);
+		CHTTP_String body = { s->src + start, s->cur - start };
+		body = chttp_trim(body);
 
         if (num_headers < max_headers)
-            headers[num_headers++] = (HTTP_Header) { name, body };
+            headers[num_headers++] = (CHTTP_Header) { name, body };
 
-        if (!consume_str(s, HTTP_STR("\r\n"))) {
+        if (!consume_str(s, CHTTP_STR("\r\n"))) {
             return -1;
         }
     }
@@ -848,7 +848,7 @@ static bool is_space(char c)
 }
 
 static int
-parse_transfer_encoding(HTTP_String src, TransferEncodingOption *dst, int max)
+parse_transfer_encoding(CHTTP_String src, TransferEncodingOption *dst, int max)
 {
     Scanner s = { src.ptr, src.len, 0 };
 
@@ -859,10 +859,10 @@ parse_transfer_encoding(HTTP_String src, TransferEncodingOption *dst, int max)
 
         TransferEncodingOption opt;
         if (0) {}
-        else if (consume_str(&s, HTTP_STR("chunked")))  opt = TRANSFER_ENCODING_OPTION_CHUNKED;
-        else if (consume_str(&s, HTTP_STR("compress"))) opt = TRANSFER_ENCODING_OPTION_COMPRESS;
-        else if (consume_str(&s, HTTP_STR("deflate")))  opt = TRANSFER_ENCODING_OPTION_DEFLATE;
-        else if (consume_str(&s, HTTP_STR("gzip")))     opt = TRANSFER_ENCODING_OPTION_GZIP;
+        else if (consume_str(&s, CHTTP_STR("chunked")))  opt = TRANSFER_ENCODING_OPTION_CHUNKED;
+        else if (consume_str(&s, CHTTP_STR("compress"))) opt = TRANSFER_ENCODING_OPTION_COMPRESS;
+        else if (consume_str(&s, CHTTP_STR("deflate")))  opt = TRANSFER_ENCODING_OPTION_DEFLATE;
+        else if (consume_str(&s, CHTTP_STR("gzip")))     opt = TRANSFER_ENCODING_OPTION_GZIP;
         else return -1; // Invalid option
 
         if (num == max)
@@ -904,8 +904,8 @@ parse_content_length(const char *src, int len, uint64_t *out)
 }
 
 static int parse_body(Scanner *s,
-    HTTP_Header *headers, int num_headers,
-    HTTP_String *body, bool body_expected)
+    CHTTP_Header *headers, int num_headers,
+    CHTTP_String *body, bool body_expected)
 {
 
     // RFC 9112 section 6:
@@ -913,7 +913,7 @@ static int parse_body(Scanner *s,
     //   Transfer-Encoding header field. Request message framing is independent of method
     //   semantics.
 
-    int header_index = http_find_header(headers, num_headers, HTTP_STR("Transfer-Encoding"));
+    int header_index = chttp_find_header(headers, num_headers, CHTTP_STR("Transfer-Encoding"));
     if (header_index != -1) {
 
         // RFC 9112 section 6.1:
@@ -921,10 +921,10 @@ static int parse_body(Scanner *s,
         //   or process such a request in accordance with the Transfer-Encoding alone. Regardless,
         //   the server MUST close the connection after responding to such a request to avoid the
         //   potential attacks.
-        if (http_find_header(headers, num_headers, HTTP_STR("Content-Length")) != -1)
+        if (chttp_find_header(headers, num_headers, CHTTP_STR("Content-Length")) != -1)
             return -1;
 
-        HTTP_String value = headers[header_index].value;
+        CHTTP_String value = headers[header_index].value;
 
         // RFC 9112 section 6.1:
         //   If any transfer coding other than chunked is applied to a request's content, the
@@ -934,14 +934,14 @@ static int parse_body(Scanner *s,
         //   coding or terminate the message by closing the connection.
 
         TransferEncodingOption opts[8];
-        int num = parse_transfer_encoding(value, opts, HTTP_COUNT(opts));
+        int num = parse_transfer_encoding(value, opts, CHTTP_COUNT(opts));
         if (num != 1 || opts[0] != TRANSFER_ENCODING_OPTION_CHUNKED)
             return -1;
 
-        HTTP_String chunks_maybe[128];
-        HTTP_String *chunks = chunks_maybe;
+        CHTTP_String chunks_maybe[128];
+        CHTTP_String *chunks = chunks_maybe;
         int num_chunks = 0;
-        int max_chunks = HTTP_COUNT(chunks_maybe);
+        int max_chunks = CHTTP_COUNT(chunks_maybe);
 
         #define FREE_CHUNK_LIST         \
             if (chunks != chunks_maybe) \
@@ -1031,7 +1031,7 @@ static int parse_body(Scanner *s,
 
                 max_chunks *= 2;
 
-                HTTP_String *new_chunks = malloc(max_chunks * sizeof(HTTP_String));
+                CHTTP_String *new_chunks = malloc(max_chunks * sizeof(CHTTP_String));
                 if (new_chunks == NULL) {
                     if (chunks != chunks_maybe)
                         free(chunks);
@@ -1046,7 +1046,7 @@ static int parse_body(Scanner *s,
 
                 chunks = new_chunks;
             }
-            chunks[num_chunks++] = (HTTP_String) { chunk_ptr, chunk_len };
+            chunks[num_chunks++] = (CHTTP_String) { chunk_ptr, chunk_len };
         }
 
         char *content_ptr = content_start;
@@ -1055,7 +1055,7 @@ static int parse_body(Scanner *s,
             content_ptr += chunks[i].len;
         }
 
-        *body = (HTTP_String) {
+        *body = (CHTTP_String) {
             content_start,
             content_ptr - content_start
         };
@@ -1070,11 +1070,11 @@ static int parse_body(Scanner *s,
     //   If a valid Content-Length header field is present without Transfer-Encoding,
     //   its decimal value defines the expected message body length in octets.
 
-    header_index = http_find_header(headers, num_headers, HTTP_STR("Content-Length"));
+    header_index = chttp_find_header(headers, num_headers, CHTTP_STR("Content-Length"));
     if (header_index != -1) {
 
         // Have Content-Length
-        HTTP_String value = headers[header_index].value;
+        CHTTP_String value = headers[header_index].value;
 
         uint64_t tmp;
         if (parse_content_length(value.ptr, value.len, &tmp) < 0)
@@ -1086,7 +1086,7 @@ static int parse_body(Scanner *s,
         if (len > s->len - s->cur)
             return 0; // Incomplete request
 
-        *body = (HTTP_String) { s->src + s->cur, len };
+        *body = (CHTTP_String) { s->src + s->cur, len };
 
         s->cur += len;
         return 1;
@@ -1095,7 +1095,7 @@ static int parse_body(Scanner *s,
     // No Content-Length or Transfer-Encoding
     if (body_expected) return -1;
 
-    *body = (HTTP_String) { NULL, 0 };
+    *body = (CHTTP_String) { NULL, 0 };
     return 1;
 }
 
@@ -1113,7 +1113,7 @@ static int contains_head(char *src, int len)
     return 0;
 }
 
-static int parse_request(Scanner *s, HTTP_Request *req)
+static int parse_request(Scanner *s, CHTTP_Request *req)
 {
     if (!contains_head(s->src + s->cur, s->len - s->cur))
         return 0;
@@ -1121,15 +1121,15 @@ static int parse_request(Scanner *s, HTTP_Request *req)
     req->secure = false;
 
     if (0) {}
-    else if (consume_str(s, HTTP_STR("GET ")))     req->method = HTTP_METHOD_GET;
-    else if (consume_str(s, HTTP_STR("POST ")))    req->method = HTTP_METHOD_POST;
-    else if (consume_str(s, HTTP_STR("PUT ")))     req->method = HTTP_METHOD_PUT;
-    else if (consume_str(s, HTTP_STR("HEAD ")))    req->method = HTTP_METHOD_HEAD;
-    else if (consume_str(s, HTTP_STR("DELETE ")))  req->method = HTTP_METHOD_DELETE;
-    else if (consume_str(s, HTTP_STR("CONNECT "))) req->method = HTTP_METHOD_CONNECT;
-    else if (consume_str(s, HTTP_STR("OPTIONS "))) req->method = HTTP_METHOD_OPTIONS;
-    else if (consume_str(s, HTTP_STR("TRACE ")))   req->method = HTTP_METHOD_TRACE;
-    else if (consume_str(s, HTTP_STR("PATCH ")))   req->method = HTTP_METHOD_PATCH;
+    else if (consume_str(s, CHTTP_STR("GET ")))     req->method = CHTTP_METHOD_GET;
+    else if (consume_str(s, CHTTP_STR("POST ")))    req->method = CHTTP_METHOD_POST;
+    else if (consume_str(s, CHTTP_STR("PUT ")))     req->method = CHTTP_METHOD_PUT;
+    else if (consume_str(s, CHTTP_STR("HEAD ")))    req->method = CHTTP_METHOD_HEAD;
+    else if (consume_str(s, CHTTP_STR("DELETE ")))  req->method = CHTTP_METHOD_DELETE;
+    else if (consume_str(s, CHTTP_STR("CONNECT "))) req->method = CHTTP_METHOD_CONNECT;
+    else if (consume_str(s, CHTTP_STR("OPTIONS "))) req->method = CHTTP_METHOD_OPTIONS;
+    else if (consume_str(s, CHTTP_STR("TRACE ")))   req->method = CHTTP_METHOD_TRACE;
+    else if (consume_str(s, CHTTP_STR("PATCH ")))   req->method = CHTTP_METHOD_PATCH;
     else return -1;
 
     {
@@ -1147,47 +1147,47 @@ static int parse_request(Scanner *s, HTTP_Request *req)
         s->cur = s2.cur;
     }
 
-    if (consume_str(s, HTTP_STR(" HTTP/1.1\r\n"))) {
+    if (consume_str(s, CHTTP_STR(" HTTP/1.1\r\n"))) {
         req->minor = 1;
-    } else if (consume_str(s, HTTP_STR(" HTTP/1.0\r\n")) || consume_str(s, HTTP_STR(" HTTP/1\r\n"))) {
+    } else if (consume_str(s, CHTTP_STR(" HTTP/1.0\r\n")) || consume_str(s, CHTTP_STR(" HTTP/1\r\n"))) {
         req->minor = 0;
     } else {
         return -1;
     }
 
-    int num_headers = parse_headers(s, req->headers, HTTP_MAX_HEADERS);
+    int num_headers = parse_headers(s, req->headers, CHTTP_MAX_HEADERS);
     if (num_headers < 0)
         return num_headers;
     req->num_headers = num_headers;
 
     // Request methods that typically don't have a body
     bool body_expected = true;
-    if (req->method == HTTP_METHOD_GET ||
-        req->method == HTTP_METHOD_HEAD ||
-        req->method == HTTP_METHOD_DELETE ||
-        req->method == HTTP_METHOD_OPTIONS ||
-        req->method == HTTP_METHOD_TRACE)
+    if (req->method == CHTTP_METHOD_GET ||
+        req->method == CHTTP_METHOD_HEAD ||
+        req->method == CHTTP_METHOD_DELETE ||
+        req->method == CHTTP_METHOD_OPTIONS ||
+        req->method == CHTTP_METHOD_TRACE)
         body_expected = false;
 
     return parse_body(s, req->headers, req->num_headers, &req->body, body_expected);
 }
 
-int http_find_header(HTTP_Header *headers, int num_headers, HTTP_String name)
+int chttp_find_header(CHTTP_Header *headers, int num_headers, CHTTP_String name)
 {
 	for (int i = 0; i < num_headers; i++)
-		if (http_streqcase(name, headers[i].name))
+		if (chttp_streqcase(name, headers[i].name))
 			return i;
 	return -1;
 }
 
-static int parse_response(Scanner *s, HTTP_Response *res)
+static int parse_response(Scanner *s, CHTTP_Response *res)
 {
 	if (!contains_head(s->src + s->cur, s->len - s->cur))
 		return 0;
 
-    if (consume_str(s, HTTP_STR("HTTP/1.1 "))) {
+    if (consume_str(s, CHTTP_STR("HTTP/1.1 "))) {
         res->minor = 1;
-    } else if (consume_str(s, HTTP_STR("HTTP/1.0 ")) || consume_str(s, HTTP_STR("HTTP/1 "))) {
+    } else if (consume_str(s, CHTTP_STR("HTTP/1.0 ")) || consume_str(s, CHTTP_STR("HTTP/1 "))) {
         res->minor = 0;
     } else {
         return -1;
@@ -1219,7 +1219,7 @@ static int parse_response(Scanner *s, HTTP_Response *res)
         return -1;
     s->cur += 2;
 
-    int num_headers = parse_headers(s, res->headers, HTTP_MAX_HEADERS);
+    int num_headers = parse_headers(s, res->headers, CHTTP_MAX_HEADERS);
     if (num_headers < 0)
         return num_headers;
     res->num_headers = num_headers;
@@ -1239,7 +1239,7 @@ static int parse_response(Scanner *s, HTTP_Response *res)
     return parse_body(s, res->headers, res->num_headers, &res->body, body_expected);
 }
 
-int http_parse_ipv4(char *src, int len, HTTP_IPv4 *ipv4)
+int chttp_parse_ipv4(char *src, int len, CHTTP_IPv4 *ipv4)
 {
     Scanner s = {src, len, 0};
     int ret = parse_ipv4(&s, ipv4);
@@ -1247,7 +1247,7 @@ int http_parse_ipv4(char *src, int len, HTTP_IPv4 *ipv4)
     return s.cur;
 }
 
-int http_parse_ipv6(char *src, int len, HTTP_IPv6 *ipv6)
+int chttp_parse_ipv6(char *src, int len, CHTTP_IPv6 *ipv6)
 {
     Scanner s = {src, len, 0};
     int ret = parse_ipv6(&s, ipv6);
@@ -1255,7 +1255,7 @@ int http_parse_ipv6(char *src, int len, HTTP_IPv6 *ipv6)
     return s.cur;
 }
 
-int http_parse_url(char *src, int len, HTTP_URL *url)
+int chttp_parse_url(char *src, int len, CHTTP_URL *url)
 {
     Scanner s = {src, len, 0};
     int ret = parse_uri(&s, url, 1);
@@ -1264,7 +1264,7 @@ int http_parse_url(char *src, int len, HTTP_URL *url)
     return ret;
 }
 
-int http_parse_request(char *src, int len, HTTP_Request *req)
+int chttp_parse_request(char *src, int len, CHTTP_Request *req)
 {
     Scanner s = {src, len, 0};
     int ret = parse_request(&s, req);
@@ -1273,7 +1273,7 @@ int http_parse_request(char *src, int len, HTTP_Request *req)
     return ret;
 }
 
-int http_parse_response(char *src, int len, HTTP_Response *res)
+int chttp_parse_response(char *src, int len, CHTTP_Response *res)
 {
     Scanner s = {src, len, 0};
     int ret = parse_response(&s, res);
@@ -1282,14 +1282,14 @@ int http_parse_response(char *src, int len, HTTP_Response *res)
     return ret;
 }
 
-HTTP_String http_get_cookie(HTTP_Request *req, HTTP_String name)
+CHTTP_String chttp_get_cookie(CHTTP_Request *req, CHTTP_String name)
 {
     // Simple cookie parsing - does not handle quoted values or special characters
     // See RFC 6265 for full cookie specification
 
     for (int i = 0; i < req->num_headers; i++) {
 
-        if (!http_streqcase(req->headers[i].name, HTTP_STR("Cookie")))
+        if (!chttp_streqcase(req->headers[i].name, CHTTP_STR("Cookie")))
             continue;
 
         char *src = req->headers[i].value.ptr;
@@ -1307,7 +1307,7 @@ HTTP_String http_get_cookie(HTTP_Request *req, HTTP_String name)
             while (cur < len && src[cur] != '=')
                 cur++;
 
-            HTTP_String cookie_name = { src + off, cur - off };
+            CHTTP_String cookie_name = { src + off, cur - off };
 
             if (cur == len)
                 break;
@@ -1317,9 +1317,9 @@ HTTP_String http_get_cookie(HTTP_Request *req, HTTP_String name)
             while (cur < len && src[cur] != ';')
                 cur++;
 
-            HTTP_String cookie_value = { src + off, cur - off };
+            CHTTP_String cookie_value = { src + off, cur - off };
 
-            if (http_streq(name, cookie_name))
+            if (chttp_streq(name, cookie_name))
                 return cookie_value;
 
             if (cur == len)
@@ -1328,10 +1328,10 @@ HTTP_String http_get_cookie(HTTP_Request *req, HTTP_String name)
         }
     }
 
-    return HTTP_STR("");
+    return CHTTP_STR("");
 }
 
-HTTP_String http_get_param(HTTP_String body, HTTP_String str, char *mem, int cap)
+CHTTP_String chttp_get_param(CHTTP_String body, CHTTP_String str, char *mem, int cap)
 {
     // This is just a best-effort implementation
 
@@ -1344,29 +1344,29 @@ HTTP_String http_get_param(HTTP_String body, HTTP_String str, char *mem, int cap
 
     while (cur < len) {
 
-        HTTP_String name;
+        CHTTP_String name;
         {
             int off = cur;
             while (cur < len && src[cur] != '=' && src[cur] != '&')
                 cur++;
-            name = (HTTP_String) { src + off, cur - off };
+            name = (CHTTP_String) { src + off, cur - off };
         }
 
-        HTTP_String body = HTTP_STR("");
+        CHTTP_String body = CHTTP_STR("");
         if (cur < len) {
             cur++;
             if (src[cur-1] == '=') {
                 int off = cur;
                 while (cur < len && src[cur] != '&')
                     cur++;
-                body = (HTTP_String) { src + off, cur - off };
+                body = (CHTTP_String) { src + off, cur - off };
 
                 if (cur < len)
                     cur++;
             }
         }
 
-        if (http_streq(str, name)) {
+        if (chttp_streq(str, name)) {
 
             bool percent_encoded = false;
             for (int i = 0; i < body.len; i++)
@@ -1379,9 +1379,9 @@ HTTP_String http_get_param(HTTP_String body, HTTP_String str, char *mem, int cap
                 return body;
 
             if (body.len > cap)
-                return (HTTP_String) { NULL, 0 };
+                return (CHTTP_String) { NULL, 0 };
 
-            HTTP_String decoded = { mem, 0 };
+            CHTTP_String decoded = { mem, 0 };
             for (int i = 0; i < body.len; i++) {
 
                 char c = body.ptr[i];
@@ -1392,7 +1392,7 @@ HTTP_String http_get_param(HTTP_String body, HTTP_String str, char *mem, int cap
                         if (body.len - i < 3
                             || !is_hex_digit(body.ptr[i+1])
                             || !is_hex_digit(body.ptr[i+2]))
-                            return (HTTP_String) { NULL, 0 };
+                            return (CHTTP_String) { NULL, 0 };
 
                         int h = hex_digit_to_int(body.ptr[i+1]);
                         int l = hex_digit_to_int(body.ptr[i+2]);
@@ -1409,13 +1409,13 @@ HTTP_String http_get_param(HTTP_String body, HTTP_String str, char *mem, int cap
         }
     }
 
-    return HTTP_STR("");
+    return CHTTP_STR("");
 }
 
-int http_get_param_i(HTTP_String body, HTTP_String str)
+int chttp_get_param_i(CHTTP_String body, CHTTP_String str)
 {
     char buf[128];
-    HTTP_String out = http_get_param(body, str, buf, (int) sizeof(buf));
+    CHTTP_String out = chttp_get_param(body, str, buf, (int) sizeof(buf));
     if (out.len == 0 || !is_digit(out.ptr[0]))
         return -1;
 
@@ -1431,38 +1431,38 @@ int http_get_param_i(HTTP_String body, HTTP_String str)
     return res;
 }
 
-bool http_match_host(HTTP_Request *req, HTTP_String domain, int port)
+bool chttp_match_host(CHTTP_Request *req, CHTTP_String domain, int port)
 {
-    int idx = http_find_header(req->headers, req->num_headers, HTTP_STR("Host"));
+    int idx = chttp_find_header(req->headers, req->num_headers, CHTTP_STR("Host"));
     assert(idx != -1); // Requests without the host header are always rejected
 
     char tmp[1<<8];
     if (port > -1 && port != 80) {
         int ret = snprintf(tmp, sizeof(tmp), "%.*s:%d", domain.len, domain.ptr, port);
         assert(ret > 0);
-        domain = (HTTP_String) { tmp, ret };
+        domain = (CHTTP_String) { tmp, ret };
     }
 
-    HTTP_String host = req->headers[idx].value;
-    return http_streqcase(host, domain);
+    CHTTP_String host = req->headers[idx].value;
+    return chttp_streqcase(host, domain);
 }
 
 
 // <day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
-static int parse_date(Scanner *s, HTTP_Date *out)
+static int parse_date(Scanner *s, CHTTP_Date *out)
 {
-    struct { HTTP_String str; HTTP_WeekDay val; } week_day_table[] = {
-        { HTTP_STR("Mon, "), HTTP_WEEKDAY_MON },
-        { HTTP_STR("Tue, "), HTTP_WEEKDAY_TUE },
-        { HTTP_STR("Wed, "), HTTP_WEEKDAY_WED },
-        { HTTP_STR("Thu, "), HTTP_WEEKDAY_THU },
-        { HTTP_STR("Fri, "), HTTP_WEEKDAY_FRI },
-        { HTTP_STR("Sat, "), HTTP_WEEKDAY_SAT },
-        { HTTP_STR("Sun, "), HTTP_WEEKDAY_SUN },
+    struct { CHTTP_String str; CHTTP_WeekDay val; } week_day_table[] = {
+        { CHTTP_STR("Mon, "), CHTTP_WEEKDAY_MON },
+        { CHTTP_STR("Tue, "), CHTTP_WEEKDAY_TUE },
+        { CHTTP_STR("Wed, "), CHTTP_WEEKDAY_WED },
+        { CHTTP_STR("Thu, "), CHTTP_WEEKDAY_THU },
+        { CHTTP_STR("Fri, "), CHTTP_WEEKDAY_FRI },
+        { CHTTP_STR("Sat, "), CHTTP_WEEKDAY_SAT },
+        { CHTTP_STR("Sun, "), CHTTP_WEEKDAY_SUN },
     };
 
     bool found = false;
-    for (int i = 0; i < HTTP_COUNT(week_day_table); i++)
+    for (int i = 0; i < CHTTP_COUNT(week_day_table); i++)
         if (consume_str(s, week_day_table[i].str)) {
             out->week_day = week_day_table[i].val;
             found = true;
@@ -1480,23 +1480,23 @@ static int parse_date(Scanner *s, HTTP_Date *out)
         + (s->src[s->cur+1] - '0') * 1;
     s->cur += 2;
 
-    struct { HTTP_String str; HTTP_Month val; } month_table[] = {
-        { HTTP_STR(" Jan "), HTTP_MONTH_JAN },
-        { HTTP_STR(" Feb "), HTTP_MONTH_FEB },
-        { HTTP_STR(" Mar "), HTTP_MONTH_MAR },
-        { HTTP_STR(" Apr "), HTTP_MONTH_APR },
-        { HTTP_STR(" May "), HTTP_MONTH_MAY },
-        { HTTP_STR(" Jun "), HTTP_MONTH_JUN },
-        { HTTP_STR(" Jul "), HTTP_MONTH_JUL },
-        { HTTP_STR(" Aug "), HTTP_MONTH_AUG },
-        { HTTP_STR(" Sep "), HTTP_MONTH_SEP },
-        { HTTP_STR(" Oct "), HTTP_MONTH_OCT },
-        { HTTP_STR(" Nov "), HTTP_MONTH_NOV },
-        { HTTP_STR(" Dec "), HTTP_MONTH_DEC },
+    struct { CHTTP_String str; CHTTP_Month val; } month_table[] = {
+        { CHTTP_STR(" Jan "), CHTTP_MONTH_JAN },
+        { CHTTP_STR(" Feb "), CHTTP_MONTH_FEB },
+        { CHTTP_STR(" Mar "), CHTTP_MONTH_MAR },
+        { CHTTP_STR(" Apr "), CHTTP_MONTH_APR },
+        { CHTTP_STR(" May "), CHTTP_MONTH_MAY },
+        { CHTTP_STR(" Jun "), CHTTP_MONTH_JUN },
+        { CHTTP_STR(" Jul "), CHTTP_MONTH_JUL },
+        { CHTTP_STR(" Aug "), CHTTP_MONTH_AUG },
+        { CHTTP_STR(" Sep "), CHTTP_MONTH_SEP },
+        { CHTTP_STR(" Oct "), CHTTP_MONTH_OCT },
+        { CHTTP_STR(" Nov "), CHTTP_MONTH_NOV },
+        { CHTTP_STR(" Dec "), CHTTP_MONTH_DEC },
     };
 
     found = false;
-    for (int i = 0; i < HTTP_COUNT(month_table); i++)
+    for (int i = 0; i < CHTTP_COUNT(month_table); i++)
         if (consume_str(s, month_table[i].str)) {
             out->month = month_table[i].val;
             found = true;
@@ -1562,7 +1562,7 @@ static bool is_cookie_octet(char c)
            (c >= 0x5D && c <= 0x7E);
 }
 
-int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
+int chttp_parse_set_cookie(CHTTP_String str, CHTTP_SetCookie *out)
 {
     Scanner s = { str.ptr, str.len, 0 };
 
@@ -1573,7 +1573,7 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
     do
         s.cur++;
     while (s.cur < s.len && is_tchar(s.src[s.cur]));
-    out->name = (HTTP_String) { s.src + off, s.cur - off };
+    out->name = (CHTTP_String) { s.src + off, s.cur - off };
 
     // cookie-pair = cookie-name "=" cookie-value
     if (s.cur == s.len || s.src[s.cur] != '=')
@@ -1588,13 +1588,13 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
             s.cur++;
         if (s.cur == s.len || s.src[s.cur] != '"')
             return -1; // Missing closing double quote
-        out->value = (HTTP_String) { s.src + off, s.cur - off };
+        out->value = (CHTTP_String) { s.src + off, s.cur - off };
         s.cur++; // Consume closing double quote
     } else {
         int off = s.cur;
         while (s.cur < s.len && is_cookie_octet(s.src[s.cur]))
             s.cur++;
-        out->value = (HTTP_String) { s.src + off, s.cur - off };
+        out->value = (CHTTP_String) { s.src + off, s.cur - off };
     }
 
     // *( ";" SP cookie-av )
@@ -1603,20 +1603,20 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
     //             path-av / secure-av / httponly-av /
     //             extension-av
     out->secure = false;
-    out->http_only = false;
+    out->chttp_only = false;
     out->have_date = false;
     out->have_max_age = false;
     out->have_domain = false;
     out->have_path = false;
-    while (consume_str(&s, HTTP_STR("; "))) {
-        if (consume_str(&s, HTTP_STR("Expires="))) {
+    while (consume_str(&s, CHTTP_STR("; "))) {
+        if (consume_str(&s, CHTTP_STR("Expires="))) {
 
             // expires-av = "Expires=" sane-cookie-date
             if (parse_date(&s, &out->date) < 0)
                 return -1;
             out->have_date = true;
 
-        } else if (consume_str(&s, HTTP_STR("Max-Age="))) {
+        } else if (consume_str(&s, CHTTP_STR("Max-Age="))) {
 
             // max-age-av = "Max-Age=" non-zero-digit *DIGIT
 
@@ -1633,7 +1633,7 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
             out->have_max_age = true;
             out->max_age = value;
 
-        } else if (consume_str(&s, HTTP_STR("Domain="))) {
+        } else if (consume_str(&s, CHTTP_STR("Domain="))) {
 
             // domain-av = "Domain=" domain-value
             // domain-value = <subdomain>
@@ -1683,9 +1683,9 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
             }
 
             out->have_domain = true;
-            out->domain = (HTTP_String) { s.src + off, s.cur - off };
+            out->domain = (CHTTP_String) { s.src + off, s.cur - off };
 
-        } else if (consume_str(&s, HTTP_STR("Path="))) {
+        } else if (consume_str(&s, CHTTP_STR("Path="))) {
 
             // path-av = "Path=" path-value
             // path-value = <any CHAR except CTLs or ";">
@@ -1695,17 +1695,17 @@ int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out)
                 s.cur++;
 
             out->have_path = true;
-            out->path = (HTTP_String) { s.src + off, s.cur - off };
+            out->path = (CHTTP_String) { s.src + off, s.cur - off };
 
-        } else if (consume_str(&s, HTTP_STR("Secure"))) {
+        } else if (consume_str(&s, CHTTP_STR("Secure"))) {
 
             // secure-av = "Secure"
             out->secure = true;
 
-        } else if (consume_str(&s, HTTP_STR("HttpOnly"))) {
+        } else if (consume_str(&s, CHTTP_STR("HttpOnly"))) {
 
             // httponly-av = "HttpOnly"
-            out->http_only = true;
+            out->chttp_only = true;
 
         } else {
             return -1; // Invalid attribute
@@ -1765,6 +1765,8 @@ void client_secure_context_free(ClientSecureContext *ctx)
 {
 #ifdef HTTPS_ENABLED
     SSL_CTX_free(ctx->p);
+#else
+    (void) ctx;
 #endif
 }
 
@@ -1794,7 +1796,7 @@ static int servername_callback(SSL *ssl, int *ad, void *arg)
 #endif
 
 int server_secure_context_init(ServerSecureContext *ctx,
-    HTTP_String cert_file, HTTP_String key_file)
+    CHTTP_String cert_file, CHTTP_String key_file)
 {
 #ifdef HTTPS_ENABLED
     SSL_CTX *p = SSL_CTX_new(TLS_server_method());
@@ -1863,7 +1865,7 @@ void server_secure_context_free(ServerSecureContext *ctx)
 }
 
 int server_secure_context_add_certificate(ServerSecureContext *ctx,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file)
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file)
 {
 #ifdef HTTPS_ENABLED
     if (ctx->num_certs == SERVER_CERTIFICATE_LIMIT)
@@ -1969,7 +1971,7 @@ static int create_socket_pair(NATIVE_SOCKET *a, NATIVE_SOCKET *b, bool *global_c
         WSADATA wsaData;
         WORD wVersionRequested = MAKEWORD(2, 2);
         if (WSAStartup(wVersionRequested, &wsaData))
-            return HTTP_ERROR_UNSPECIFIED;
+            return CHTTP_ERROR_UNSPECIFIED;
 
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sock == INVALID_SOCKET && *global_cleanup)
@@ -1979,7 +1981,7 @@ static int create_socket_pair(NATIVE_SOCKET *a, NATIVE_SOCKET *b, bool *global_c
     if (sock == INVALID_SOCKET) {
         if (*global_cleanup)
             WSACleanup();
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
     // Bind to loopback address with port 0 (dynamic port assignment)
@@ -1994,21 +1996,21 @@ static int create_socket_pair(NATIVE_SOCKET *a, NATIVE_SOCKET *b, bool *global_c
         closesocket(sock);
         if (*global_cleanup)
             WSACleanup();
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
     if (getsockname(sock, (struct sockaddr*)&addr, &addr_len) == SOCKET_ERROR) {
         closesocket(sock);
         if (*global_cleanup)
             WSACleanup();
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
         closesocket(sock);
         if (*global_cleanup)
             WSACleanup();
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
     // Optional: Set socket to non-blocking mode
@@ -2018,20 +2020,20 @@ static int create_socket_pair(NATIVE_SOCKET *a, NATIVE_SOCKET *b, bool *global_c
         closesocket(sock);
         if (*global_cleanup)
             WSACleanup();
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
     *a = sock;
     *b = sock;
-    return HTTP_OK;
+    return CHTTP_OK;
 #else
     *global_cleanup = false;
     int fds[2];
     if (pipe(fds) < 0)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     *a = fds[0];
     *b = fds[1];
-    return HTTP_OK;
+    return CHTTP_OK;
 #endif
 }
 
@@ -2040,23 +2042,23 @@ static int set_socket_blocking(NATIVE_SOCKET sock, bool value)
 #ifdef _WIN32
     u_long mode = !value;
     if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR)
-        return HTTP_ERROR_UNSPECIFIED;
-    return HTTP_OK;
+        return CHTTP_ERROR_UNSPECIFIED;
+    return CHTTP_OK;
 #endif
 
 #ifdef __linux__
     int flags = fcntl(sock, F_GETFL, 0);
     if (flags < 0)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     if (value) flags &= ~O_NONBLOCK;
     else       flags |= O_NONBLOCK;
     if (fcntl(sock, F_SETFL, flags) < 0)
-        return HTTP_ERROR_UNSPECIFIED;
-    return HTTP_OK;
+        return CHTTP_ERROR_UNSPECIFIED;
+    return CHTTP_OK;
 #endif
 }
 
-static NATIVE_SOCKET create_listen_socket(HTTP_String addr,
+static NATIVE_SOCKET create_listen_socket(CHTTP_String addr,
     Port port, bool reuse_addr, int backlog)
 {
     NATIVE_SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -2142,7 +2144,7 @@ int socket_manager_init(SocketManager *sm, Socket *socks,
         socks[i].state = SOCKET_STATE_FREE;
         socks[i].gen = 1;
     }
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 void socket_manager_free(SocketManager *sm)
@@ -2168,57 +2170,57 @@ void socket_manager_free(SocketManager *sm)
 }
 
 int socket_manager_listen_tcp(SocketManager *sm,
-    HTTP_String addr, Port port, int backlog,
+    CHTTP_String addr, Port port, int backlog,
     bool reuse_addr)
 {
     if (sm->plain_sock != NATIVE_SOCKET_INVALID)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
     sm->plain_sock = create_listen_socket(addr, port, reuse_addr, backlog);
     if (sm->plain_sock == NATIVE_SOCKET_INVALID)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 int socket_manager_listen_tls(SocketManager *sm,
-    HTTP_String addr, Port port, int backlog,
-    bool reuse_addr, HTTP_String cert_file,
-    HTTP_String key_file)
+    CHTTP_String addr, Port port, int backlog,
+    bool reuse_addr, CHTTP_String cert_file,
+    CHTTP_String key_file)
 {
 #ifndef HTTPS_ENABLED
-    return HTTP_ERROR_NOTLS;
+    return CHTTP_ERROR_NOTLS;
 #endif
 
     if (sm->secure_sock != NATIVE_SOCKET_INVALID)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
     sm->secure_sock = create_listen_socket(addr, port, reuse_addr, backlog);
     if (sm->secure_sock == NATIVE_SOCKET_INVALID)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
     if (server_secure_context_init(&sm->server_secure_context,
         cert_file, key_file) < 0) {
         CLOSE_NATIVE_SOCKET(sm->secure_sock);
         sm->secure_sock = NATIVE_SOCKET_INVALID;
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
     }
 
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 int socket_manager_add_certificate(SocketManager *sm,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file)
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file)
 {
     if (sm->secure_sock == NATIVE_SOCKET_INVALID)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
     int ret = server_secure_context_add_certificate(
         &sm->server_secure_context, domain, cert_file, key_file);
     if (ret < 0)
         return ret;
 
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 static bool is_secure(Socket *s)
@@ -2227,6 +2229,7 @@ static bool is_secure(Socket *s)
     return s->server_secure_context != NULL
         || s->client_secure_context != NULL;
 #else
+    (void) s;
     return false;
 #endif
 }
@@ -2357,13 +2360,13 @@ static void socket_update(Socket *s)
                     struct sockaddr_in buf;
                     buf.sin_family = AF_INET;
                     buf.sin_port = htons(addr.port);
-                    memcpy(&buf.sin_addr, &addr.ipv4, sizeof(HTTP_IPv4));
+                    memcpy(&buf.sin_addr, &addr.ipv4, sizeof(CHTTP_IPv4));
                     ret = connect(sock, (struct sockaddr*) &buf, sizeof(buf));
                 } else {
                     struct sockaddr_in6 buf;
                     buf.sin6_family = AF_INET6;
                     buf.sin6_port = htons(addr.port);
-                    memcpy(&buf.sin6_addr, &addr.ipv6, sizeof(HTTP_IPv6));
+                    memcpy(&buf.sin6_addr, &addr.ipv6, sizeof(CHTTP_IPv6));
                     ret = connect(sock, (struct sockaddr*) &buf, sizeof(buf));
                 }
 
@@ -2620,15 +2623,14 @@ int socket_manager_wakeup(SocketManager *sm)
     // NOTE: It's assumed send/write operate atomically
     //       on The descriptor.
     char byte = 1;
-    int ret = 0;
 #ifdef _WIN32
     if (send(sm->signal_sock, &byte, 1, 0) < 0)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 #else
     if (write(sm->signal_sock, &byte, 1) < 0)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 #endif
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 void socket_manager_register_events(
@@ -2673,6 +2675,9 @@ void socket_manager_register_events(
         if (s->state == SOCKET_STATE_FREE)
             continue;
         j++;
+
+        if (s->silent)
+            continue;
 
         // If at least one socket can be processed, return an
         // empty list.
@@ -2733,10 +2738,6 @@ int socket_manager_translate_events(
             if (sm->num_used == sm->max_used)
                 continue;
 
-            // Determine whether the event came from
-            // the encrypted listener or not.
-            bool secure = (reg.polled[i].fd == sm->secure_sock);
-
             Socket *s = sm->sockets;
             while (s->state != SOCKET_STATE_FREE) {
                 s++;
@@ -2756,7 +2757,12 @@ int socket_manager_translate_events(
             s->sock   = sock;
             s->events = 0;
             s->user   = NULL;
+            s->silent = false;
 #ifdef HTTPS_ENABLED
+            // Determine whether the event came from
+            // the encrypted listener or not.
+            bool secure = (reg.polled[i].fd == sm->secure_sock);
+
             s->ssl = NULL;
             s->server_secure_context = NULL;
             s->client_secure_context = NULL;
@@ -2787,7 +2793,10 @@ int socket_manager_translate_events(
 #endif
 
         } else {
+
             Socket *s = reg.ptrs[i];
+            assert(!s->silent);
+
             socket_update(s);
         }
     }
@@ -2797,6 +2806,9 @@ int socket_manager_translate_events(
         if (s->state == SOCKET_STATE_FREE)
             continue;
         j++;
+
+        if (s->silent)
+            continue;
 
         if (s->state == SOCKET_STATE_DIED) {
 
@@ -2849,7 +2861,7 @@ static int resolve_connect_targets(ConnectTarget *targets,
                 RegisteredName *name = malloc(sizeof(RegisteredName) + targets[i].name.len + 1);
                 if (name == NULL) {
                     free_addr_list(resolved, num_resolved);
-                    return HTTP_ERROR_OOM;
+                    return CHTTP_ERROR_OOM;
                 }
                 name->refs = 0;
                 memcpy(name->data, targets[i].name.ptr, targets[i].name.len);
@@ -2859,7 +2871,7 @@ static int resolve_connect_targets(ConnectTarget *targets,
                 // 512 bytes is more than enough for a DNS hostname (max 253 chars)
                 char hostname[1<<9];
                 if (targets[i].name.len >= (int) sizeof(hostname))
-                    return HTTP_ERROR_OOM;
+                    return CHTTP_ERROR_OOM;
                 memcpy(hostname, targets[i].name.ptr, targets[i].name.len);
                 hostname[targets[i].name.len] = '\0';
 #endif
@@ -2871,12 +2883,12 @@ static int resolve_connect_targets(ConnectTarget *targets,
                     free(name);
 #endif
                     free_addr_list(resolved, num_resolved);
-                    return HTTP_ERROR_UNSPECIFIED;
+                    return CHTTP_ERROR_UNSPECIFIED;
                 }
 
                 for (struct addrinfo *rp = res; rp; rp = rp->ai_next) {
                     if (rp->ai_family == AF_INET) {
-                        HTTP_IPv4 ipv4 = *(HTTP_IPv4*) &((struct sockaddr_in*)rp->ai_addr)->sin_addr;
+                        CHTTP_IPv4 ipv4 = *(CHTTP_IPv4*) &((struct sockaddr_in*)rp->ai_addr)->sin_addr;
                         if (num_resolved < max_resolved) {
                             resolved[num_resolved].is_ipv4 = true;
                             resolved[num_resolved].ipv4 = ipv4;
@@ -2888,7 +2900,7 @@ static int resolve_connect_targets(ConnectTarget *targets,
                             num_resolved++;
                         }
                     } else if (rp->ai_family == AF_INET6) {
-                        HTTP_IPv6 ipv6 = *(HTTP_IPv6*) &((struct sockaddr_in6*)rp->ai_addr)->sin6_addr;
+                        CHTTP_IPv6 ipv6 = *(CHTTP_IPv6*) &((struct sockaddr_in6*)rp->ai_addr)->sin6_addr;
                         if (num_resolved < max_resolved) {
                             resolved[num_resolved].is_ipv4 = false;
                             resolved[num_resolved].ipv6 = ipv6;
@@ -2944,17 +2956,17 @@ int socket_connect(SocketManager *sm, int num_targets,
     void *user)
 {
     if (sm->num_used == sm->max_used)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
 #ifdef HTTPS_ENABLED
     if (!sm->at_least_one_secure_connect) {
         if (client_secure_context_init(&sm->client_secure_context) < 0)
-            return HTTP_ERROR_UNSPECIFIED;
+            return CHTTP_ERROR_UNSPECIFIED;
         sm->at_least_one_secure_connect = true;
     }
 #else
     if (secure)
-        return HTTP_ERROR_NOTLS;
+        return CHTTP_ERROR_NOTLS;
 #endif
 
     AddressAndPort resolved[MAX_CONNECT_TARGETS];
@@ -2962,7 +2974,7 @@ int socket_connect(SocketManager *sm, int num_targets,
         targets, num_targets, resolved, MAX_CONNECT_TARGETS);
 
     if (num_resolved <= 0)
-        return HTTP_ERROR_UNSPECIFIED;
+        return CHTTP_ERROR_UNSPECIFIED;
 
     Socket *s = sm->sockets;
     while (s->state != SOCKET_STATE_FREE) {
@@ -2979,7 +2991,7 @@ int socket_connect(SocketManager *sm, int num_targets,
         s->next_addr = 0;
         s->addrs = malloc(num_resolved * sizeof(AddressAndPort));
         if (s->addrs == NULL)
-            return HTTP_ERROR_OOM;
+            return CHTTP_ERROR_OOM;
         for (int i = 0; i < num_resolved; i++)
             s->addrs[i] = resolved[i];
     }
@@ -2987,6 +2999,7 @@ int socket_connect(SocketManager *sm, int num_targets,
     UPDATE_STATE(s->state, SOCKET_STATE_PENDING);
     s->sock = NATIVE_SOCKET_INVALID;
     s->user = user;
+    s->silent = false;
 #ifdef HTTPS_ENABLED
     s->server_secure_context = NULL;
     s->client_secure_context = NULL;
@@ -2996,11 +3009,13 @@ int socket_connect(SocketManager *sm, int num_targets,
         s->client_secure_context = &sm->client_secure_context;
         s->dont_verify_cert = dont_verify_cert;
     }
+#else
+    (void) dont_verify_cert;
 #endif
     sm->num_used++;
 
     socket_update(s);
-    return HTTP_OK;
+    return CHTTP_OK;
 }
 
 static bool would_block(void)
@@ -3069,6 +3084,9 @@ int socket_recv(SocketManager *sm, SocketHandle handle,
             ret = 0;
         }
         return ret;
+#else
+        // Unreachable
+        return 0;
 #endif
     }
 }
@@ -3117,13 +3135,15 @@ int socket_send(SocketManager *sm, SocketHandle handle,
             ret = 0;
         }
         return ret;
+#else
+        // Unreachable
+        return 0;
 #endif
     }
 }
 
 void socket_close(SocketManager *sm, SocketHandle handle)
 {
-    int ret;
     Socket *s = handle_to_socket(sm, handle);
     if (s == NULL)
         return;
@@ -3154,7 +3174,6 @@ void socket_set_user(SocketManager *sm, SocketHandle handle, void *user)
 
 bool socket_ready(SocketManager *sm, SocketHandle handle)
 {
-    bool ready = false;
     Socket *s = handle_to_socket(sm, handle);
     if (s == NULL)
        return false;
@@ -3163,6 +3182,15 @@ bool socket_ready(SocketManager *sm, SocketHandle handle)
         return true;
 
     return false;
+}
+
+void socket_silent(SocketManager *sm, SocketHandle handle, bool value)
+{
+    Socket *s = handle_to_socket(sm, handle);
+    if (s == NULL)
+       return;
+
+    s->silent = value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -3349,7 +3377,7 @@ int byte_queue_write_setmincap(ByteQueue *queue, uint32_t mincap)
             if (size > queue->limit)
                 size = queue->limit;
 
-            uint8_t *data = malloc(size);
+            char *data = malloc(size);
             if (!data) {
                 queue->flags |= BYTE_QUEUE_ERROR;
                 return 0;
@@ -3406,7 +3434,7 @@ void byte_queue_write_fmt2(ByteQueue *queue,
 		return;
 	}
 
-	if (len > dst.len) {
+	if ((size_t) len > dst.len) {
 		byte_queue_write_ack(queue, 0);
 		byte_queue_write_setmincap(queue, len+1);
 		dst = byte_queue_write_buf(queue);
@@ -3447,7 +3475,7 @@ void byte_queue_patch(ByteQueue *queue, ByteQueueOffset off,
     assert(len <= queue->used - (off - queue->curs));
 
     // Perform the patch
-    uint8_t *dst = queue->data + queue->head + (off - queue->curs);
+    char *dst = queue->data + queue->head + (off - queue->curs);
     memcpy(dst, src, len);
 }
 
@@ -3499,7 +3527,7 @@ static EVP_PKEY *generate_rsa_key_pair(int key_bits)
     return pkey;
 }
 
-static X509 *create_certificate(EVP_PKEY *pkey, HTTP_String C, HTTP_String O, HTTP_String CN, int days)
+static X509 *create_certificate(EVP_PKEY *pkey, CHTTP_String C, CHTTP_String O, CHTTP_String CN, int days)
 {
     X509 *x509 = X509_new();
     if (!x509)
@@ -3535,7 +3563,7 @@ static X509 *create_certificate(EVP_PKEY *pkey, HTTP_String C, HTTP_String O, HT
     return x509;
 }
 
-static int save_private_key(EVP_PKEY *pkey, HTTP_String file)
+static int save_private_key(EVP_PKEY *pkey, CHTTP_String file)
 {
     char copy[1<<10];
     if (file.len >= (int) sizeof(copy))
@@ -3557,7 +3585,7 @@ static int save_private_key(EVP_PKEY *pkey, HTTP_String file)
     return 0;
 }
 
-static int save_certificate(X509 *x509, HTTP_String file)
+static int save_certificate(X509 *x509, CHTTP_String file)
 {
     char copy[1<<10];
     if (file.len >= (int) sizeof(copy))
@@ -3579,8 +3607,8 @@ static int save_certificate(X509 *x509, HTTP_String file)
     return 0;
 }
 
-int http_create_test_certificate(HTTP_String C, HTTP_String O, HTTP_String CN,
-    HTTP_String cert_file, HTTP_String key_file)
+int chttp_create_test_certificate(CHTTP_String C, CHTTP_String O, CHTTP_String CN,
+    CHTTP_String cert_file, CHTTP_String key_file)
 {
     EVP_PKEY *pkey = generate_rsa_key_pair(2048);
     if (pkey == NULL)
@@ -3611,8 +3639,8 @@ int http_create_test_certificate(HTTP_String C, HTTP_String O, HTTP_String CN,
 
 #else
 
-int http_create_test_certificate(HTTP_String C, HTTP_String O, HTTP_String CN,
-    HTTP_String cert_file, HTTP_String key_file)
+int chttp_create_test_certificate(CHTTP_String C, CHTTP_String O, CHTTP_String CN,
+    CHTTP_String cert_file, CHTTP_String key_file)
 {
     (void) C;
     (void) O;
@@ -3628,13 +3656,13 @@ int http_create_test_certificate(HTTP_String C, HTTP_String O, HTTP_String CN,
 // src/client.c
 ////////////////////////////////////////////////////////////////////////////////////////
 
-static void http_client_conn_free(HTTP_ClientConn *conn)
+static void chttp_client_conn_free(CHTTP_ClientConn *conn)
 {
     byte_queue_free(&conn->output);
     byte_queue_free(&conn->input);
 }
 
-int http_client_init(HTTP_Client *client)
+int chttp_client_init(CHTTP_Client *client)
 {
     client->input_buffer_limit = 1<<20;
     client->output_buffer_limit = 1<<20;
@@ -3642,8 +3670,8 @@ int http_client_init(HTTP_Client *client)
     client->cookie_jar.count = 0;
 
     client->num_conns = 0;
-    for (int i = 0; i < HTTP_CLIENT_CAPACITY; i++) {
-        client->conns[i].state = HTTP_CLIENT_CONN_FREE;
+    for (int i = 0; i < CHTTP_CLIENT_CAPACITY; i++) {
+        client->conns[i].state = CHTTP_CLIENT_CONN_FREE;
         client->conns[i].gen = 0;
     }
 
@@ -3651,10 +3679,10 @@ int http_client_init(HTTP_Client *client)
     client->ready_head = 0;
 
     return socket_manager_init(&client->sockets,
-        client->socket_pool, HTTP_CLIENT_CAPACITY);
+        client->socket_pool, CHTTP_CLIENT_CAPACITY);
 }
 
-void http_client_free(HTTP_Client *client)
+void chttp_client_free(CHTTP_Client *client)
 {
     socket_manager_free(&client->sockets);
 
@@ -3662,63 +3690,63 @@ void http_client_free(HTTP_Client *client)
         free(client->cookie_jar.items[i].name.ptr);
 
     for (int i = 0, j = 0; j < client->num_conns; i++) {
-        HTTP_ClientConn *conn = &client->conns[i];
-        if (conn->state == HTTP_CLIENT_CONN_FREE)
+        CHTTP_ClientConn *conn = &client->conns[i];
+        if (conn->state == CHTTP_CLIENT_CONN_FREE)
             continue;
         j++;
 
-        http_client_conn_free(conn);
+        chttp_client_conn_free(conn);
     }
 }
 
-void http_client_set_input_limit(HTTP_Client *client, uint32_t limit)
+void chttp_client_set_input_limit(CHTTP_Client *client, uint32_t limit)
 {
     client->input_buffer_limit = limit;
 }
 
-void http_client_set_output_limit(HTTP_Client *client, uint32_t limit)
+void chttp_client_set_output_limit(CHTTP_Client *client, uint32_t limit)
 {
     client->output_buffer_limit = limit;
 }
 
-int http_client_wakeup(HTTP_Client *client)
+int chttp_client_wakeup(CHTTP_Client *client)
 {
     return socket_manager_wakeup(&client->sockets);
 }
 
 // Get a connection pointer from a request builder.
 // If the builder is invalid, returns NULL.
-static HTTP_ClientConn*
-request_builder_to_conn(HTTP_RequestBuilder builder)
+static CHTTP_ClientConn*
+request_builder_to_conn(CHTTP_RequestBuilder builder)
 {
-    HTTP_Client *client = builder.client;
+    CHTTP_Client *client = builder.client;
     if (client == NULL)
         return NULL;
 
-    if (builder.index >= HTTP_CLIENT_CAPACITY)
+    if (builder.index >= CHTTP_CLIENT_CAPACITY)
         return NULL;
 
-    HTTP_ClientConn *conn = &client->conns[builder.index];
+    CHTTP_ClientConn *conn = &client->conns[builder.index];
     if (builder.gen != conn->gen)
         return NULL;
 
     return conn;
 }
 
-HTTP_RequestBuilder http_client_get_builder(HTTP_Client *client)
+CHTTP_RequestBuilder chttp_client_get_builder(CHTTP_Client *client)
 {
     // Find a free connection slot
-    if (client->num_conns == HTTP_CLIENT_CAPACITY)
-        return (HTTP_RequestBuilder) { NULL, -1, -1 };
+    if (client->num_conns == CHTTP_CLIENT_CAPACITY)
+        return (CHTTP_RequestBuilder) { NULL, -1, -1 };
 
     int i = 0;
-    while (client->conns[i].state != HTTP_CLIENT_CONN_FREE) {
+    while (client->conns[i].state != CHTTP_CLIENT_CONN_FREE) {
         i++;
-        assert(i < HTTP_CLIENT_CAPACITY);
+        assert(i < CHTTP_CLIENT_CAPACITY);
     }
     client->num_conns++;
 
-    client->conns[i].state = HTTP_CLIENT_CONN_WAIT_METHOD;
+    client->conns[i].state = CHTTP_CLIENT_CONN_WAIT_METHOD;
     client->conns[i].handle = SOCKET_HANDLE_INVALID;
     client->conns[i].client = client;
     client->conns[i].user = NULL;
@@ -3726,30 +3754,30 @@ HTTP_RequestBuilder http_client_get_builder(HTTP_Client *client)
     byte_queue_init(&client->conns[i].input,  client->input_buffer_limit);
     byte_queue_init(&client->conns[i].output, client->output_buffer_limit);
 
-    return (HTTP_RequestBuilder) { client, i, client->conns[i].gen };
+    return (CHTTP_RequestBuilder) { client, i, client->conns[i].gen };
 }
 
 // TODO: test this function
-static bool is_subdomain(HTTP_String domain, HTTP_String subdomain)
+static bool is_subdomain(CHTTP_String domain, CHTTP_String subdomain)
 {
-    if (http_streq(domain, subdomain))
+    if (chttp_streq(domain, subdomain))
         return true; // Exact match
 
     if (domain.len > subdomain.len)
         return false;
 
-    HTTP_String subdomain_suffix = {
+    CHTTP_String subdomain_suffix = {
         subdomain.ptr + subdomain.len - domain.len,
         domain.len
     };
-    if (subdomain_suffix.ptr[-1] != '.' || !http_streq(domain, subdomain_suffix))
+    if (subdomain_suffix.ptr[-1] != '.' || !chttp_streq(domain, subdomain_suffix))
         return false;
 
     return true;
 }
 
 // TODO: test this function
-static bool is_subpath(HTTP_String path, HTTP_String subpath)
+static bool is_subpath(CHTTP_String path, CHTTP_String subpath)
 {
     if (path.len > subpath.len)
         return false;
@@ -3758,16 +3786,16 @@ static bool is_subpath(HTTP_String path, HTTP_String subpath)
         return false;
 
     subpath.len = path.len;
-    return http_streq(path, subpath);
+    return chttp_streq(path, subpath);
 }
 
-static bool should_send_cookie(HTTP_CookieJarEntry entry, HTTP_URL url)
+static bool should_send_cookie(CHTTP_CookieJarEntry entry, CHTTP_URL url)
 {
     // TODO: If the cookie is expired, ignore it regardless
 
     if (entry.exact_domain) {
         // Cookie domain and URL domain must match exactly
-        if (!http_streq(entry.domain, url.authority.host.text))
+        if (!chttp_streq(entry.domain, url.authority.host.text))
             return false;
     } else {
         // The URL's domain must match or be a subdomain of the cookie's domain
@@ -3777,7 +3805,7 @@ static bool should_send_cookie(HTTP_CookieJarEntry entry, HTTP_URL url)
 
     if (entry.exact_path) {
         // Cookie path and URL path must match exactly
-        if (!http_streq(entry.path, url.path))
+        if (!chttp_streq(entry.path, url.path))
             return false;
     } else {
         if (!is_subpath(entry.path, url.path))
@@ -3785,41 +3813,41 @@ static bool should_send_cookie(HTTP_CookieJarEntry entry, HTTP_URL url)
     }
 
     if (entry.secure) {
-        if (!http_streq(url.scheme, HTTP_STR("https")))
+        if (!chttp_streq(url.scheme, CHTTP_STR("https")))
             return false; // Cookie was marked as secure but the target URL is not HTTPS
     }
 
     return true;
 }
 
-static HTTP_String get_method_string(HTTP_Method method)
+static CHTTP_String get_method_string(CHTTP_Method method)
 {
     switch (method) {
-        case HTTP_METHOD_GET    : return HTTP_STR("GET");
-        case HTTP_METHOD_HEAD   : return HTTP_STR("HEAD");
-        case HTTP_METHOD_POST   : return HTTP_STR("POST");
-        case HTTP_METHOD_PUT    : return HTTP_STR("PUT");
-        case HTTP_METHOD_DELETE : return HTTP_STR("DELETE");
-        case HTTP_METHOD_CONNECT: return HTTP_STR("CONNECT");
-        case HTTP_METHOD_OPTIONS: return HTTP_STR("OPTIONS");
-        case HTTP_METHOD_TRACE  : return HTTP_STR("TRACE");
-        case HTTP_METHOD_PATCH  : return HTTP_STR("PATCH");
+        case CHTTP_METHOD_GET    : return CHTTP_STR("GET");
+        case CHTTP_METHOD_HEAD   : return CHTTP_STR("HEAD");
+        case CHTTP_METHOD_POST   : return CHTTP_STR("POST");
+        case CHTTP_METHOD_PUT    : return CHTTP_STR("PUT");
+        case CHTTP_METHOD_DELETE : return CHTTP_STR("DELETE");
+        case CHTTP_METHOD_CONNECT: return CHTTP_STR("CONNECT");
+        case CHTTP_METHOD_OPTIONS: return CHTTP_STR("OPTIONS");
+        case CHTTP_METHOD_TRACE  : return CHTTP_STR("TRACE");
+        case CHTTP_METHOD_PATCH  : return CHTTP_STR("PATCH");
     }
-    return HTTP_STR("???");
+    return CHTTP_STR("???");
 }
 
-void http_request_builder_set_user(HTTP_RequestBuilder builder, void *user)
+void chttp_request_builder_set_user(CHTTP_RequestBuilder builder, void *user)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return; // Invalid builder
 
     conn->user = user;
 }
 
-void http_request_builder_trace(HTTP_RequestBuilder builder, bool trace_bytes)
+void chttp_request_builder_trace(CHTTP_RequestBuilder builder, bool trace_bytes)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return; // Invalid builder
 
@@ -3827,47 +3855,47 @@ void http_request_builder_trace(HTTP_RequestBuilder builder, bool trace_bytes)
 }
 
 // TODO: comment
-void http_request_builder_insecure(HTTP_RequestBuilder builder,
+void chttp_request_builder_insecure(CHTTP_RequestBuilder builder,
     bool insecure)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return; // Invalid builder
 
     conn->dont_verify_cert = insecure;
 }
 
-void http_request_builder_method(HTTP_RequestBuilder builder,
-    HTTP_Method method)
+void chttp_request_builder_method(CHTTP_RequestBuilder builder,
+    CHTTP_Method method)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return; // Invalid builder
 
-    if (conn->state != HTTP_CLIENT_CONN_WAIT_METHOD)
+    if (conn->state != CHTTP_CLIENT_CONN_WAIT_METHOD)
         return; // Request line already written
 
     // Write method
-    HTTP_String method_str = get_method_string(method);
+    CHTTP_String method_str = get_method_string(method);
     byte_queue_write(&conn->output, method_str.ptr, method_str.len);
     byte_queue_write(&conn->output, " ", 1);
 
-    conn->state = HTTP_CLIENT_CONN_WAIT_URL;
+    conn->state = CHTTP_CLIENT_CONN_WAIT_URL;
 }
 
-void http_request_builder_target(HTTP_RequestBuilder builder,
-    HTTP_String url)
+void chttp_request_builder_target(CHTTP_RequestBuilder builder,
+    CHTTP_String url)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return; // Invalid builder
 
-    if (conn->state != HTTP_CLIENT_CONN_WAIT_URL)
+    if (conn->state != CHTTP_CLIENT_CONN_WAIT_URL)
         return; // Request line already written
 
     if (url.len == 0) {
-        conn->state = HTTP_CLIENT_CONN_COMPLETE;
-        conn->result = HTTP_ERROR_BADURL;
+        conn->state = CHTTP_CLIENT_CONN_COMPLETE;
+        conn->result = CHTTP_ERROR_BADURL;
         return;
     }
 
@@ -3875,8 +3903,8 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
     // URL pointers remain valid
     char *url_copy = malloc(url.len);
     if (url_copy == NULL) {
-        conn->state = HTTP_CLIENT_CONN_COMPLETE;
-        conn->result = HTTP_ERROR_OOM;
+        conn->state = CHTTP_CLIENT_CONN_COMPLETE;
+        conn->result = CHTTP_ERROR_OOM;
         return;
     }
     memcpy(url_copy, url.ptr, url.len);
@@ -3885,16 +3913,16 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
     conn->url_buffer.len = url.len;
 
     // Parse the copied URL (all url.* pointers will reference url_buffer)
-    if (http_parse_url(conn->url_buffer.ptr, conn->url_buffer.len, &conn->url) < 0) {
-        conn->state = HTTP_CLIENT_CONN_COMPLETE;
-        conn->result = HTTP_ERROR_BADURL;
+    if (chttp_parse_url(conn->url_buffer.ptr, conn->url_buffer.len, &conn->url) < 0) {
+        conn->state = CHTTP_CLIENT_CONN_COMPLETE;
+        conn->result = CHTTP_ERROR_BADURL;
         return;
     }
 
-    if (!http_streq(conn->url.scheme, HTTP_STR("http")) &&
-        !http_streq(conn->url.scheme, HTTP_STR("https"))) {
-        conn->state = HTTP_CLIENT_CONN_COMPLETE;
-        conn->result = HTTP_ERROR_BADURL;
+    if (!chttp_streq(conn->url.scheme, CHTTP_STR("http")) &&
+        !chttp_streq(conn->url.scheme, CHTTP_STR("https"))) {
+        conn->state = CHTTP_CLIENT_CONN_COMPLETE;
+        conn->result = CHTTP_ERROR_BADURL;
         return;
     }
 
@@ -3907,13 +3935,13 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
             conn->url.path.len);
 
     // Write query string
-    HTTP_String query = conn->url.query;
+    CHTTP_String query = conn->url.query;
     if (query.len > 0) {
         byte_queue_write(&conn->output, "?", 1);
         byte_queue_write(&conn->output, query.ptr, query.len);
     }
 
-    HTTP_String version = HTTP_STR(" HTTP/1.1");
+    CHTTP_String version = CHTTP_STR(" HTTP/1.1");
     byte_queue_write(&conn->output, version.ptr, version.len);
 
     byte_queue_write(&conn->output, "\r\n", 2);
@@ -3929,10 +3957,10 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
 
     // Find all entries from the cookie jar that should
     // be sent to this server and append headers for them
-    HTTP_Client *client = builder.client;
-    HTTP_CookieJar *cookie_jar = &client->cookie_jar;
+    CHTTP_Client *client = builder.client;
+    CHTTP_CookieJar *cookie_jar = &client->cookie_jar;
     for (int i = 0; i < cookie_jar->count; i++) {
-        HTTP_CookieJarEntry entry = cookie_jar->items[i];
+        CHTTP_CookieJarEntry entry = cookie_jar->items[i];
         if (should_send_cookie(entry, conn->url)) {
             // TODO: Adding one header per cookie may cause the number of
             //       headers to increase significantly. Should probably group
@@ -3945,12 +3973,12 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
         }
     }
 
-    HTTP_String s;
+    CHTTP_String s;
 
-    s = HTTP_STR("Connection: Close\r\n");
+    s = CHTTP_STR("Connection: Close\r\n");
     byte_queue_write(&conn->output, s.ptr, s.len);
 
-    s = HTTP_STR("Content-Length: ");
+    s = CHTTP_STR("Content-Length: ");
     byte_queue_write(&conn->output, s.ptr, s.len);
 
     conn->content_length_value_offset = byte_queue_offset(&conn->output);
@@ -3958,20 +3986,20 @@ void http_request_builder_target(HTTP_RequestBuilder builder,
     #define TEN_SPACES "          "
     _Static_assert(sizeof(TEN_SPACES) == 10+1);
 
-    s = HTTP_STR(TEN_SPACES "\r\n");
+    s = CHTTP_STR(TEN_SPACES "\r\n");
     byte_queue_write(&conn->output, s.ptr, s.len);
 
-    conn->state = HTTP_CLIENT_CONN_WAIT_HEADER;
+    conn->state = CHTTP_CLIENT_CONN_WAIT_HEADER;
 }
 
-void http_request_builder_header(HTTP_RequestBuilder builder,
-    HTTP_String str)
+void chttp_request_builder_header(CHTTP_RequestBuilder builder,
+    CHTTP_String str)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state != HTTP_CLIENT_CONN_WAIT_HEADER)
+    if (conn->state != CHTTP_CLIENT_CONN_WAIT_HEADER)
         return;
 
     // Validate header: must contain a colon and no control characters
@@ -3991,33 +4019,33 @@ void http_request_builder_header(HTTP_RequestBuilder builder,
     byte_queue_write(&conn->output, "\r\n", 2);
 }
 
-void http_request_builder_body(HTTP_RequestBuilder builder,
-    HTTP_String str)
+void chttp_request_builder_body(CHTTP_RequestBuilder builder,
+    CHTTP_String str)
 {
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
         return;
 
     // Transition from WAIT_HEADER to WAIT_BODY if needed
-    if (conn->state == HTTP_CLIENT_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_CLIENT_CONN_WAIT_HEADER) {
         byte_queue_write(&conn->output, "\r\n", 2);
         conn->content_length_offset = byte_queue_offset(&conn->output);
-        conn->state = HTTP_CLIENT_CONN_WAIT_BODY;
+        conn->state = CHTTP_CLIENT_CONN_WAIT_BODY;
     }
 
-    if (conn->state != HTTP_CLIENT_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_CLIENT_CONN_WAIT_BODY)
         return;
 
     byte_queue_write(&conn->output, str.ptr, str.len);
 }
 
-static ConnectTarget url_to_connect_target(HTTP_URL url)
+static ConnectTarget url_to_connect_target(CHTTP_URL url)
 {
-    HTTP_Authority authority = url.authority;
+    CHTTP_Authority authority = url.authority;
 
     ConnectTarget target;
     if (authority.port < 1) {
-        if (http_streq(url.scheme, HTTP_STR("https")))
+        if (chttp_streq(url.scheme, CHTTP_STR("https")))
             target.port = 443;
         else
             target.port = 80;
@@ -4025,42 +4053,42 @@ static ConnectTarget url_to_connect_target(HTTP_URL url)
         target.port = authority.port;
     }
 
-    if (authority.host.mode == HTTP_HOST_MODE_NAME) {
+    if (authority.host.mode == CHTTP_HOST_MODE_NAME) {
         target.type = CONNECT_TARGET_NAME;
         target.name = authority.host.name;
-    } else if (authority.host.mode == HTTP_HOST_MODE_IPV4) {
+    } else if (authority.host.mode == CHTTP_HOST_MODE_IPV4) {
         target.type = CONNECT_TARGET_IPV4;
         target.ipv4 = authority.host.ipv4;
-    } else if (authority.host.mode == HTTP_HOST_MODE_IPV6) {
+    } else if (authority.host.mode == CHTTP_HOST_MODE_IPV6) {
         target.type = CONNECT_TARGET_IPV6;
         target.ipv6 = authority.host.ipv6;
     } else {
-        HTTP_UNREACHABLE;
+        CHTTP_UNREACHABLE;
     }
 
     return target;
 }
 
-int http_request_builder_send(HTTP_RequestBuilder builder)
+int chttp_request_builder_send(CHTTP_RequestBuilder builder)
 {
-    HTTP_Client *client = builder.client;
+    CHTTP_Client *client = builder.client;
     if (client == NULL)
-        return HTTP_ERROR_REQLIMIT;
+        return CHTTP_ERROR_REQLIMIT;
 
-    HTTP_ClientConn *conn = request_builder_to_conn(builder);
+    CHTTP_ClientConn *conn = request_builder_to_conn(builder);
     if (conn == NULL)
-        return HTTP_ERROR_BADHANDLE;
+        return CHTTP_ERROR_BADHANDLE;
 
-    if (conn->state == HTTP_CLIENT_CONN_COMPLETE)
+    if (conn->state == CHTTP_CLIENT_CONN_COMPLETE)
         goto error; // Early completion due to an error
 
-    if (conn->state == HTTP_CLIENT_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_CLIENT_CONN_WAIT_HEADER) {
         byte_queue_write(&conn->output, "\r\n", 2);
         conn->content_length_offset = byte_queue_offset(&conn->output);
-        conn->state = HTTP_CLIENT_CONN_WAIT_BODY;
+        conn->state = CHTTP_CLIENT_CONN_WAIT_BODY;
     }
 
-    if (conn->state != HTTP_CLIENT_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_CLIENT_CONN_WAIT_BODY)
         goto error;
 
     if (byte_queue_error(&conn->output))
@@ -4075,16 +4103,16 @@ int http_request_builder_send(HTTP_RequestBuilder builder)
     byte_queue_patch(&conn->output, conn->content_length_value_offset, tmp, len);
 
     ConnectTarget target = url_to_connect_target(conn->url);
-    bool secure = http_streq(conn->url.scheme, HTTP_STR("https"));
+    bool secure = chttp_streq(conn->url.scheme, CHTTP_STR("https"));
     if (socket_connect(&client->sockets, 1, &target, secure, conn->dont_verify_cert, conn) < 0)
         goto error;
 
-    conn->state = HTTP_CLIENT_CONN_FLUSHING;
+    conn->state = CHTTP_CLIENT_CONN_FLUSHING;
     conn->gen++;
-    return HTTP_OK;
+    return CHTTP_OK;
 
 error:
-    conn->state = HTTP_CLIENT_CONN_FREE;
+    conn->state = CHTTP_CLIENT_CONN_FREE;
     free(conn->url_buffer.ptr);
     byte_queue_free(&conn->input);
     byte_queue_free(&conn->output);
@@ -4092,17 +4120,17 @@ error:
     return conn->result;
 }
 
-static void save_one_cookie(HTTP_CookieJar *cookie_jar,
-    HTTP_Header set_cookie, HTTP_String domain, HTTP_String path)
+static void save_one_cookie(CHTTP_CookieJar *cookie_jar,
+    CHTTP_Header set_cookie, CHTTP_String domain, CHTTP_String path)
 {
-    if (cookie_jar->count == HTTP_COOKIE_JAR_CAPACITY)
+    if (cookie_jar->count == CHTTP_COOKIE_JAR_CAPACITY)
         return; // Cookie jar capacity reached
 
-    HTTP_SetCookie parsed;
-    if (http_parse_set_cookie(set_cookie.value, &parsed) < 0)
+    CHTTP_SetCookie parsed;
+    if (chttp_parse_set_cookie(set_cookie.value, &parsed) < 0)
         return; // Ignore invalid Set-Cookie headers
 
-    HTTP_CookieJarEntry entry;
+    CHTTP_CookieJarEntry entry;
 
     entry.name = parsed.name;
     entry.value = parsed.value;
@@ -4151,32 +4179,32 @@ static void save_one_cookie(HTTP_CookieJar *cookie_jar,
     cookie_jar->items[cookie_jar->count++] = entry;
 }
 
-static void save_cookies(HTTP_CookieJar *cookie_jar,
-    HTTP_Header *headers, int num_headers,
-    HTTP_String domain, HTTP_String path)
+static void save_cookies(CHTTP_CookieJar *cookie_jar,
+    CHTTP_Header *headers, int num_headers,
+    CHTTP_String domain, CHTTP_String path)
 {
     // TODO: remove expired cookies
 
     for (int i = 0; i < num_headers; i++)
-        if (http_streqcase(headers[i].name, HTTP_STR("Set-Cookie"))) // TODO: headers are case-insensitive, right?
+        if (chttp_streqcase(headers[i].name, CHTTP_STR("Set-Cookie"))) // TODO: headers are case-insensitive, right?
             save_one_cookie(cookie_jar, headers[i], domain, path);
 }
 
-void http_client_register_events(HTTP_Client *client,
+void chttp_client_register_events(CHTTP_Client *client,
     EventRegister *reg)
 {
     socket_manager_register_events(&client->sockets, reg);
 }
 
-void http_client_process_events(HTTP_Client *client,
+void chttp_client_process_events(CHTTP_Client *client,
     EventRegister reg)
 {
-    SocketEvent events[HTTP_CLIENT_CAPACITY];
+    SocketEvent events[CHTTP_CLIENT_CAPACITY];
     int num_events = socket_manager_translate_events(&client->sockets, events, reg);
 
     for (int i = 0; i < num_events; i++) {
 
-        HTTP_ClientConn *conn = events[i].user;
+        CHTTP_ClientConn *conn = events[i].user;
         if (conn == NULL)
             continue; // If a socket is not couple to a connection,
                       // it means the response was already returned
@@ -4184,7 +4212,7 @@ void http_client_process_events(HTTP_Client *client,
 
         if (events[i].type == SOCKET_EVENT_DISCONNECT) {
 
-            conn->state = HTTP_CLIENT_CONN_COMPLETE;
+            conn->state = CHTTP_CLIENT_CONN_COMPLETE;
             conn->result = -1;
 
         } else if (events[i].type == SOCKET_EVENT_READY) {
@@ -4195,7 +4223,7 @@ void http_client_process_events(HTTP_Client *client,
 
             while (socket_ready(&client->sockets, conn->handle)) {
 
-                if (conn->state == HTTP_CLIENT_CONN_FLUSHING) {
+                if (conn->state == CHTTP_CLIENT_CONN_FLUSHING) {
 
                     ByteView src = byte_queue_read_buf(&conn->output);
 
@@ -4204,7 +4232,7 @@ void http_client_process_events(HTTP_Client *client,
                         num = socket_send(&client->sockets, conn->handle, src.ptr, src.len);
 
                     if (conn->trace_bytes)
-                        print_bytes(HTTP_STR("<< "), (HTTP_String){src.ptr, num});
+                        print_bytes(CHTTP_STR("<< "), (CHTTP_String){src.ptr, num});
 
                     byte_queue_read_ack(&conn->output, num);
 
@@ -4215,10 +4243,10 @@ void http_client_process_events(HTTP_Client *client,
 
                     // Request fully sent, now wait for response
                     if (byte_queue_empty(&conn->output))
-                        conn->state = HTTP_CLIENT_CONN_BUFFERING;
+                        conn->state = CHTTP_CLIENT_CONN_BUFFERING;
                 }
 
-                if (conn->state == HTTP_CLIENT_CONN_BUFFERING) {
+                if (conn->state == CHTTP_CLIENT_CONN_BUFFERING) {
 
                     // Receive response data
                     int min_recv = 1<<10;
@@ -4231,7 +4259,7 @@ void http_client_process_events(HTTP_Client *client,
                         num = socket_recv(&client->sockets, conn->handle, dst.ptr, dst.len);
 
                     if (conn->trace_bytes)
-                        print_bytes(HTTP_STR(">> "), (HTTP_String){dst.ptr, num});
+                        print_bytes(CHTTP_STR(">> "), (CHTTP_String){dst.ptr, num});
 
                     byte_queue_write_ack(&conn->input, num);
 
@@ -4241,7 +4269,7 @@ void http_client_process_events(HTTP_Client *client,
                     }
 
                     ByteView src = byte_queue_read_buf(&conn->input);
-                    int ret = http_parse_response(src.ptr, src.len, &conn->response);
+                    int ret = chttp_parse_response(src.ptr, src.len, &conn->response);
 
                     if (ret == 0) {
                         // Still waiting
@@ -4264,7 +4292,7 @@ void http_client_process_events(HTTP_Client *client,
                     // Ready
                     assert(ret > 0);
 
-                    conn->state = HTTP_CLIENT_CONN_COMPLETE;
+                    conn->state = CHTTP_CLIENT_CONN_COMPLETE;
                     conn->result = 0;
 
                     conn->response.context = client;
@@ -4282,36 +4310,36 @@ void http_client_process_events(HTTP_Client *client,
             }
         }
 
-        if (conn->state == HTTP_CLIENT_CONN_COMPLETE) {
+        if (conn->state == CHTTP_CLIENT_CONN_COMPLETE) {
 
             // Decouple from the socket
             socket_set_user(&client->sockets, events[i].handle, NULL);
             socket_close(&client->sockets, events[i].handle);
 
             // Push to the ready queue
-            assert(client->num_ready < HTTP_CLIENT_CAPACITY);
-            int tail = (client->ready_head + client->num_ready) % HTTP_CLIENT_CAPACITY;
+            assert(client->num_ready < CHTTP_CLIENT_CAPACITY);
+            int tail = (client->ready_head + client->num_ready) % CHTTP_CLIENT_CAPACITY;
             client->ready[tail] = conn - client->conns;
             client->num_ready++;
         }
     }
 }
 
-bool http_client_next_response(HTTP_Client *client,
-    int *result, void **user, HTTP_Response **response)
+bool chttp_client_next_response(CHTTP_Client *client,
+    int *result, void **user, CHTTP_Response **response)
 {
     if (client->num_ready == 0)
         return false;
 
-    HTTP_ClientConn *conn = &client->conns[client->ready[client->ready_head]];
-    client->ready_head = (client->ready_head + 1) % HTTP_CLIENT_CAPACITY;
+    CHTTP_ClientConn *conn = &client->conns[client->ready[client->ready_head]];
+    client->ready_head = (client->ready_head + 1) % CHTTP_CLIENT_CAPACITY;
     client->num_ready--;
 
-    assert(conn->state == HTTP_CLIENT_CONN_COMPLETE);
+    assert(conn->state == CHTTP_CLIENT_CONN_COMPLETE);
 
     *result = conn->result;
     *user   = conn->user;
-    if (conn->result == HTTP_OK) {
+    if (conn->result == CHTTP_OK) {
         *response = &conn->response;
     } else {
         *response = NULL;
@@ -4320,17 +4348,17 @@ bool http_client_next_response(HTTP_Client *client,
     return true;
 }
 
-void http_free_response(HTTP_Response *response)
+void chttp_free_response(CHTTP_Response *response)
 {
     if (response == NULL || response->context == NULL)
         return;
-    HTTP_Client *client = response->context;
+    CHTTP_Client *client = response->context;
     response->context = NULL;
 
     // TODO: I'm positive there is a better way to do this.
     //       It should just be a bouds check + subtraction.
-    HTTP_ClientConn *conn = NULL;
-    for (int i = 0; i < HTTP_CLIENT_CAPACITY; i++)
+    CHTTP_ClientConn *conn = NULL;
+    for (int i = 0; i < CHTTP_CLIENT_CAPACITY; i++)
         if (&client->conns[i].response == response) {
             conn = &client->conns[i];
             break;
@@ -4338,7 +4366,7 @@ void http_free_response(HTTP_Response *response)
     if (conn == NULL)
         return;
 
-    conn->state = HTTP_CLIENT_CONN_FREE;
+    conn->state = CHTTP_CLIENT_CONN_FREE;
     free(conn->url_buffer.ptr);
     byte_queue_free(&conn->input);
     byte_queue_free(&conn->output);
@@ -4351,112 +4379,112 @@ void http_free_response(HTTP_Response *response)
 #define POLL poll
 #endif
 
-void http_client_wait_response(HTTP_Client *client,
-    int *result, void **user, HTTP_Response **response)
+void chttp_client_wait_response(CHTTP_Client *client,
+    int *result, void **user, CHTTP_Response **response)
 {
     for (;;) {
 
-        void *ptrs[HTTP_CLIENT_POLL_CAPACITY];
-        struct pollfd polled[HTTP_CLIENT_POLL_CAPACITY];
+        void *ptrs[CHTTP_CLIENT_POLL_CAPACITY];
+        struct pollfd polled[CHTTP_CLIENT_POLL_CAPACITY];
 
         EventRegister reg = { ptrs, polled, 0 };
-        http_client_register_events(client, &reg);
+        chttp_client_register_events(client, &reg);
 
         if (reg.num_polled > 0)
             POLL(reg.polled, reg.num_polled, -1);
 
-        http_client_process_events(client, reg);
+        chttp_client_process_events(client, reg);
 
-        if (http_client_next_response(client, result, user, response))
+        if (chttp_client_next_response(client, result, user, response))
             break;
     }
 }
 
-static _Thread_local HTTP_Client *implicit_client;
+static _Thread_local CHTTP_Client *implicit_client;
 
-static int perform_request(HTTP_Method method,
-    HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_String body,
-    HTTP_Response **response)
+static int perform_request(CHTTP_Method method,
+    CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_String body,
+    CHTTP_Response **response)
 {
     if (implicit_client == NULL) {
 
-        implicit_client = malloc(sizeof(HTTP_Client));
+        implicit_client = malloc(sizeof(CHTTP_Client));
         if (implicit_client == NULL)
-            return HTTP_ERROR_OOM;
+            return CHTTP_ERROR_OOM;
 
-        int ret = http_client_init(implicit_client);
+        int ret = chttp_client_init(implicit_client);
         if (ret < 0) {
             free(implicit_client);
             implicit_client = NULL;
             return ret;
         }
     }
-    HTTP_Client *client = implicit_client;
+    CHTTP_Client *client = implicit_client;
 
-    HTTP_RequestBuilder builder = http_client_get_builder(client);
-    http_request_builder_method(builder, method);
-    http_request_builder_target(builder, url);
+    CHTTP_RequestBuilder builder = chttp_client_get_builder(client);
+    chttp_request_builder_method(builder, method);
+    chttp_request_builder_target(builder, url);
     for (int i = 0; i < num_headers; i++)
-        http_request_builder_header(builder, headers[i]);
-    http_request_builder_body(builder, body);
-    int ret = http_request_builder_send(builder);
+        chttp_request_builder_header(builder, headers[i]);
+    chttp_request_builder_body(builder, body);
+    int ret = chttp_request_builder_send(builder);
     if (ret < 0) return ret;
 
     int result;
     void *user;
-    http_client_wait_response(client, &result, &user, response);
+    chttp_client_wait_response(client, &result, &user, response);
     return result;
 }
 
-int http_get(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_Response **response)
+int chttp_get(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_Response **response)
 {
-    return perform_request(HTTP_METHOD_GET, url, headers, num_headers, HTTP_STR(""), response);
+    return perform_request(CHTTP_METHOD_GET, url, headers, num_headers, CHTTP_STR(""), response);
 }
 
-int http_post(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_String body,
-    HTTP_Response **response)
+int chttp_post(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_String body,
+    CHTTP_Response **response)
 {
-    return perform_request(HTTP_METHOD_POST, url, headers, num_headers, body, response);
+    return perform_request(CHTTP_METHOD_POST, url, headers, num_headers, body, response);
 }
 
-int http_put(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_String body,
-    HTTP_Response **response)
+int chttp_put(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_String body,
+    CHTTP_Response **response)
 {
-    return perform_request(HTTP_METHOD_PUT, url, headers, num_headers, body, response);
+    return perform_request(CHTTP_METHOD_PUT, url, headers, num_headers, body, response);
 }
 
-int http_delete(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_Response **response)
+int chttp_delete(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_Response **response)
 {
-    return perform_request(HTTP_METHOD_DELETE, url, headers, num_headers, HTTP_STR(""), response);
+    return perform_request(CHTTP_METHOD_DELETE, url, headers, num_headers, CHTTP_STR(""), response);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/server.c
 ////////////////////////////////////////////////////////////////////////////////////////
 
-static void http_server_conn_init(HTTP_ServerConn *conn,
+static void chttp_server_conn_init(CHTTP_ServerConn *conn,
     SocketHandle handle, uint32_t input_buffer_limit,
     uint32_t output_buffer_limit)
 {
-    conn->state = HTTP_SERVER_CONN_BUFFERING;
+    conn->state = CHTTP_SERVER_CONN_BUFFERING;
     conn->handle = handle;
     conn->closing = false;
     byte_queue_init(&conn->input, input_buffer_limit);
     byte_queue_init(&conn->output, output_buffer_limit);
 }
 
-static void http_server_conn_free(HTTP_ServerConn *conn)
+static void chttp_server_conn_free(CHTTP_ServerConn *conn)
 {
     byte_queue_free(&conn->output);
     byte_queue_free(&conn->input);
 }
 
-int http_server_init(HTTP_Server *server)
+int chttp_server_init(CHTTP_Server *server)
 {
     server->input_buffer_limit = 1<<20;
     server->output_buffer_limit = 1<<20;
@@ -4466,8 +4494,8 @@ int http_server_init(HTTP_Server *server)
     server->backlog = 32;
 
     server->num_conns = 0;
-    for (int i = 0; i < HTTP_SERVER_CAPACITY; i++) {
-        server->conns[i].state = HTTP_SERVER_CONN_FREE;
+    for (int i = 0; i < CHTTP_SERVER_CAPACITY; i++) {
+        server->conns[i].state = CHTTP_SERVER_CONN_FREE;
         server->conns[i].gen = 0;
     }
 
@@ -4475,77 +4503,77 @@ int http_server_init(HTTP_Server *server)
     server->ready_head = 0;
 
     return socket_manager_init(&server->sockets,
-        server->socket_pool, HTTP_SERVER_CAPACITY);
+        server->socket_pool, CHTTP_SERVER_CAPACITY);
 }
 
-void http_server_free(HTTP_Server *server)
+void chttp_server_free(CHTTP_Server *server)
 {
     socket_manager_free(&server->sockets);
 
     for (int i = 0, j = 0; j < server->num_conns; i++) {
-        HTTP_ServerConn *conn = &server->conns[i];
-        if (conn->state == HTTP_SERVER_CONN_FREE)
+        CHTTP_ServerConn *conn = &server->conns[i];
+        if (conn->state == CHTTP_SERVER_CONN_FREE)
             continue;
         j++;
 
-        http_server_conn_free(conn);
+        chttp_server_conn_free(conn);
     }
 }
 
-void http_server_set_input_limit(HTTP_Server *server, uint32_t limit)
+void chttp_server_set_input_limit(CHTTP_Server *server, uint32_t limit)
 {
     server->input_buffer_limit = limit;
 }
 
-void http_server_set_output_limit(HTTP_Server *server, uint32_t limit)
+void chttp_server_set_output_limit(CHTTP_Server *server, uint32_t limit)
 {
     server->output_buffer_limit = limit;
 }
 
-void http_server_set_trace_bytes(HTTP_Server *server, bool value)
+void chttp_server_set_trace_bytes(CHTTP_Server *server, bool value)
 {
     server->trace_bytes = value;
 }
 
-void http_server_set_reuse_addr(HTTP_Server *server, bool reuse)
+void chttp_server_set_reuse_addr(CHTTP_Server *server, bool reuse)
 {
     server->reuse_addr = reuse;
 }
 
-void http_server_set_backlog(HTTP_Server *server, int backlog)
+void chttp_server_set_backlog(CHTTP_Server *server, int backlog)
 {
     server->backlog = backlog;
 }
 
-int http_server_listen_tcp(HTTP_Server *server,
-    HTTP_String addr, Port port)
+int chttp_server_listen_tcp(CHTTP_Server *server,
+    CHTTP_String addr, Port port)
 {
     return socket_manager_listen_tcp(&server->sockets,
         addr, port, server->backlog, server->reuse_addr);
 }
 
-int http_server_listen_tls(HTTP_Server *server,
-    HTTP_String addr, Port port, HTTP_String cert_file_name,
-    HTTP_String key_file_name)
+int chttp_server_listen_tls(CHTTP_Server *server,
+    CHTTP_String addr, Port port, CHTTP_String cert_file_name,
+    CHTTP_String key_file_name)
 {
     return socket_manager_listen_tls(&server->sockets,
         addr, port, server->backlog, server->reuse_addr,
         cert_file_name, key_file_name);
 }
 
-int http_server_add_certificate(HTTP_Server *server,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file)
+int chttp_server_add_certificate(CHTTP_Server *server,
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file)
 {
     return socket_manager_add_certificate(&server->sockets,
         domain, cert_file, key_file);
 }
 
-int http_server_wakeup(HTTP_Server *server)
+int chttp_server_wakeup(CHTTP_Server *server)
 {
     return socket_manager_wakeup(&server->sockets);
 }
 
-void http_server_register_events(HTTP_Server *server,
+void chttp_server_register_events(CHTTP_Server *server,
     EventRegister *reg)
 {
     socket_manager_register_events(&server->sockets, reg);
@@ -4557,12 +4585,12 @@ void http_server_register_events(HTTP_Server *server,
 // to the ready queue. If the request is invalid,
 // close the socket.
 static void
-check_request_buffer(HTTP_Server *server, HTTP_ServerConn *conn)
+check_request_buffer(CHTTP_Server *server, CHTTP_ServerConn *conn)
 {
-    assert(conn->state == HTTP_SERVER_CONN_BUFFERING);
+    assert(conn->state == CHTTP_SERVER_CONN_BUFFERING);
 
     ByteView src = byte_queue_read_buf(&conn->input);
-    int ret = http_parse_request(src.ptr, src.len, &conn->request);
+    int ret = chttp_parse_request(src.ptr, src.len, &conn->request);
     if (ret < 0) {
 
         // Invalid request
@@ -4584,22 +4612,25 @@ check_request_buffer(HTTP_Server *server, HTTP_ServerConn *conn)
         // Ready
         assert(ret > 0);
 
-        conn->state = HTTP_SERVER_CONN_WAIT_STATUS;
+        // Stop receiving I/O events while we are building the response
+        socket_silent(&server->sockets, conn->handle, true);
+
+        conn->state = CHTTP_SERVER_CONN_WAIT_STATUS;
         conn->request_len = ret;
         conn->response_offset = byte_queue_offset(&conn->output);
 
         // Push to the ready queue
-        assert(server->num_ready < HTTP_SERVER_CAPACITY);
-        int tail = (server->ready_head + server->num_ready) % HTTP_SERVER_CAPACITY;
+        assert(server->num_ready < CHTTP_SERVER_CAPACITY);
+        int tail = (server->ready_head + server->num_ready) % CHTTP_SERVER_CAPACITY;
         server->ready[tail] = conn - server->conns;
         server->num_ready++;
     }
 }
 
 static void
-http_server_conn_process_events(HTTP_Server *server, HTTP_ServerConn *conn)
+chttp_server_conn_process_events(CHTTP_Server *server, CHTTP_ServerConn *conn)
 {
-    if (conn->state == HTTP_SERVER_CONN_FLUSHING) {
+    if (conn->state == CHTTP_SERVER_CONN_FLUSHING) {
 
         ByteView src = byte_queue_read_buf(&conn->output);
 
@@ -4608,7 +4639,7 @@ http_server_conn_process_events(HTTP_Server *server, HTTP_ServerConn *conn)
             num = socket_send(&server->sockets, conn->handle, src.ptr, src.len);
 
         if (server->trace_bytes)
-            print_bytes(HTTP_STR("<< "), (HTTP_String) { src.ptr, num });
+            print_bytes(CHTTP_STR("<< "), (CHTTP_String) { src.ptr, num });
 
         byte_queue_read_ack(&conn->output, num);
 
@@ -4625,11 +4656,11 @@ http_server_conn_process_events(HTTP_Server *server, HTTP_ServerConn *conn)
                 socket_close(&server->sockets, conn->handle);
                 return;
             }
-            conn->state = HTTP_SERVER_CONN_BUFFERING;
+            conn->state = CHTTP_SERVER_CONN_BUFFERING;
         }
     }
 
-    if (conn->state == HTTP_SERVER_CONN_BUFFERING) {
+    if (conn->state == CHTTP_SERVER_CONN_BUFFERING) {
 
         int min_recv = 1<<10;
         byte_queue_write_setmincap(&conn->input, min_recv);
@@ -4645,7 +4676,7 @@ http_server_conn_process_events(HTTP_Server *server, HTTP_ServerConn *conn)
             num = socket_recv(&server->sockets, conn->handle, dst.ptr, dst.len);
 
         if (server->trace_bytes)
-            print_bytes(HTTP_STR(">> "), (HTTP_String) { dst.ptr, num });
+            print_bytes(CHTTP_STR(">> "), (CHTTP_String) { dst.ptr, num });
 
         byte_queue_write_ack(&conn->input, num);
 
@@ -4657,38 +4688,38 @@ http_server_conn_process_events(HTTP_Server *server, HTTP_ServerConn *conn)
     }
 }
 
-void http_server_process_events(HTTP_Server *server,
+void chttp_server_process_events(CHTTP_Server *server,
     EventRegister reg)
 {
-    SocketEvent events[HTTP_SERVER_CAPACITY];
+    SocketEvent events[CHTTP_SERVER_CAPACITY];
     int num_events = socket_manager_translate_events(&server->sockets, events, reg);
 
     for (int i = 0; i < num_events; i++) {
 
-        HTTP_ServerConn *conn = events[i].user;
+        CHTTP_ServerConn *conn = events[i].user;
 
         if (events[i].type == SOCKET_EVENT_DISCONNECT) {
 
-            http_server_conn_free(conn); // TODO: what if this was in the ready queue?
+            chttp_server_conn_free(conn); // TODO: what if this was in the ready queue?
             server->num_conns--;
 
         } else if (events[i].type == SOCKET_EVENT_READY) {
 
             if (events[i].user == NULL) {
 
-                if (server->num_conns == HTTP_SERVER_CAPACITY) {
+                if (server->num_conns == CHTTP_SERVER_CAPACITY) {
                     socket_close(&server->sockets, events[i].handle);
                     continue;
                 }
 
                 int j = 0;
-                while (server->conns[j].state != HTTP_SERVER_CONN_FREE) {
+                while (server->conns[j].state != CHTTP_SERVER_CONN_FREE) {
                     j++;
-                    assert(i < HTTP_SERVER_CAPACITY);
+                    assert(i < CHTTP_SERVER_CAPACITY);
                 }
 
                 conn = &server->conns[j];
-                http_server_conn_init(conn,
+                chttp_server_conn_init(conn,
                     events[i].handle,
                     server->input_buffer_limit,
                     server->output_buffer_limit);
@@ -4698,44 +4729,44 @@ void http_server_process_events(HTTP_Server *server,
             }
 
             while (socket_ready(&server->sockets, events[i].handle)
-                && conn->state != HTTP_SERVER_CONN_WAIT_STATUS)
-                http_server_conn_process_events(server, conn);
+                && conn->state != CHTTP_SERVER_CONN_WAIT_STATUS)
+                chttp_server_conn_process_events(server, conn);
         }
     }
 }
 
-bool http_server_next_request(HTTP_Server *server,
-    HTTP_Request **request, HTTP_ResponseBuilder *builder)
+bool chttp_server_next_request(CHTTP_Server *server,
+    CHTTP_Request **request, CHTTP_ResponseBuilder *builder)
 {
     if (server->num_ready == 0)
         return false;
 
-    HTTP_ServerConn *conn = &server->conns[server->ready[server->ready_head]];
-    server->ready_head = (server->ready_head + 1) % HTTP_SERVER_CAPACITY;
+    CHTTP_ServerConn *conn = &server->conns[server->ready[server->ready_head]];
+    server->ready_head = (server->ready_head + 1) % CHTTP_SERVER_CAPACITY;
     server->num_ready--;
 
-    assert(conn->state == HTTP_SERVER_CONN_WAIT_STATUS);
+    assert(conn->state == CHTTP_SERVER_CONN_WAIT_STATUS);
     *request = &conn->request;
-    *builder = (HTTP_ResponseBuilder) { server, conn - server->conns, conn->gen };
+    *builder = (CHTTP_ResponseBuilder) { server, conn - server->conns, conn->gen };
     return true;
 }
 
-void http_server_wait_request(HTTP_Server *server,
-    HTTP_Request **request, HTTP_ResponseBuilder *builder)
+void chttp_server_wait_request(CHTTP_Server *server,
+    CHTTP_Request **request, CHTTP_ResponseBuilder *builder)
 {
     for (;;) {
-        void *ptrs[HTTP_SERVER_POLL_CAPACITY];
-        struct pollfd polled[HTTP_SERVER_POLL_CAPACITY];
+        void *ptrs[CHTTP_SERVER_POLL_CAPACITY];
+        struct pollfd polled[CHTTP_SERVER_POLL_CAPACITY];
 
         EventRegister reg = { ptrs, polled, 0 };
-        http_server_register_events(server, &reg);
+        chttp_server_register_events(server, &reg);
 
         if (reg.num_polled > 0)
             POLL(reg.polled, reg.num_polled, -1);
 
-        http_server_process_events(server, reg);
+        chttp_server_process_events(server, reg);
 
-        if (http_server_next_request(server, request, builder))
+        if (chttp_server_next_request(server, request, builder))
             break;
     }
 }
@@ -4746,17 +4777,17 @@ void http_server_wait_request(HTTP_Server *server,
 // can be returned, as any builder is invalidated by
 // incrementing the connection's generation counter
 // when a response is completed.
-static HTTP_ServerConn*
-builder_to_conn(HTTP_ResponseBuilder builder)
+static CHTTP_ServerConn*
+builder_to_conn(CHTTP_ResponseBuilder builder)
 {
-    HTTP_Server *server = builder.server;
+    CHTTP_Server *server = builder.server;
     if (server == NULL)
         return NULL;
 
-    if (builder.index > HTTP_SERVER_CAPACITY)
+    if (builder.index > CHTTP_SERVER_CAPACITY)
         return NULL;
 
-    HTTP_ServerConn *conn = &server->conns[builder.index];
+    CHTTP_ServerConn *conn = &server->conns[builder.index];
     if (builder.gen != conn->gen)
         return NULL;
 
@@ -4831,41 +4862,32 @@ get_status_text(int code)
 }
 
 static void
-write_status(HTTP_ServerConn *conn, int status)
+write_status(CHTTP_ServerConn *conn, int status)
 {
     byte_queue_write_fmt(&conn->output,
 		"HTTP/1.1 %d %s\r\n",
 		status, get_status_text(status));
 }
 
-void http_response_builder_status(HTTP_ResponseBuilder builder, int status)
+void chttp_response_builder_status(CHTTP_ResponseBuilder builder, int status)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state != HTTP_SERVER_CONN_WAIT_STATUS) {
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_STATUS) {
         // Reset all response content and start from scrach.
         byte_queue_remove_from_offset(&conn->output, conn->response_offset);
-        conn->state = HTTP_SERVER_CONN_WAIT_STATUS;
+        conn->state = CHTTP_SERVER_CONN_WAIT_STATUS;
     }
 
     write_status(conn, status);
 
-    conn->state = HTTP_SERVER_CONN_WAIT_HEADER;
+    conn->state = CHTTP_SERVER_CONN_WAIT_HEADER;
 }
 
-void http_response_builder_header(HTTP_ResponseBuilder builder, HTTP_String str)
+static bool is_header_valid(CHTTP_String str)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
-    if (conn == NULL)
-        return;
-
-    if (conn->state != HTTP_SERVER_CONN_WAIT_HEADER)
-        return;
-
-    // Validate header: must contain a colon and no control characters
-    // (to prevent HTTP response splitting attacks)
     bool has_colon = false;
     for (int i = 0; i < str.len; i++) {
         char c = str.ptr[i];
@@ -4873,28 +4895,41 @@ void http_response_builder_header(HTTP_ResponseBuilder builder, HTTP_String str)
             has_colon = true;
         // Reject control characters (especially \r and \n)
         if (c < 0x20 && c != '\t')
-            return;
+            return false;
     }
-    if (!has_colon)
+    return has_colon;
+}
+
+void chttp_response_builder_header(CHTTP_ResponseBuilder builder, CHTTP_String str)
+{
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
+    if (conn == NULL)
         return;
+
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_HEADER)
+        return;
+
+    // Header must contain a colon and no control characters
+    // to prevent HTTP response splitting attacks
+    if (!is_header_valid(str)) return; // Silently drop it
 
 	byte_queue_write(&conn->output, str.ptr, str.len);
 	byte_queue_write(&conn->output, "\r\n", 2);
 }
 
-static void append_special_headers(HTTP_ServerConn *conn)
+static void append_special_headers(CHTTP_ServerConn *conn)
 {
-    HTTP_String s;
+    CHTTP_String s;
 
     if (conn->closing) {
-        s = HTTP_STR("Connection: Close\r\n");
+        s = CHTTP_STR("Connection: Close\r\n");
         byte_queue_write(&conn->output, s.ptr, s.len);
     } else {
-        s = HTTP_STR("Connection: Keep-Alive\r\n");
+        s = CHTTP_STR("Connection: Keep-Alive\r\n");
         byte_queue_write(&conn->output, s.ptr, s.len);
     }
 
-    s = HTTP_STR("Content-Length: ");
+    s = CHTTP_STR("Content-Length: ");
     byte_queue_write(&conn->output, s.ptr, s.len);
 
     conn->content_length_value_offset = byte_queue_offset(&conn->output);
@@ -4902,14 +4937,14 @@ static void append_special_headers(HTTP_ServerConn *conn)
     #define TEN_SPACES "          "
     _Static_assert(sizeof(TEN_SPACES) == 10+1);
 
-    s = HTTP_STR(TEN_SPACES "\r\n");
+    s = CHTTP_STR(TEN_SPACES "\r\n");
     byte_queue_write(&conn->output, s.ptr, s.len);
 
     byte_queue_write(&conn->output, "\r\n", 2);
 	conn->content_length_offset = byte_queue_offset(&conn->output);
 }
 
-static void patch_special_headers(HTTP_ServerConn *conn)
+static void patch_special_headers(CHTTP_ServerConn *conn)
 {
     int content_length = byte_queue_size_from_offset(&conn->output, conn->content_length_offset);
 
@@ -4920,52 +4955,52 @@ static void patch_special_headers(HTTP_ServerConn *conn)
     byte_queue_patch(&conn->output, conn->content_length_value_offset, tmp, len);
 }
 
-void http_response_builder_body(HTTP_ResponseBuilder builder, HTTP_String str)
+void chttp_response_builder_body(CHTTP_ResponseBuilder builder, CHTTP_String str)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state == HTTP_SERVER_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_SERVER_CONN_WAIT_HEADER) {
         append_special_headers(conn);
-        conn->state = HTTP_SERVER_CONN_WAIT_BODY;
+        conn->state = CHTTP_SERVER_CONN_WAIT_BODY;
     }
 
-    if (conn->state != HTTP_SERVER_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_BODY)
         return;
 
     byte_queue_write(&conn->output, str.ptr, str.len);
 }
 
-void http_response_builder_body_cap(HTTP_ResponseBuilder builder, int cap)
+void chttp_response_builder_body_cap(CHTTP_ResponseBuilder builder, int cap)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state == HTTP_SERVER_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_SERVER_CONN_WAIT_HEADER) {
         append_special_headers(conn);
-        conn->state = HTTP_SERVER_CONN_WAIT_BODY;
+        conn->state = CHTTP_SERVER_CONN_WAIT_BODY;
     }
 
-    if (conn->state != HTTP_SERVER_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_BODY)
         return;
 
     byte_queue_write_setmincap(&conn->output, cap);
 }
 
-char *http_response_builder_body_buf(HTTP_ResponseBuilder builder, int *cap)
+char *chttp_response_builder_body_buf(CHTTP_ResponseBuilder builder, int *cap)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return NULL;
 
-    if (conn->state == HTTP_SERVER_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_SERVER_CONN_WAIT_HEADER) {
         append_special_headers(conn);
-        conn->state = HTTP_SERVER_CONN_WAIT_BODY;
+        conn->state = CHTTP_SERVER_CONN_WAIT_BODY;
     }
 
-    if (conn->state != HTTP_SERVER_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_BODY)
         return NULL;
 
     ByteView tmp = byte_queue_write_buf(&conn->output);
@@ -4973,44 +5008,47 @@ char *http_response_builder_body_buf(HTTP_ResponseBuilder builder, int *cap)
     return tmp.ptr;
 }
 
-void http_response_builder_body_ack(HTTP_ResponseBuilder builder, int num)
+void chttp_response_builder_body_ack(CHTTP_ResponseBuilder builder, int num)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state != HTTP_SERVER_CONN_WAIT_BODY)
+    if (conn->state != CHTTP_SERVER_CONN_WAIT_BODY)
         return;
 
     byte_queue_write_ack(&conn->output, num);
 }
 
-void http_response_builder_send(HTTP_ResponseBuilder builder)
+void chttp_response_builder_send(CHTTP_ResponseBuilder builder)
 {
-    HTTP_ServerConn *conn = builder_to_conn(builder);
+    CHTTP_ServerConn *conn = builder_to_conn(builder);
     if (conn == NULL)
         return;
 
-    if (conn->state == HTTP_SERVER_CONN_WAIT_STATUS) {
+    if (conn->state == CHTTP_SERVER_CONN_WAIT_STATUS) {
         write_status(conn, 500);
-        conn->state = HTTP_SERVER_CONN_WAIT_HEADER;
+        conn->state = CHTTP_SERVER_CONN_WAIT_HEADER;
     }
 
-    if (conn->state == HTTP_SERVER_CONN_WAIT_HEADER) {
+    if (conn->state == CHTTP_SERVER_CONN_WAIT_HEADER) {
         append_special_headers(conn);
-        conn->state = HTTP_SERVER_CONN_WAIT_BODY;
+        conn->state = CHTTP_SERVER_CONN_WAIT_BODY;
     }
 
-    assert(conn->state == HTTP_SERVER_CONN_WAIT_BODY);
+    assert(conn->state == CHTTP_SERVER_CONN_WAIT_BODY);
     patch_special_headers(conn);
 
     // Remove the buffered request
     byte_queue_read_ack(&conn->input, conn->request_len);
 
-    conn->state = HTTP_SERVER_CONN_FLUSHING;
+    conn->state = CHTTP_SERVER_CONN_FLUSHING;
     conn->gen++;
 
-    http_server_conn_process_events(builder.server, conn);
+    // Enable back I/O events
+    socket_silent(&builder.server->sockets, conn->handle, false);
+
+    chttp_server_conn_process_events(builder.server, conn);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////

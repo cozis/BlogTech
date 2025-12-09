@@ -1,5 +1,5 @@
-#ifndef HTTP_INCLUDED
-#define HTTP_INCLUDED
+#ifndef CHTTP_INCLUDED
+#define CHTTP_INCLUDED
 // cHTTP, an HTTP client and server library!
 //
 // This file was generated automatically. Do not modify directly.
@@ -45,56 +45,56 @@
 
 enum {
 
-    HTTP_OK                = 0,
+    CHTTP_OK                = 0,
 
     // A generic error occurred
-    HTTP_ERROR_UNSPECIFIED = -1,
+    CHTTP_ERROR_UNSPECIFIED = -1,
 
     // Out of memory
-    HTTP_ERROR_OOM         = -2,
+    CHTTP_ERROR_OOM         = -2,
 
     // Invalid URL
-    HTTP_ERROR_BADURL      = -3,
+    CHTTP_ERROR_BADURL      = -3,
 
     // Parallel request limit reached
-    HTTP_ERROR_REQLIMIT    = -4,
+    CHTTP_ERROR_REQLIMIT    = -4,
 
     // Invalid handle
-    HTTP_ERROR_BADHANDLE   = -5,
+    CHTTP_ERROR_BADHANDLE   = -5,
 
     // TLS support not built-in
-    HTTP_ERROR_NOTLS       = -6,
+    CHTTP_ERROR_NOTLS       = -6,
 };
 
 // String type used throughout cHTTP.
 typedef struct {
 	char *ptr;
 	int   len;
-} HTTP_String;
+} CHTTP_String;
 
 // Compare two strings and return true iff they have
 // the same contents.
-bool http_streq(HTTP_String s1, HTTP_String s2);
+bool chttp_streq(CHTTP_String s1, CHTTP_String s2);
 
 // Compre two strings case-insensitively (uppercase and
 // lowercase versions of a letter are considered the same)
 // and return true iff they have the same contents.
-bool http_streqcase(HTTP_String s1, HTTP_String s2);
+bool chttp_streqcase(CHTTP_String s1, CHTTP_String s2);
 
 // Remove spaces and tabs from the start and the end of
 // a string. This doesn't change the original string and
 // the new one references the contents of the original one.
-HTTP_String http_trim(HTTP_String s);
+CHTTP_String chttp_trim(CHTTP_String s);
 
 // Print the contents of a byte string with the given prefix.
 // This is primarily used for debugging purposes.
-void print_bytes(HTTP_String prefix, HTTP_String src);
+void print_bytes(CHTTP_String prefix, CHTTP_String src);
 
 // TODO: comment
-char *http_strerror(int code);
+char *chttp_strerror(int code);
 
 // Macro to simplify converting string literals to
-// HTTP_String.
+// CHTTP_String.
 //
 // Instead of doing this:
 //
@@ -102,7 +102,7 @@ char *http_strerror(int code);
 //
 // You do this:
 //
-//   HTTP_String s = HTTP_STR("some string")
+//   CHTTP_String s = CHTTP_STR("some string")
 //
 // This is a bit cumbersome, but better than null-terminated
 // strings, having a pointer and length variable pairs whenever
@@ -112,177 +112,177 @@ char *http_strerror(int code);
 //   #define S(X) ...
 //
 // But I don't want to cause collisions with user code.
-#define HTTP_STR(X) ((HTTP_String) {(X), sizeof(X)-1})
+#define CHTTP_STR(X) ((CHTTP_String) {(X), sizeof(X)-1})
 
 // Returns the number of items of a static array.
-#define HTTP_COUNT(X) (sizeof(X) / sizeof((X)[0]))
+#define CHTTP_COUNT(X) (int) (sizeof(X) / sizeof((X)[0]))
 
-// Macro to unpack an HTTP_String into its length and pointer components.
-// Useful for passing HTTP_String to printf-style functions with "%.*s" format.
-// Example: printf("%.*s", HTTP_UNPACK(str));
-#define HTTP_UNPACK(X) (X).len, (X).ptr
+// Macro to unpack an CHTTP_String into its length and pointer components.
+// Useful for passing CHTTP_String to printf-style functions with "%.*s" format.
+// Example: printf("%.*s", CHTTP_UNPACK(str));
+#define CHTTP_UNPACK(X) (X).len, (X).ptr
 
 // TODO: comment
-#define HTTP_UNREACHABLE __builtin_trap()
+#define CHTTP_UNREACHABLE __builtin_trap()
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/parse.h
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#define HTTP_MAX_HEADERS 32
+#define CHTTP_MAX_HEADERS 32
 
 typedef struct {
 	unsigned int data;
-} HTTP_IPv4;
+} CHTTP_IPv4;
 
 typedef struct {
 	unsigned short data[8];
-} HTTP_IPv6;
+} CHTTP_IPv6;
 
 typedef enum {
-	HTTP_HOST_MODE_VOID = 0,
-	HTTP_HOST_MODE_NAME,
-	HTTP_HOST_MODE_IPV4,
-	HTTP_HOST_MODE_IPV6,
-} HTTP_HostMode;
+	CHTTP_HOST_MODE_VOID = 0,
+	CHTTP_HOST_MODE_NAME,
+	CHTTP_HOST_MODE_IPV4,
+	CHTTP_HOST_MODE_IPV6,
+} CHTTP_HostMode;
 
 typedef struct {
-	HTTP_HostMode mode;
-	HTTP_String   text;
+	CHTTP_HostMode mode;
+	CHTTP_String   text;
 	union {
-		HTTP_String name;
-		HTTP_IPv4   ipv4;
-		HTTP_IPv6   ipv6;
+		CHTTP_String name;
+		CHTTP_IPv4   ipv4;
+		CHTTP_IPv6   ipv6;
 	};
-} HTTP_Host;
+} CHTTP_Host;
 
 typedef struct {
-	HTTP_String userinfo;
-	HTTP_Host   host;
+	CHTTP_String userinfo;
+	CHTTP_Host   host;
 	int         port;
-} HTTP_Authority;
+} CHTTP_Authority;
 
 // ZII
 typedef struct {
-	HTTP_String    scheme;
-	HTTP_Authority authority;
-	HTTP_String    path;
-	HTTP_String    query;
-	HTTP_String    fragment;
-} HTTP_URL;
+	CHTTP_String    scheme;
+	CHTTP_Authority authority;
+	CHTTP_String    path;
+	CHTTP_String    query;
+	CHTTP_String    fragment;
+} CHTTP_URL;
 
 typedef enum {
-	HTTP_METHOD_GET,
-	HTTP_METHOD_HEAD,
-	HTTP_METHOD_POST,
-	HTTP_METHOD_PUT,
-	HTTP_METHOD_DELETE,
-	HTTP_METHOD_CONNECT,
-	HTTP_METHOD_OPTIONS,
-	HTTP_METHOD_TRACE,
-	HTTP_METHOD_PATCH,
-} HTTP_Method;
+	CHTTP_METHOD_GET,
+	CHTTP_METHOD_HEAD,
+	CHTTP_METHOD_POST,
+	CHTTP_METHOD_PUT,
+	CHTTP_METHOD_DELETE,
+	CHTTP_METHOD_CONNECT,
+	CHTTP_METHOD_OPTIONS,
+	CHTTP_METHOD_TRACE,
+	CHTTP_METHOD_PATCH,
+} CHTTP_Method;
 
 typedef struct {
-	HTTP_String name;
-	HTTP_String value;
-} HTTP_Header;
+	CHTTP_String name;
+	CHTTP_String value;
+} CHTTP_Header;
 
 typedef struct {
     bool        secure;
-	HTTP_Method method;
-	HTTP_URL    url;
+	CHTTP_Method method;
+	CHTTP_URL    url;
 	int         minor;
 	int         num_headers;
-	HTTP_Header headers[HTTP_MAX_HEADERS];
-	HTTP_String body;
-} HTTP_Request;
+	CHTTP_Header headers[CHTTP_MAX_HEADERS];
+	CHTTP_String body;
+} CHTTP_Request;
 
 typedef struct {
     void*       context;
 	int         minor;
 	int         status;
-	HTTP_String reason;
+	CHTTP_String reason;
 	int         num_headers;
-	HTTP_Header headers[HTTP_MAX_HEADERS];
-	HTTP_String body;
-} HTTP_Response;
+	CHTTP_Header headers[CHTTP_MAX_HEADERS];
+	CHTTP_String body;
+} CHTTP_Response;
 
-int         http_parse_ipv4     (char *src, int len, HTTP_IPv4     *ipv4);
-int         http_parse_ipv6     (char *src, int len, HTTP_IPv6     *ipv6);
-int         http_parse_url      (char *src, int len, HTTP_URL      *url);
-int         http_parse_request  (char *src, int len, HTTP_Request  *req);
-int         http_parse_response (char *src, int len, HTTP_Response *res);
+int         chttp_parse_ipv4     (char *src, int len, CHTTP_IPv4     *ipv4);
+int         chttp_parse_ipv6     (char *src, int len, CHTTP_IPv6     *ipv6);
+int         chttp_parse_url      (char *src, int len, CHTTP_URL      *url);
+int         chttp_parse_request  (char *src, int len, CHTTP_Request  *req);
+int         chttp_parse_response (char *src, int len, CHTTP_Response *res);
 
-int         http_find_header    (HTTP_Header *headers, int num_headers, HTTP_String name);
+int         chttp_find_header    (CHTTP_Header *headers, int num_headers, CHTTP_String name);
 
-HTTP_String http_get_cookie     (HTTP_Request *req, HTTP_String name);
-HTTP_String http_get_param      (HTTP_String body, HTTP_String str, char *mem, int cap);
-int         http_get_param_i    (HTTP_String body, HTTP_String str);
+CHTTP_String chttp_get_cookie     (CHTTP_Request *req, CHTTP_String name);
+CHTTP_String chttp_get_param      (CHTTP_String body, CHTTP_String str, char *mem, int cap);
+int         chttp_get_param_i    (CHTTP_String body, CHTTP_String str);
 
 // Checks whether the request was meant for the host with the given
 // domain an port. If port is -1, the default value of 80 is assumed.
-bool http_match_host(HTTP_Request *req, HTTP_String domain, int port);
+bool chttp_match_host(CHTTP_Request *req, CHTTP_String domain, int port);
 
 // Date and cookie types for Set-Cookie header parsing
 typedef enum {
-    HTTP_WEEKDAY_MON,
-    HTTP_WEEKDAY_TUE,
-    HTTP_WEEKDAY_WED,
-    HTTP_WEEKDAY_THU,
-    HTTP_WEEKDAY_FRI,
-    HTTP_WEEKDAY_SAT,
-    HTTP_WEEKDAY_SUN,
-} HTTP_WeekDay;
+    CHTTP_WEEKDAY_MON,
+    CHTTP_WEEKDAY_TUE,
+    CHTTP_WEEKDAY_WED,
+    CHTTP_WEEKDAY_THU,
+    CHTTP_WEEKDAY_FRI,
+    CHTTP_WEEKDAY_SAT,
+    CHTTP_WEEKDAY_SUN,
+} CHTTP_WeekDay;
 
 typedef enum {
-    HTTP_MONTH_JAN,
-    HTTP_MONTH_FEB,
-    HTTP_MONTH_MAR,
-    HTTP_MONTH_APR,
-    HTTP_MONTH_MAY,
-    HTTP_MONTH_JUN,
-    HTTP_MONTH_JUL,
-    HTTP_MONTH_AUG,
-    HTTP_MONTH_SEP,
-    HTTP_MONTH_OCT,
-    HTTP_MONTH_NOV,
-    HTTP_MONTH_DEC,
-} HTTP_Month;
+    CHTTP_MONTH_JAN,
+    CHTTP_MONTH_FEB,
+    CHTTP_MONTH_MAR,
+    CHTTP_MONTH_APR,
+    CHTTP_MONTH_MAY,
+    CHTTP_MONTH_JUN,
+    CHTTP_MONTH_JUL,
+    CHTTP_MONTH_AUG,
+    CHTTP_MONTH_SEP,
+    CHTTP_MONTH_OCT,
+    CHTTP_MONTH_NOV,
+    CHTTP_MONTH_DEC,
+} CHTTP_Month;
 
 typedef struct {
-    HTTP_WeekDay week_day;
+    CHTTP_WeekDay week_day;
     int          day;
-    HTTP_Month   month;
+    CHTTP_Month   month;
     int          year;
     int          hour;
     int          minute;
     int          second;
-} HTTP_Date;
+} CHTTP_Date;
 
 typedef struct {
-    HTTP_String name;
-    HTTP_String value;
+    CHTTP_String name;
+    CHTTP_String value;
 
     bool secure;
-    bool http_only;
+    bool chttp_only;
 
     bool have_date;
-    HTTP_Date date;
+    CHTTP_Date date;
 
     bool have_max_age;
     uint32_t max_age;
 
     bool have_domain;
-    HTTP_String domain;
+    CHTTP_String domain;
 
     bool have_path;
-    HTTP_String path;
-} HTTP_SetCookie;
+    CHTTP_String path;
+} CHTTP_SetCookie;
 
 // Parses a Set-Cookie header value
 // Returns 0 on success, -1 on error
-int http_parse_set_cookie(HTTP_String str, HTTP_SetCookie *out);
+int chttp_parse_set_cookie(CHTTP_String str, CHTTP_SetCookie *out);
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/secure_context.h
@@ -323,10 +323,10 @@ typedef struct {
 } ServerSecureContext;
 
 int server_secure_context_init(ServerSecureContext *ctx,
-    HTTP_String cert_file, HTTP_String key_file);
+    CHTTP_String cert_file, CHTTP_String key_file);
 void server_secure_context_free(ServerSecureContext *ctx);
 int  server_secure_context_add_certificate(ServerSecureContext *ctx,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file);
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file);
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/socket.h
@@ -383,7 +383,7 @@ int  server_secure_context_add_certificate(ServerSecureContext *ctx,
 
 #ifdef _WIN32
 #define NATIVE_SOCKET         SOCKET
-#define NATIVE_SOCKET_INVALID SOCKET_ERROR
+#define NATIVE_SOCKET_INVALID INVALID_SOCKET
 #define CLOSE_NATIVE_SOCKET   closesocket
 #else
 #define NATIVE_SOCKET         int
@@ -456,8 +456,8 @@ typedef struct {
 // Internal use only
 typedef struct {
     union {
-        HTTP_IPv4 ipv4;
-        HTTP_IPv6 ipv6;
+        CHTTP_IPv4 ipv4;
+        CHTTP_IPv6 ipv6;
     };
     bool is_ipv4;
     Port port;
@@ -481,6 +481,9 @@ typedef struct {
 
     // Native socket events that need to be monitored
     int events;
+
+    // If this is set, the raw socket handle shouldn't be monitored
+    bool silent;
 
     // Generation counter to invalidate any SocketHandle
     // referring to this socket when it is freed.
@@ -571,7 +574,7 @@ void socket_manager_free(SocketManager *sm);
 // can only be used once per manager.
 // Returns 0 on success, -1 on error.
 int socket_manager_listen_tcp(SocketManager *sm,
-    HTTP_String addr, Port port, int backlog,
+    CHTTP_String addr, Port port, int backlog,
     bool reuse_addr);
 
 // Same as the previous function, but incoming
@@ -582,9 +585,9 @@ int socket_manager_listen_tcp(SocketManager *sm,
 // and secure connections.
 // Returns 0 on success, -1 on error.
 int socket_manager_listen_tls(SocketManager *sm,
-    HTTP_String addr, Port port, int backlog,
-    bool reuse_addr, HTTP_String cert_file,
-    HTTP_String key_file);
+    CHTTP_String addr, Port port, int backlog,
+    bool reuse_addr, CHTTP_String cert_file,
+    CHTTP_String key_file);
 
 // If the socket manager was configures to accept
 // TLS connections, this adds additional certificates
@@ -592,7 +595,7 @@ int socket_manager_listen_tls(SocketManager *sm,
 // authenticity.
 // Returns 0 on success, -1 on error.
 int socket_manager_add_certificate(SocketManager *sm,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file);
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file);
 
 // When a thread is blocked on a poll() call for
 // descriptors associated to this socket manager,
@@ -635,9 +638,9 @@ typedef struct {
     ConnectTargetType type;
     Port port;
     union {
-        HTTP_IPv4 ipv4;
-        HTTP_IPv6 ipv6;
-        HTTP_String name;
+        CHTTP_IPv4 ipv4;
+        CHTTP_IPv6 ipv6;
+        CHTTP_String name;
     };
 } ConnectTarget;
 
@@ -669,6 +672,9 @@ void socket_set_user(SocketManager *sm, SocketHandle handle, void *user);
 // writing.
 bool socket_ready(SocketManager *sm, SocketHandle handle);
 
+// When a socket is marked as silent it will not generate events
+void socket_silent(SocketManager *sm, SocketHandle handle, bool value);
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/byte_queue.h
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -689,19 +695,19 @@ enum {
 };
 
 typedef struct {
-    uint8_t *ptr;
-    size_t   len;
+    char  *ptr;
+    size_t len;
 } ByteView;
 
 // Fields are for internal use only
 typedef struct {
     uint64_t curs;
-    uint8_t* data;
+    char*    data;
     uint32_t head;
     uint32_t size;
     uint32_t used;
     uint32_t limit;
-    uint8_t* read_target;
+    char*    read_target;
     uint32_t read_target_size;
     int flags;
 } ByteQueue;
@@ -715,7 +721,7 @@ typedef uint64_t ByteQueueOffset;
 // Initialize the queue with a given capacity limit.
 // This is just a soft limit. The queue will allocate
 // dynamically as needed up to this limit and won't
-// grow further. When the limit is reached, http_queue_full
+// grow further. When the limit is reached, chttp_queue_full
 // returns true.
 void byte_queue_init(ByteQueue *queue, uint32_t limit);
 
@@ -831,35 +837,35 @@ void byte_queue_remove_from_offset(ByteQueue *queue, ByteQueueOffset offset);
 //
 // The output is a certificate file in PEM format and a private
 // key file with the key used to sign the certificate.
-int http_create_test_certificate(HTTP_String C, HTTP_String O, HTTP_String CN,
-    HTTP_String cert_file, HTTP_String key_file);
+int chttp_create_test_certificate(CHTTP_String C, CHTTP_String O, CHTTP_String CN,
+    CHTTP_String cert_file, CHTTP_String key_file);
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/client.h
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#ifndef HTTP_CLIENT_CAPACITY
+#ifndef CHTTP_CLIENT_CAPACITY
 // The maximum ammount of requests that can be performed
 // in parallel.
-#define HTTP_CLIENT_CAPACITY (1<<7)
+#define CHTTP_CLIENT_CAPACITY (1<<7)
 #endif
 
 // Maximum number of descriptors the client will want
 // to wait on. It's one per connection plus the wakeup
 // self-pipe.
-#define HTTP_CLIENT_POLL_CAPACITY (HTTP_CLIENT_CAPACITY+1)
+#define CHTTP_CLIENT_POLL_CAPACITY (CHTTP_CLIENT_CAPACITY+1)
 
-#ifndef HTTP_COOKIE_JAR_CAPACITY
+#ifndef CHTTP_COOKIE_JAR_CAPACITY
 // Maximum number of cookies that can be associated to a
 // single client.
-#define HTTP_COOKIE_JAR_CAPACITY 128
+#define CHTTP_COOKIE_JAR_CAPACITY 128
 #endif
 
 typedef struct {
 
     // Cookie name and value
-    HTTP_String name;
-    HTTP_String value;
+    CHTTP_String name;
+    CHTTP_String value;
 
     // If the "exact_domain" is true, the cookie
     // can only be sent to the exact domain referred
@@ -867,7 +873,7 @@ typedef struct {
     // "exact_domain" is false, then the cookie is
     // compatible with subdomains.
     bool exact_domain;
-    HTTP_String domain;
+    CHTTP_String domain;
 
     // If "exact_path" is set, the cookie is only
     // compatible with requests to paths that match
@@ -875,40 +881,40 @@ typedef struct {
     // then any path that starts with "path" is
     // compatible with the cookie.
     bool exact_path;
-    HTTP_String path;
+    CHTTP_String path;
 
     // This cookie can only be sent over HTTPS
     bool secure;
 
-} HTTP_CookieJarEntry;
+} CHTTP_CookieJarEntry;
 
 typedef struct {
     int count;
-    HTTP_CookieJarEntry items[HTTP_COOKIE_JAR_CAPACITY];
-} HTTP_CookieJar;
+    CHTTP_CookieJarEntry items[CHTTP_COOKIE_JAR_CAPACITY];
+} CHTTP_CookieJar;
 
 typedef enum {
-    HTTP_CLIENT_CONN_FREE,
-    HTTP_CLIENT_CONN_WAIT_METHOD,
-    HTTP_CLIENT_CONN_WAIT_URL,
-    HTTP_CLIENT_CONN_WAIT_HEADER,
-    HTTP_CLIENT_CONN_WAIT_BODY,
-    HTTP_CLIENT_CONN_FLUSHING,
-    HTTP_CLIENT_CONN_BUFFERING,
-    HTTP_CLIENT_CONN_COMPLETE,
-} HTTP_ClientConnState;
+    CHTTP_CLIENT_CONN_FREE,
+    CHTTP_CLIENT_CONN_WAIT_METHOD,
+    CHTTP_CLIENT_CONN_WAIT_URL,
+    CHTTP_CLIENT_CONN_WAIT_HEADER,
+    CHTTP_CLIENT_CONN_WAIT_BODY,
+    CHTTP_CLIENT_CONN_FLUSHING,
+    CHTTP_CLIENT_CONN_BUFFERING,
+    CHTTP_CLIENT_CONN_COMPLETE,
+} CHTTP_ClientConnState;
 
 // Fields of this struct are private
-typedef struct HTTP_Client HTTP_Client;
+typedef struct CHTTP_Client CHTTP_Client;
 
 typedef struct {
-    HTTP_ClientConnState state;
+    CHTTP_ClientConnState state;
 
     // Handle to the socket
     SocketHandle handle;
 
     // Pointer back to the client
-    HTTP_Client *client;
+    CHTTP_Client *client;
 
     // Generation counter for request builder validation
     uint16_t gen;
@@ -924,11 +930,11 @@ typedef struct {
     bool dont_verify_cert;
 
     // Allocated copy of the URL string
-    HTTP_String url_buffer;
+    CHTTP_String url_buffer;
 
     // Parsed URL for connection establishment
     // All url.* pointers reference into url_buffer
-    HTTP_URL url;
+    CHTTP_URL url;
 
     // Data received from the server
     ByteQueue input;
@@ -943,7 +949,7 @@ typedef struct {
     int result;
 
     // Parsed response once complete
-    HTTP_Response response;
+    CHTTP_Response response;
 
     // This offset points to the first byte that comes
     // after the string "Content-Length: ".
@@ -954,10 +960,10 @@ typedef struct {
     // content byte subtracting it from the offset reached
     // when the request is marked as done.
     ByteQueueOffset content_length_offset;
-} HTTP_ClientConn;
+} CHTTP_ClientConn;
 
 // Fields of this struct are private
-struct HTTP_Client {
+struct CHTTP_Client {
 
     // Size limit of the input and output buffer of each
     // connection.
@@ -965,18 +971,18 @@ struct HTTP_Client {
     uint32_t output_buffer_limit;
 
     // List of cookies created during this session
-    HTTP_CookieJar cookie_jar;
+    CHTTP_CookieJar cookie_jar;
 
     // Array of connections. The counter contains the
     // number of structs such that state!=FREE.
     int num_conns;
-    HTTP_ClientConn conns[HTTP_CLIENT_CAPACITY];
+    CHTTP_ClientConn conns[CHTTP_CLIENT_CAPACITY];
 
     // Queue of indices referring to connections that
     // are in the COMPLETE state.
     int num_ready;
     int ready_head;
-    int ready[HTTP_CLIENT_CAPACITY];
+    int ready[CHTTP_CLIENT_CAPACITY];
 
     // Asynchronous TCP and TLS socket abstraction
     SocketManager sockets;
@@ -986,80 +992,80 @@ struct HTTP_Client {
     // manager with a pointer to it. This allows
     // allocating the exact number of sockets we
     // will need.
-    Socket socket_pool[HTTP_CLIENT_CAPACITY];
+    Socket socket_pool[CHTTP_CLIENT_CAPACITY];
 };
 
 // Initialize an HTTP client object. This allows one to
 // perform a number of requests in parallel.
-int http_client_init(HTTP_Client *client);
+int chttp_client_init(CHTTP_Client *client);
 
 // Release resources associated to a client object.
-void http_client_free(HTTP_Client *client);
+void chttp_client_free(CHTTP_Client *client);
 
 // Set input and output buffer size limit for any
 // given connection. The default value is 1MB
-void http_client_set_input_limit(HTTP_Client *client, uint32_t limit);
-void http_client_set_output_limit(HTTP_Client *client, uint32_t limit);
+void chttp_client_set_input_limit(CHTTP_Client *client, uint32_t limit);
+void chttp_client_set_output_limit(CHTTP_Client *client, uint32_t limit);
 
 // When a thread is blocked waiting for client events,
 // other threads can call this function to wake it up.
-int http_client_wakeup(HTTP_Client *client);
+int chttp_client_wakeup(CHTTP_Client *client);
 
 typedef struct {
-    HTTP_Client *client;
+    CHTTP_Client *client;
     uint16_t index;
     uint16_t gen;
-} HTTP_RequestBuilder;
+} CHTTP_RequestBuilder;
 
 // Create a new request builder object.
-HTTP_RequestBuilder http_client_get_builder(HTTP_Client *client);
+CHTTP_RequestBuilder chttp_client_get_builder(CHTTP_Client *client);
 
 // TODO: comment
-void http_request_builder_set_user(HTTP_RequestBuilder builder,
+void chttp_request_builder_set_user(CHTTP_RequestBuilder builder,
     void *user);
 
 // TODO: comment
-void http_request_builder_trace(HTTP_RequestBuilder builder,
+void chttp_request_builder_trace(CHTTP_RequestBuilder builder,
     bool trace_bytes);
 
 // TODO: comment
-void http_request_builder_insecure(HTTP_RequestBuilder builder,
+void chttp_request_builder_insecure(CHTTP_RequestBuilder builder,
     bool insecure);
 
 // Set the method of the current request. This is the first
 // function of the request builder that the user must call.
-void http_request_builder_method(HTTP_RequestBuilder builder,
-    HTTP_Method method);
+void chttp_request_builder_method(CHTTP_RequestBuilder builder,
+    CHTTP_Method method);
 
 // Set the URL of the current request. This must be set after
 // the method and before any header/body
-void http_request_builder_target(HTTP_RequestBuilder builder,
-    HTTP_String url);
+void chttp_request_builder_target(CHTTP_RequestBuilder builder,
+    CHTTP_String url);
 
 // After the URL, the user may set zero or more headers.
-void http_request_builder_header(HTTP_RequestBuilder builder,
-    HTTP_String str);
+void chttp_request_builder_header(CHTTP_RequestBuilder builder,
+    CHTTP_String str);
 
 // Append bytes to the request's body. You can call this
 // any amount of times, as long as it's after having set
 // the URL.
-void http_request_builder_body(HTTP_RequestBuilder builder,
-    HTTP_String str);
+void chttp_request_builder_body(CHTTP_RequestBuilder builder,
+    CHTTP_String str);
 
 // Mark this request as complete. This invalidates the
 // builder.
 // Returns 0 on success, -1 on error.
-int http_request_builder_send(HTTP_RequestBuilder builder);
+int chttp_request_builder_send(CHTTP_RequestBuilder builder);
 
 // Resets the event register with the list of descriptors
 // the client wants monitored.
-void http_client_register_events(HTTP_Client *client,
+void chttp_client_register_events(CHTTP_Client *client,
     EventRegister *reg);
 
 // The caller has waited for poll() to return and some
 // I/O events to be triggered, so now the HTTP client
 // can continue its buffering and flushing operations.
-void http_client_process_events(HTTP_Client *client,
+void chttp_client_process_events(CHTTP_Client *client,
     EventRegister reg);
 
 // After some I/O events were processes, some responses
@@ -1067,86 +1073,86 @@ void http_client_process_events(HTTP_Client *client,
 // buffered responses. If a request was available, true
 // is returned. If no more are avaiable, false is returned.
 // The returned response must be freed using the
-// http_free_response function.
+// chttp_free_response function.
 // TODO: Better comment talking about output arguments
-bool http_client_next_response(HTTP_Client *client,
-    int *result, void **user, HTTP_Response **response);
+bool chttp_client_next_response(CHTTP_Client *client,
+    int *result, void **user, CHTTP_Response **response);
 
 // TODO: comment
-void http_client_wait_response(HTTP_Client *client,
-    int *result, void **user, HTTP_Response **response);
+void chttp_client_wait_response(CHTTP_Client *client,
+    int *result, void **user, CHTTP_Response **response);
 
 // Free a response object. You can't access its fields
 // again after this.
-void http_free_response(HTTP_Response *response);
+void chttp_free_response(CHTTP_Response *response);
 
 // Perform a blocking GET request
-int http_get(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_Response **response);
+int chttp_get(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_Response **response);
 
 // Perform a blocking POST request
-int http_post(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_String body,
-    HTTP_Response **response);
+int chttp_post(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_String body,
+    CHTTP_Response **response);
 
 // Perform a blocking PUT request
-int http_put(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_String body,
-    HTTP_Response **response);
+int chttp_put(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_String body,
+    CHTTP_Response **response);
 
 // Perform a blocking DELETE request
-int http_delete(HTTP_String url, HTTP_String *headers,
-    int num_headers, HTTP_Response **response);
+int chttp_delete(CHTTP_String url, CHTTP_String *headers,
+    int num_headers, CHTTP_Response **response);
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/server.h
 ////////////////////////////////////////////////////////////////////////////////////////
 
-#ifndef HTTP_SERVER_CAPACITY
+#ifndef CHTTP_SERVER_CAPACITY
 // The maximum ammount of requests that can be handled
 // in parallel.
-#define HTTP_SERVER_CAPACITY (1<<9)
+#define CHTTP_SERVER_CAPACITY (1<<9)
 #endif
 
 // Maximum number of descriptors the server will want
 // to wait on. It's one per connection plus two for the
 // TCP and TLS listener, plus one for the wakeup self-pipe.
-#define HTTP_SERVER_POLL_CAPACITY (HTTP_SERVER_CAPACITY+3)
+#define CHTTP_SERVER_POLL_CAPACITY (CHTTP_SERVER_CAPACITY+3)
 
 typedef enum {
 
     // This struct is unused
-    HTTP_SERVER_CONN_FREE,
+    CHTTP_SERVER_CONN_FREE,
 
     // No request was buffered yet.
-    HTTP_SERVER_CONN_BUFFERING,
+    CHTTP_SERVER_CONN_BUFFERING,
 
     // A request was just buffered and is waiting for
     // the user to build a response. To be specific,
     // it's waiting for the user to set a response status.
-    HTTP_SERVER_CONN_WAIT_STATUS,
+    CHTTP_SERVER_CONN_WAIT_STATUS,
 
     // A request is buffered and a status was set. Now
     // the user can set a header or append the first
     // bytes of the response body.
-    HTTP_SERVER_CONN_WAIT_HEADER,
+    CHTTP_SERVER_CONN_WAIT_HEADER,
 
     // A request is buffered and some bytes were appended
     // to the response. Now the user can either append more
     // bytes or send out the response.
-    HTTP_SERVER_CONN_WAIT_BODY,
+    CHTTP_SERVER_CONN_WAIT_BODY,
 
     // A response has been produced and it's being flushed.
-    HTTP_SERVER_CONN_FLUSHING,
+    CHTTP_SERVER_CONN_FLUSHING,
 
-} HTTP_ServerConnState;
+} CHTTP_ServerConnState;
 
 // This structure represents the HTTP connection to
 // a client.
 typedef struct {
 
     // If false, this struct is unused
-    HTTP_ServerConnState state;
+    CHTTP_ServerConnState state;
 
     // Handle to the socket
     SocketHandle handle;
@@ -1171,7 +1177,7 @@ typedef struct {
     // When the state is WAIT_STATUS, WAIT_HEADER,
     // or WAIT_BODY, this contains the parsed version
     // of the buffered request.
-    HTTP_Request request;
+    CHTTP_Request request;
 
     // Length of the buffered request when the request
     // field is valid.
@@ -1196,7 +1202,7 @@ typedef struct {
     // it from the offset reached when the response is marked
     // as done.
     ByteQueueOffset content_length_offset;
-} HTTP_ServerConn;
+} CHTTP_ServerConn;
 
 typedef struct {
 
@@ -1212,13 +1218,13 @@ typedef struct {
     // Array of connections. The counter contains the
     // number of structs such that state=FREE.
     int num_conns;
-    HTTP_ServerConn conns[HTTP_SERVER_CAPACITY];
+    CHTTP_ServerConn conns[CHTTP_SERVER_CAPACITY];
 
     // Queue of indices referring to connections that
     // are in the WAIT_STATUS state.
     int num_ready;
     int ready_head;
-    int ready[HTTP_SERVER_CAPACITY];
+    int ready[CHTTP_SERVER_CAPACITY];
 
     // Asynchronous TCP and TLS socket abstraction
     SocketManager sockets;
@@ -1228,74 +1234,74 @@ typedef struct {
     // manager with a pointer to it. This allows
     // allocating the exact number of sockets we
     // will need.
-    Socket socket_pool[HTTP_SERVER_CAPACITY];
+    Socket socket_pool[CHTTP_SERVER_CAPACITY];
 
-} HTTP_Server;
+} CHTTP_Server;
 
 // Initialize the HTTP server object. By default, it won't
 // listen for connections. You need to call
 //
-//   http_server_listen_tcp
-//   http_server_listen_tls
+//   chttp_server_listen_tcp
+//   chttp_server_listen_tls
 //
 // to listen for connection. Note that you can have a
 // single server listening for HTTP and HTTPS requests
 // by calling both.
-int http_server_init(HTTP_Server *server);
+int chttp_server_init(CHTTP_Server *server);
 
 // Release resources associated to the server.
-void http_server_free(HTTP_Server *server);
+void chttp_server_free(CHTTP_Server *server);
 
 // Set input and output buffer size limit for any
 // given connection. The default value is 1MB
-void http_server_set_input_limit(HTTP_Server *server, uint32_t limit);
-void http_server_set_output_limit(HTTP_Server *server, uint32_t limit);
+void chttp_server_set_input_limit(CHTTP_Server *server, uint32_t limit);
+void chttp_server_set_output_limit(CHTTP_Server *server, uint32_t limit);
 
 // TODO: Comment
-void http_server_set_trace_bytes(HTTP_Server *server, bool value);
+void chttp_server_set_trace_bytes(CHTTP_Server *server, bool value);
 
 // TODO: Comment
-void http_server_set_reuse_addr(HTTP_Server *server, bool reuse);
+void chttp_server_set_reuse_addr(CHTTP_Server *server, bool reuse);
 
 // TODO: comment
-void http_server_set_backlog(HTTP_Server *server, int backlog);
+void chttp_server_set_backlog(CHTTP_Server *server, int backlog);
 
 // Enable listening for plain HTTP requests at the
 // specified interface.
-int http_server_listen_tcp(HTTP_Server *server,
-    HTTP_String addr, Port port);
+int chttp_server_listen_tcp(CHTTP_Server *server,
+    CHTTP_String addr, Port port);
 
 // Enable listening for HTTPS requests at the specified
 // interfact, using the specified certificate and key
 // to verify the connection.
-int http_server_listen_tls(HTTP_Server *server, HTTP_String addr, Port port,
-    HTTP_String cert_file_name, HTTP_String key_file_name);
+int chttp_server_listen_tls(CHTTP_Server *server, CHTTP_String addr, Port port,
+    CHTTP_String cert_file_name, CHTTP_String key_file_name);
 
 // Add the certificate for an additional domain when
 // the server is listening for HTTPS requests.
-int http_server_add_certificate(HTTP_Server *server,
-    HTTP_String domain, HTTP_String cert_file, HTTP_String key_file);
+int chttp_server_add_certificate(CHTTP_Server *server,
+    CHTTP_String domain, CHTTP_String cert_file, CHTTP_String key_file);
 
 // When a thread is blocked waiting for server events,
 // other threads can call this function to wake it up.
-int http_server_wakeup(HTTP_Server *server);
+int chttp_server_wakeup(CHTTP_Server *server);
 
 // Resets the event register with the list of descriptors
 // the server wants monitored.
-void http_server_register_events(HTTP_Server *server,
+void chttp_server_register_events(CHTTP_Server *server,
     EventRegister *reg);
 
 // The caller has waited for poll() to return and some
 // I/O events to be triggered, so now the HTTP server
 // can continue its buffering and flushing operations.
-void http_server_process_events(HTTP_Server *server,
+void chttp_server_process_events(CHTTP_Server *server,
     EventRegister reg);
 
 typedef struct {
-    HTTP_Server *server;
+    CHTTP_Server *server;
     uint16_t     index;
     uint16_t     gen;
-} HTTP_ResponseBuilder;
+} CHTTP_ResponseBuilder;
 
 // After some I/O events were processes, some requests
 // may be availabe. This function returns one of the
@@ -1305,35 +1311,35 @@ typedef struct {
 // respond in batches.
 // For each request returned by this function, the user
 // must build a response using the response builder API.
-bool http_server_next_request(HTTP_Server *server,
-    HTTP_Request **request, HTTP_ResponseBuilder *builder);
+bool chttp_server_next_request(CHTTP_Server *server,
+    CHTTP_Request **request, CHTTP_ResponseBuilder *builder);
 
 // TODO: comment
-void http_server_wait_request(HTTP_Server *server,
-    HTTP_Request **request, HTTP_ResponseBuilder *builder);
+void chttp_server_wait_request(CHTTP_Server *server,
+    CHTTP_Request **request, CHTTP_ResponseBuilder *builder);
 
 // This function is called to set the status code of
 // a request's response. If this function is called
 // after the other response builder functions, it will
 // reset the response and set a new status.
-void http_response_builder_status(HTTP_ResponseBuilder builder, int status);
+void chttp_response_builder_status(CHTTP_ResponseBuilder builder, int status);
 
 // Append a header to the response. This can only be
 // used after having set the status and before appending
 // to the body.
-void http_response_builder_header(HTTP_ResponseBuilder builder, HTTP_String str);
+void chttp_response_builder_header(CHTTP_ResponseBuilder builder, CHTTP_String str);
 
 // Append some bytes to the response's body
-void http_response_builder_body(HTTP_ResponseBuilder builder, HTTP_String str);
+void chttp_response_builder_body(CHTTP_ResponseBuilder builder, CHTTP_String str);
 
 // TODO: comment
-void  http_response_builder_body_cap(HTTP_ResponseBuilder builder, int cap);
-char *http_response_builder_body_buf(HTTP_ResponseBuilder builder, int *cap);
-void  http_response_builder_body_ack(HTTP_ResponseBuilder builder, int num);
+void  chttp_response_builder_body_cap(CHTTP_ResponseBuilder builder, int cap);
+char *chttp_response_builder_body_buf(CHTTP_ResponseBuilder builder, int *cap);
+void  chttp_response_builder_body_ack(CHTTP_ResponseBuilder builder, int num);
 
 // Mark the response as complete. This will invalidate
 // the response builder handle.
-void http_response_builder_send(HTTP_ResponseBuilder builder);
+void chttp_response_builder_send(CHTTP_ResponseBuilder builder);
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // Copyright 2025 Francesco Cozzuto
@@ -1359,4 +1365,4 @@ void http_response_builder_send(HTTP_ResponseBuilder builder);
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 ////////////////////////////////////////////////////////////////////////////////////////
-#endif // HTTP_INCLUDED
+#endif // CHTTP_INCLUDED

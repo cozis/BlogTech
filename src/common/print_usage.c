@@ -14,7 +14,7 @@ void print_usage(void)
         "                          it is loaded implicitly.\n"
         "  --no-config             The default config file is ignored\n"
         "  --trace-bytes={yes|no}  Dump all I/O to stdout\n"
-        "  --serve, -s             Run Blogtech as an HTTP(S) server\n"
+        "  --serve, -s             Run BlogTech as an HTTP(S) server\n"
         "  --upload, -u            Upload files to a remote Blogtech server\n"
         "\n"
         "Server options (compatible with --serve/-s):\n"

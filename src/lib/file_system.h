@@ -1,20 +1,17 @@
 #ifndef FILE_SYSTEM_INCLUDED
 #define FILE_SYSTEM_INCLUDED
 
-#include <stdint.h>
-#include <stdbool.h>
-
 #ifndef _WIN32
 #include <dirent.h>
 #endif
 
-#include "chttp.h" // Only needed for HTTP_String
+#include "basic.h"
 
 #define ERROR_GENERIC        -1
 #define ERROR_FILE_NOT_FOUND -2
 
 typedef struct {
-    uint64_t data;
+    u64 data;
 } Handle;
 
 #ifdef _WIN32
@@ -37,8 +34,8 @@ typedef enum {
     FILE_OPEN_READ,
 } FileOpenMode;
 
-bool file_exists(HTTP_String path);
-int  file_open(HTTP_String path, Handle *fd, FileOpenMode mode);
+bool file_exists(string path);
+int  file_open(string path, Handle *fd, FileOpenMode mode);
 void file_close(Handle fd);
 int  file_set_offset(Handle fd, int off);
 int  file_get_offset(Handle fd, int *off);
@@ -48,16 +45,19 @@ int  file_sync(Handle fd);
 int  file_read(Handle fd, char *dst, int max);
 int  file_write(Handle fd, char *src, int len);
 int  file_size(Handle fd, size_t *len);
-int  file_write_atomic(HTTP_String path, HTTP_String content);
-int  create_dir(HTTP_String path);
-int  rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath);
-int  remove_file_or_dir(HTTP_String path);
-int  get_full_path(HTTP_String path, char *dst);
-int  file_read_all(HTTP_String path, HTTP_String *data);
-int  file_write_all(HTTP_String path, HTTP_String data);
+int  file_write_atomic(string path, string content);
+int  create_dir(string path);
+int  rename_file_or_dir(string oldpath, string newpath);
+int  remove_file_or_dir(string path);
+int  get_full_path(string path, char *dst);
+int  file_read_all(string path, string *data);
+int  file_write_all(string path, string data);
 
-int  directory_scanner_init(DirectoryScanner *scanner, HTTP_String path);
-int  directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name);
+int  directory_scanner_init(DirectoryScanner *scanner, string path);
+int  directory_scanner_next(DirectoryScanner *scanner, string *name);
 void directory_scanner_free(DirectoryScanner *scanner);
+
+int parse_path(string path, string *comps, int max);
+int translate_path(string path, string root, char *dst, int cap);
 
 #endif // FILE_SYSTEM_INCLUDED

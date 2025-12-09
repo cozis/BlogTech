@@ -1,8 +1,11 @@
 #include "auth.h"
 #include "../common/request_signature.h"
-#include "../common/file_system.h"
+#include "../lib/file_system.h"
+#include "../lib/http.h"
+#include <stdlib.h>
+#include <string.h>
 
-int auth_init(Auth *auth, HTTP_String password_file)
+int auth_init(Auth *auth, string password_file)
 {
     auth->password.ptr = NULL;
     auth->password.len = 0;
@@ -13,7 +16,7 @@ int auth_init(Auth *auth, HTTP_String password_file)
     if (password_file.len == 0)
         return 0;
 
-    HTTP_String content;
+    string content;
     if (file_read_all(password_file, &content) < 0)
         return -1;
 
@@ -41,7 +44,7 @@ void auth_free(Auth *auth)
     (void) auth;
 }
 
-static bool is_invalidated(Auth *auth, uint64_t nonce_value)
+static bool is_invalidated(Auth *auth, u64 nonce_value)
 {
     for (int i = 0; i < MAX_NONCES; i++)
         if (nonce_value == auth->nonces[i].value)
@@ -49,14 +52,14 @@ static bool is_invalidated(Auth *auth, uint64_t nonce_value)
     return false;
 }
 
-static uint64_t parse_nonce(HTTP_String str)
+static u64 parse_nonce(string str)
 {
-    uint64_t value = 0;
+    u64 value = 0;
     for (int i = 0; i < str.len; i++) {
         char c = str.ptr[i];
         if (c < '0' || c > '9')
             return BAD_NONCE;
-        uint64_t prev = value;
+        u64 prev = value;
         value = value * 10 + (c - '0');
         if (value < prev) // overflow
             return BAD_NONCE;
@@ -64,14 +67,14 @@ static uint64_t parse_nonce(HTTP_String str)
     return value;
 }
 
-static uint32_t parse_expire(HTTP_String str)
+static u32 parse_expire(string str)
 {
-    uint32_t value = 0;
+    u32 value = 0;
     for (int i = 0; i < str.len; i++) {
         char c = str.ptr[i];
         if (c < '0' || c > '9')
             return 0;
-        uint32_t prev = value;
+        u32 prev = value;
         value = value * 10 + (c - '0');
         if (value < prev) // overflow
             return 0;
@@ -82,7 +85,7 @@ static uint32_t parse_expire(HTTP_String str)
 // Parse a timestamp string into a time_t value.
 // The timestamp format is Unix epoch seconds (decimal integer),
 // e.g., "1733788800" for 2024-12-10 00:00:00 UTC.
-static time_t parse_timestamp(HTTP_String str)
+static time_t parse_timestamp(string str)
 {
     time_t value = 0;
     for (int i = 0; i < str.len; i++) {
@@ -97,7 +100,7 @@ static time_t parse_timestamp(HTTP_String str)
     return value;
 }
 
-static bool is_expired(HTTP_String timestamp_str, uint32_t expire_seconds)
+static bool is_expired(string timestamp_str, u32 expire_seconds)
 {
     time_t timestamp = parse_timestamp(timestamp_str);
     if (timestamp == 0)
@@ -117,7 +120,7 @@ static void cleanup_expired_nonces(Auth *auth)
     }
 }
 
-static bool store_nonce(Auth *auth, uint64_t nonce_value, time_t expire)
+static bool store_nonce(Auth *auth, u64 nonce_value, time_t expire)
 {
     int i = 0;
     while (i < MAX_NONCES && auth->nonces[i].value != BAD_NONCE)
@@ -140,59 +143,59 @@ static bool store_nonce(Auth *auth, uint64_t nonce_value, time_t expire)
 
 // Returns 0 if the request is verified, 1 if the request is
 // not verified, and -1 if an error occurred.
-int auth_verify(Auth *auth, HTTP_Request *request)
+int auth_verify(Auth *auth, CHTTP_Request *request)
 {
     // Reject all requests if password is too short
     if (auth->password.len < MIN_PASSWORD_LEN)
         return 1;
 
-    int idx = http_find_header(
+    int idx = chttp_find_header(
         request->headers,
         request->num_headers,
-        HTTP_STR("Host"));
+        CHTTP_STR("Host"));
     if (idx < 0)
         return 1;
-    HTTP_String host = request->headers[idx].value;
+    string host = H2S(request->headers[idx].value);
 
-    idx = http_find_header(
+    idx = chttp_find_header(
         request->headers,
         request->num_headers,
-        HTTP_STR("X-Blogtech-Nonce"));
+        CHTTP_STR("X-BlogTech-Nonce"));
     if (idx < 0)
         return 1;
-    HTTP_String nonce_str = request->headers[idx].value;
+    string nonce_str = H2S(request->headers[idx].value);
 
-    idx = http_find_header(
+    idx = chttp_find_header(
         request->headers,
         request->num_headers,
-        HTTP_STR("X-Blogtech-Timestamp"));
+        CHTTP_STR("X-BlogTech-Timestamp"));
     if (idx < 0)
         return 1;
-    HTTP_String timestamp = request->headers[idx].value;
+    string timestamp = H2S(request->headers[idx].value);
 
-    idx = http_find_header(
+    idx = chttp_find_header(
         request->headers,
         request->num_headers,
-        HTTP_STR("X-Blogtech-Expire"));
+        CHTTP_STR("X-BlogTech-Expire"));
     if (idx < 0)
         return 1;
-    HTTP_String expire_str = request->headers[idx].value;
+    string expire_str = H2S(request->headers[idx].value);
 
-    idx = http_find_header(
+    idx = chttp_find_header(
         request->headers,
         request->num_headers,
-        HTTP_STR("X-Blogtech-Signature"));
+        CHTTP_STR("X-BlogTech-Signature"));
     if (idx < 0)
         return 1;
-    HTTP_String signature = request->headers[idx].value;
+    string signature = H2S(request->headers[idx].value);
 
     // Parse the expire value
-    uint32_t expire = parse_expire(expire_str);
+    u32 expire = parse_expire(expire_str);
     if (expire == 0)
         return 1;
 
     // Parse the nonce value
-    uint64_t nonce_value = parse_nonce(nonce_str);
+    u64 nonce_value = parse_nonce(nonce_str);
     if (nonce_value == BAD_NONCE)
         return 1;
 
@@ -208,12 +211,12 @@ int auth_verify(Auth *auth, HTTP_Request *request)
     char expected_signature[64];
     int ret = calculate_request_signature(
         request->method,
-        request->url.path,
+        H2S(request->url.path),
         host,
         timestamp,
         expire,
         nonce_str,
-        request->body,
+        H2S(request->body),
         auth->password,
         expected_signature);
     if (ret < 0)

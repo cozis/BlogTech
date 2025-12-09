@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #ifdef _WIN32
 #else
@@ -15,9 +16,9 @@
 
 #include "file_system.h"
 
-int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath);
+int rename_file_or_dir(string oldpath, string newpath);
 
-bool file_exists(HTTP_String path)
+bool file_exists(string path)
 {
     // TODO: make a proper implementation of this
     Handle fd;
@@ -27,7 +28,7 @@ bool file_exists(HTTP_String path)
     return ret == 0;
 }
 
-int file_open(HTTP_String path, Handle *fd, FileOpenMode mode)
+int file_open(string path, Handle *fd, FileOpenMode mode)
 {
 #ifdef __linux__
     char zt[1<<10];
@@ -53,7 +54,7 @@ int file_open(HTTP_String path, Handle *fd, FileOpenMode mode)
         return -1;
     }
 
-    *fd = (Handle) { (uint64_t) ret };
+    *fd = (Handle) { (u64) ret };
     return 0;
 #endif
 
@@ -80,7 +81,7 @@ int file_open(HTTP_String path, Handle *fd, FileOpenMode mode)
         return -1;
     }
 
-    *fd = (Handle) { (uint64_t) h };
+    *fd = (Handle) { (u64) h };
     return 0;
 #endif
 }
@@ -217,7 +218,7 @@ int file_size(Handle fd, size_t *len)
     struct stat buf;
     if (fstat((int) fd.data, &buf) < 0)
         return -1;
-    if (buf.st_size < 0 || (uint64_t) buf.st_size > SIZE_MAX)
+    if (buf.st_size < 0 || (u64) buf.st_size > SIZE_MAX)
         return -1;
     *len = (size_t) buf.st_size;
     return 0;
@@ -227,14 +228,14 @@ int file_size(Handle fd, size_t *len)
     LARGE_INTEGER buf;
     if (!GetFileSizeEx((HANDLE) fd.data, &buf))
         return -1;
-    if (buf.QuadPart < 0 || (uint64_t) buf.QuadPart > SIZE_MAX)
+    if (buf.QuadPart < 0 || (u64) buf.QuadPart > SIZE_MAX)
         return -1;
     *len = buf.QuadPart;
     return 0;
 #endif
 }
 
-int create_dir(HTTP_String path)
+int create_dir(string path)
 {
     char zt[PATH_MAX];
     if (path.len >= (int) sizeof(zt))
@@ -253,7 +254,7 @@ int create_dir(HTTP_String path)
     return 0;
 }
 
-int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath)
+int rename_file_or_dir(string oldpath, string newpath)
 {
     char oldpath_zt[PATH_MAX];
     if (oldpath.len >= (int) sizeof(oldpath_zt))
@@ -272,7 +273,7 @@ int rename_file_or_dir(HTTP_String oldpath, HTTP_String newpath)
     return 0;
 }
 
-int remove_file_or_dir(HTTP_String path)
+int remove_file_or_dir(string path)
 {
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
@@ -285,7 +286,7 @@ int remove_file_or_dir(HTTP_String path)
     return 0;
 }
 
-int get_full_path(HTTP_String path, char *dst)
+int get_full_path(string path, char *dst)
 {
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
@@ -310,7 +311,7 @@ int get_full_path(HTTP_String path, char *dst)
     return 0;
 }
 
-int file_read_all(HTTP_String path, HTTP_String *data)
+int file_read_all(string path, string *data)
 {
     Handle fd;
     int ret = file_open(path, &fd, FILE_OPEN_READ);
@@ -341,12 +342,12 @@ int file_read_all(HTTP_String path, HTTP_String *data)
         copied += ret;
     }
 
-    *data = (HTTP_String) { dst, len };
+    *data = (string) { dst, len };
     file_close(fd);
     return 0;
 }
 
-int file_write_all(HTTP_String path, HTTP_String data)
+int file_write_all(string path, string data)
 {
     char *src = data.ptr;
     int   len = data.len;
@@ -372,7 +373,7 @@ int file_write_all(HTTP_String path, HTTP_String data)
 
 #ifdef _WIN32
 
-int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
+int directory_scanner_init(DirectoryScanner *scanner, string path)
 {
     char pattern[PATH_MAX];
     int ret = snprintf(pattern, sizeof(pattern), "%.*s\\*", path.len, path.ptr);
@@ -393,7 +394,7 @@ int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
     return 0;
 }
 
-int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
+int directory_scanner_next(DirectoryScanner *scanner, string *name)
 {
     if (scanner->done)
         return 1;
@@ -411,7 +412,7 @@ int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
     }
 
     char *p = scanner->find_data.cFileName;
-    *name = (HTTP_String) { p, strlen(p) };
+    *name = (string) { p, strlen(p) };
     return 0;
 }
 
@@ -422,7 +423,7 @@ void directory_scanner_free(DirectoryScanner *scanner)
 
 #else
 
-int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
+int directory_scanner_init(DirectoryScanner *scanner, string path)
 {
     char path_copy[PATH_MAX];
     if (path.len >= PATH_MAX)
@@ -440,7 +441,7 @@ int directory_scanner_init(DirectoryScanner *scanner, HTTP_String path)
     return 0;
 }
 
-int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
+int directory_scanner_next(DirectoryScanner *scanner, string *name)
 {
     if (scanner->done)
         return 1;
@@ -451,7 +452,7 @@ int directory_scanner_next(DirectoryScanner *scanner, HTTP_String *name)
         return 1;
     }
 
-    *name = (HTTP_String) { scanner->e->d_name, strlen(scanner->e->d_name) };
+    *name = (string) { scanner->e->d_name, strlen(scanner->e->d_name) };
     return 0;
 }
 
@@ -461,3 +462,94 @@ void directory_scanner_free(DirectoryScanner *scanner)
 }
 
 #endif
+
+int parse_path(string path, string *comps, int max)
+{
+    bool is_absolute = false;
+    if (path.len > 0 && path.ptr[0] == '/') {
+        is_absolute = true;
+        path.ptr++;
+        path.len--;
+        if (path.len == 0)
+            return 0; // Absolute paths with no components are allowed
+    }
+
+    int num = 0;
+    u32 i = 0;
+    for (;;) {
+
+        u32 off = i;
+        while (i < (u32) path.len && path.ptr[i] != '/')
+            i++;
+        u32 len = i - off;
+
+        if (len == 0)
+            return -1; // Empty component
+
+        string comp = { path.ptr + off, len };
+        if (comp.len == 2 && comp.ptr[0] == '.' && comp.ptr[1] == '.') {
+            if (num == 0) {
+                // For absolute paths, ".." at root is ignored (stays at root)
+                // For relative paths, ".." with no components references parent, which is invalid
+                if (!is_absolute)
+                    return -1;
+                // Otherwise, ignore the ".." (absolute path, already at root)
+            } else {
+                num--;
+            }
+        } else if (comp.len != 1 || comp.ptr[0] != '.') {
+            if (num == max)
+                return -1; // To many components
+            comps[num++] = comp;
+        }
+
+        if (i == (u32) path.len)
+            break;
+
+        assert(path.ptr[i] == '/');
+        i++;
+
+        if (i == (u32) path.len)
+            break;
+    }
+
+    return num;
+}
+
+#define MAX_COMPS 32
+
+int translate_path(string path,
+    string root, char *dst, int cap)
+{
+    int num_comps = 0;
+    string comps[MAX_COMPS];
+
+    int ret = parse_path(root, comps + num_comps, MAX_COMPS - num_comps);
+    if (ret < 0)
+        return -1;
+    num_comps += ret;
+
+    ret = parse_path(path, comps + num_comps, MAX_COMPS - num_comps);
+    if (ret < 0)
+        return -1;
+    num_comps += ret;
+
+    int len = 0;
+    if (root.len == 0 || root.ptr[0] != '/')
+        len++;
+    for (int i = 0; i < num_comps; i++)
+        len += 1 + comps[i].len;
+    if (len >= cap)
+        return -1;
+
+    int num = 0;
+    if (root.len == 0 || root.ptr[0] != '/')
+        dst[num++] = '.';
+    for (int i = 0; i < num_comps; i++) {
+        dst[num++] = '/';
+        memcpy(dst + num, comps[i].ptr, comps[i].len);
+        num += comps[i].len;
+    }
+
+    return num;
+}

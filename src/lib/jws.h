@@ -79,6 +79,7 @@ int jws_builder_result(JWS_Builder *builder);
 int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey);
 int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap);
 
-int jws_base64url_encode_inplace(uint8_t *buf, int len, int cap, bool pad);
+// Base64url encoding helper
+int jws_base64url_encode_inplace(char *buf, int len, int cap, bool with_padding);
 
 #endif // JWS_INCLUDED

@@ -1,11 +1,9 @@
 #include <signal.h>
-
-#include "path.h"
 #include "auth.h"
 #include "acme.h"
 #include "server_config.h"
-#include "../common/chttp.h"
-#include "../common/file_system.h"
+#include "../lib/http.h"
+#include "../lib/file_system.h"
 #include "../common/config_reader.h"
 
 #ifdef _WIN32
@@ -43,39 +41,39 @@ int main_server(int argc, char **argv)
 
     running = 1;
 
-    HTTP_Client client;
-    ret = http_client_init(&client);
+    CHTTP_Client client;
+    ret = chttp_client_init(&client);
     if (ret < 0) {
         printf("Couldn't initialize client (%s)\n",
-            http_strerror(ret));
+            chttp_strerror(ret));
         config_reader_free(&config_reader);
         return -1;
     }
 
-    HTTP_Server server;
-    ret = http_server_init(&server);
+    CHTTP_Server server;
+    ret = chttp_server_init(&server);
     if (ret < 0) {
         fprintf(stderr, "Couldn't initialize server (%s)\n",
-            http_strerror(ret));
+            chttp_strerror(ret));
         config_reader_free(&config_reader);
         return -1;
     }
-    http_server_set_reuse_addr(&server,
+    chttp_server_set_reuse_addr(&server,
         server_config.reuse_addr);
-    http_server_set_trace_bytes(&server,
+    chttp_server_set_trace_bytes(&server,
         server_config.trace_bytes);
 
-    ret = http_server_listen_tcp(&server,
-        server_config.http_addr,
+    ret = chttp_server_listen_tcp(&server,
+        S2H(server_config.http_addr),
         server_config.http_port);
     if (ret < 0) {
         fprintf(stderr, "Couldn't start listening (%s)\n",
-            http_strerror(ret));
+            chttp_strerror(ret));
         config_reader_free(&config_reader);
         return -1;
     }
     printf("HTTP server on interface %.*s:%d\n",
-        HTTP_UNPACK(server_config.http_addr),
+        CHTTP_UNPACK(server_config.http_addr),
         server_config.http_port);
 
     ACME acme;
@@ -104,19 +102,19 @@ int main_server(int argc, char **argv)
     }
 
     if (server_config.https_enabled && file_exists(server_config.cert_file)) {
-        ret = http_server_listen_tls(&server,
-            server_config.https_addr,
+        ret = chttp_server_listen_tls(&server,
+            S2H(server_config.https_addr),
             server_config.https_port,
-            server_config.cert_file,
-            server_config.cert_key_file);
+            S2H(server_config.cert_file),
+            S2H(server_config.cert_key_file));
         if (ret < 0) {
             fprintf(stderr, "Couldn't start listening (%s)\n",
-                http_strerror(ret));
+                chttp_strerror(ret));
             config_reader_free(&config_reader);
             return -1;
         }
         printf("HTTPS server on interface %.*s:%d\n",
-            HTTP_UNPACK(server_config.https_addr),
+            CHTTP_UNPACK(server_config.https_addr),
             server_config.https_port);
     }
 
@@ -130,22 +128,22 @@ int main_server(int argc, char **argv)
     bool restart = false;
     while (running) {
 
-        void*           ptrs[HTTP_CLIENT_POLL_CAPACITY + HTTP_SERVER_POLL_CAPACITY];
-        struct pollfd polled[HTTP_CLIENT_POLL_CAPACITY + HTTP_SERVER_POLL_CAPACITY];
+        void*           ptrs[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
+        struct pollfd polled[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
 
         EventRegister server_reg = {
             ptrs,
             polled,
             0
         };
-        http_server_register_events(&server, &server_reg);
+        chttp_server_register_events(&server, &server_reg);
 
         EventRegister client_reg = {
             ptrs   + server_reg.num_polled,
             polled + server_reg.num_polled,
             0
         };
-        http_client_register_events(&client, &client_reg);
+        chttp_client_register_events(&client, &client_reg);
 
         int timeouts[3];
         timeouts[0] = -1; // Server timeout
@@ -166,21 +164,21 @@ int main_server(int argc, char **argv)
 
         int result;
         void *user;
-        HTTP_Response *response;
-        http_client_process_events(&client, client_reg);
-        while (http_client_next_response(&client, &result, &user, &response)) {
+        CHTTP_Response *response;
+        chttp_client_process_events(&client, client_reg);
+        while (chttp_client_next_response(&client, &result, &user, &response)) {
             bool new_certificate = acme_process_response(&acme, result, response);
-            http_free_response(response);
+            chttp_free_response(response);
             if (new_certificate) {
                 running = 0;
                 restart = true;
             }
         }
 
-        HTTP_Request *request;
-        HTTP_ResponseBuilder response_builder;
-        http_server_process_events(&server, server_reg);
-        while (http_server_next_request(&server, &request, &response_builder)) {
+        CHTTP_Request *request;
+        CHTTP_ResponseBuilder response_builder;
+        chttp_server_process_events(&server, server_reg);
+        while (chttp_server_next_request(&server, &request, &response_builder)) {
 
             if (server_config.acme_enabled) {
                 if (acme_process_request(&acme, request, response_builder))
@@ -188,18 +186,18 @@ int main_server(int argc, char **argv)
             }
 
             switch (request->method) {
-            case HTTP_METHOD_GET:
+            case CHTTP_METHOD_GET:
                 {
                     char buf[1<<10];
-                    int ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
+                    int ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
-                    HTTP_String file_path = { buf, ret };
+                    string file_path = { buf, ret };
 
-                    http_response_builder_status(response_builder, 200); // TODO: better error code
+                    chttp_response_builder_status(response_builder, 200); // TODO: better error code
 
                     // TODO: As file_open is currently implemented, when a
                     //       file isn't found it's created, which is very bad
@@ -207,11 +205,11 @@ int main_server(int argc, char **argv)
                     ret = file_open(file_path, &fd, FILE_OPEN_READ);
                     if (ret < 0) {
                         if (ret == ERROR_FILE_NOT_FOUND) {
-                            http_response_builder_status(response_builder, 404); // TODO: better error code
-                            http_response_builder_send(response_builder);
+                            chttp_response_builder_status(response_builder, 404); // TODO: better error code
+                            chttp_response_builder_send(response_builder);
                         } else {
-                            http_response_builder_status(response_builder, 500); // TODO: better error code
-                            http_response_builder_send(response_builder);
+                            chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                            chttp_response_builder_send(response_builder);
                         }
                         break;
                     }
@@ -219,122 +217,122 @@ int main_server(int argc, char **argv)
                     ret = file_size(fd, &len);
                     if (ret < 0) {
                         file_close(fd);
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
-                    http_response_builder_body_cap(response_builder, len);
+                    chttp_response_builder_body_cap(response_builder, len);
 
                     int dummy;
-                    char *dst = http_response_builder_body_buf(response_builder, &dummy);
+                    char *dst = chttp_response_builder_body_buf(response_builder, &dummy);
                     if (dst) {
                         for (int copied = 0; copied < len; ) {
                             ret = file_read(fd, dst + copied, len - copied);
                             if (ret <= 0) {
                                 file_close(fd);
-                                http_response_builder_status(response_builder, 500); // TODO: better error code
-                                http_response_builder_send(response_builder);
+                                chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                                chttp_response_builder_send(response_builder);
                                 break;
                             }
                             copied += ret;
                         }
-                        http_response_builder_body_ack(response_builder, len);
+                        chttp_response_builder_body_ack(response_builder, len);
                     }
                     file_close(fd);
-                    http_response_builder_send(response_builder);
+                    chttp_response_builder_send(response_builder);
                 }
                 break;
-            case HTTP_METHOD_PUT:
+            case CHTTP_METHOD_PUT:
                 {
                     int ret = auth_verify(&auth, request);
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500);
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500);
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
                     if (ret == 1) {
-                        http_response_builder_status(response_builder, 401);
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 401);
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
 
                     char buf[1<<10];
-                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
-                    HTTP_String file_path = { buf, ret };
+                    string file_path = { buf, ret };
 
                     // TODO: delete the previous version if it exists
                     Handle fd;
                     ret = file_open(file_path, &fd, FILE_OPEN_WRITE);
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
-                    http_response_builder_status(response_builder, 200);
-                    HTTP_String body = request->body;
+                    chttp_response_builder_status(response_builder, 200);
+                    string body = H2S(request->body);
                     for (int copied = 0; copied < body.len; ) {
                         ret = file_write(fd,
                             body.ptr + copied,
                             body.len - copied);
                         if (ret < 0) {
-                            http_response_builder_status(response_builder, 500); // TODO: better error code
-                            http_response_builder_send(response_builder);
+                            chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                            chttp_response_builder_send(response_builder);
                             break;
                         }
                         copied += ret;
                     }
-                    http_response_builder_send(response_builder);
+                    chttp_response_builder_send(response_builder);
                     file_close(fd);
                 }
                 break;
-            case HTTP_METHOD_DELETE:
+            case CHTTP_METHOD_DELETE:
                 {
                     int ret = auth_verify(&auth, request);
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500);
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500);
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
                     if (ret == 1) {
-                        http_response_builder_status(response_builder, 401);
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 401);
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
 
                     char buf[1<<10];
-                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                         break;
                     }
-                    HTTP_String file_path = { buf, ret };
+                    string file_path = { buf, ret };
 
                     if (remove_file_or_dir(file_path) < 0) {
-                        http_response_builder_status(response_builder, 500); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                     } else {
-                        http_response_builder_status(response_builder, 200); // TODO: better error code
-                        http_response_builder_send(response_builder);
+                        chttp_response_builder_status(response_builder, 200); // TODO: better error code
+                        chttp_response_builder_send(response_builder);
                     }
                 }
                 break;
-            case HTTP_METHOD_OPTIONS:
-                http_response_builder_status(response_builder, 200);
-                http_response_builder_header(response_builder,
-                    HTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
-                http_response_builder_send(response_builder);
+            case CHTTP_METHOD_OPTIONS:
+                chttp_response_builder_status(response_builder, 200);
+                chttp_response_builder_header(response_builder,
+                    CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+                chttp_response_builder_send(response_builder);
                 break;
             default:
-                http_response_builder_status(response_builder, 405);
-                http_response_builder_header(response_builder,
-                    HTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
-                http_response_builder_send(response_builder);
+                chttp_response_builder_status(response_builder, 405);
+                chttp_response_builder_header(response_builder,
+                    CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+                chttp_response_builder_send(response_builder);
                 break;
             }
         }
@@ -342,8 +340,8 @@ int main_server(int argc, char **argv)
 
     auth_free(&auth);
     acme_free(&acme);
-    http_server_free(&server);
-    http_client_free(&client);
+    chttp_server_free(&server);
+    chttp_client_free(&client);
     config_reader_free(&config_reader);
     if (restart)
         execv(argv[0], argv);
