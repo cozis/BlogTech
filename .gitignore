@@ -1,3 +1,5 @@
 blogtech
 docroot/*
 pebble
+*.pem
+*.pwd
