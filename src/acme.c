@@ -1,8 +1,14 @@
+#include <openssl/ec.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+
 #include "acme.h"
-#include "../lib/jws.h"
-#include "../lib/json.h"
-#include "../lib/encode.h"
-#include "../lib/file_system.h"
+
+#include "lib/jws.h"
+#include "lib/json.h"
+#include "lib/encode.h"
+#include "lib/file_system.h"
 
 //////////////////////////////////////////////////////////////////////////////////////
 // Configurations & Utilities
@@ -44,11 +50,6 @@ static char *state_str(ACME_State state)
 //////////////////////////////////////////////////////////////////////////////////////
 // OpenSSL
 //////////////////////////////////////////////////////////////////////////////////////
-
-#include <openssl/ec.h>
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
 
 static int generate_account_key(ACME_Account *account)
 {

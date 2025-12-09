@@ -1,7 +1,7 @@
 #ifndef CONFIG_READER_INCLUDED
 #define CONFIG_READER_INCLUDED
 
-#include "../lib/basic.h"
+#include "lib/basic.h"
 
 typedef struct {
     char  *src;

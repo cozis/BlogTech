@@ -1,5 +1,6 @@
 #include "request_signature.h"
-#include "../lib/string_builder.h"
+
+#include "lib/string_builder.h"
 
 //////////////////////////////////////////////////////////////////
 // SIGNING FUNCTION

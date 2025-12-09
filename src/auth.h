@@ -1,8 +1,8 @@
 #ifndef AUTH_INCLUDED
 #define AUTH_INCLUDED
 
-#include "../lib/time.h"
-#include "../lib/chttp.h"
+#include "lib/time.h"
+#include "lib/chttp.h"
 
 #define BAD_NONCE 0
 #define MAX_NONCES 32

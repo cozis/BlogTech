@@ -1,6 +1,7 @@
+#include "main_client.h"
+#include "main_server.h"
+
 #include "lib/basic.h"
-#include "client/main_client.h"
-#include "server/main_server.h"
 
 static b8 is_server(int argc, char **argv)
 {

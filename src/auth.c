@@ -1,7 +1,8 @@
 #include "auth.h"
-#include "../lib/chttp.h"
-#include "../lib/file_system.h"
-#include "../common/request_signature.h"
+#include "request_signature.h"
+
+#include "lib/chttp.h"
+#include "lib/file_system.h"
 
 int auth_init(Auth *auth, string password_file)
 {

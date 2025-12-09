@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "config_reader.h"
-#include "../lib/file_system.h"
+
+#include "lib/file_system.h"
 
 #ifndef DEFAULT_CONFIG_FILE
 #define DEFAULT_CONFIG_FILE "blogtech.conf"

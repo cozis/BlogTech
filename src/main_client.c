@@ -1,8 +1,9 @@
-#include "../lib/chttp.h"
-#include "../lib/file_system.h"
-#include "../common/print_usage.h"
-#include "../common/config_reader.h"
-#include "../common/request_signature.h"
+#include "print_usage.h"
+#include "config_reader.h"
+#include "request_signature.h"
+
+#include "lib/chttp.h"
+#include "lib/file_system.h"
 
 #define MAX_FILES (1<<7)
 

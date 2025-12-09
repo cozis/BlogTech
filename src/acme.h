@@ -3,8 +3,8 @@
 
 #include <openssl/evp.h>
 
-#include "../lib/time.h"
-#include "../lib/chttp.h"
+#include "lib/time.h"
+#include "lib/chttp.h"
 
 #define ACME_DOMAIN_LIMIT 32
 
