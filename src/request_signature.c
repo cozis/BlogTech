@@ -56,7 +56,8 @@ int calculate_request_signature(
     string nonce,
     string body,
     string secret,
-    char *dst)
+    char *dst,
+    int   cap)
 {
     char body_hash[32];
     if (sha256(body.ptr, body.len, body_hash) < 0)
@@ -76,7 +77,7 @@ int calculate_request_signature(
     char pool[1<<12];
     StringBuilder b;
     sb_init(&b, pool, sizeof(pool));
-    sb_push_mod(&b, ENCODING_HEXL);
+    sb_push_mod(&b, ENCODING_B64);
         sb_push_mod(&b, ENCODING_HMAC);
             sb_write(&b, secret);
             sb_flush(&b);
@@ -102,9 +103,11 @@ int calculate_request_signature(
         sb_pop_mod(&b);
     sb_pop_mod(&b);
 
-    if (b.status != 0)
+    if (b.status < 0)
         return b.status;
-    ASSERT(b.len == 64);
-    memcpy(dst, b.dst, 64);
-    return 0;
+    assert(b.status == 0);
+
+    if (b.len <= cap)
+        memcpy(dst, b.dst, b.len);
+    return b.len;
 }

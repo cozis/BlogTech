@@ -3,6 +3,8 @@
 
 #include "lib/chttp.h"
 
+#define NONCE_RAW_LEN 32
+
 int calculate_request_signature(
     CHTTP_Method method,
     string path,
@@ -12,6 +14,7 @@ int calculate_request_signature(
     string nonce,
     string body,
     string secret,
-    char*  dst);
+    char*  dst,
+    int    cap);
 
 #endif // REQUEST_SIGNATURE_INCLUDED

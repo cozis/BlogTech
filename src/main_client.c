@@ -1,7 +1,11 @@
 #include "config_reader.h"
+#include "static_config.h"
 #include "request_signature.h"
 
+#include "lib/time.h"
 #include "lib/chttp.h"
+#include "lib/random.h"
+#include "lib/encode.h"
 #include "lib/file_system.h"
 
 #define MAX_FILES (1<<7)
@@ -73,12 +77,12 @@ int main_client(int argc, char **argv)
 
     string remote;
     b8     trace_bytes;
-    string admin_password_file;
+    string auth_password_file;
     string files[MAX_FILES];
     int    num_files = 0;
 
     b8 have_remote = false;
-    b8 have_admin_password_file = false;
+    b8 have_auth_password_file = false;
 
     b8 bad_config = false;
     string name, value;
@@ -91,13 +95,13 @@ int main_client(int argc, char **argv)
                 remote = value;
                 have_remote = true;
             }
-        } else if (streq(name, S("admin-password-file"))) {
+        } else if (streq(name, S("auth-password-file"))) {
             if (value.len == 0) {
                 printf("Config Error: Invalid password file\n");
                 bad_config = true;
             } else {
-                admin_password_file = value;
-                have_admin_password_file = true;
+                auth_password_file = value;
+                have_auth_password_file = true;
             }
         } else if (streq(name, S("trace-bytes"))) {
             parse_config_value_yn(name, value, &trace_bytes, &bad_config);
@@ -116,8 +120,8 @@ int main_client(int argc, char **argv)
         bad_config = true;
     }
 
-    if (!have_admin_password_file) {
-        printf("Config Error: No password file specified. Use option 'admin-password-file'\n");
+    if (!have_auth_password_file) {
+        printf("Config Error: No password file specified. Use option 'auth-password-file'\n");
         bad_config = true;
     }
 
@@ -142,18 +146,20 @@ int main_client(int argc, char **argv)
         remote_host = parsed_url.authority.host.name; // TODO: will this work for IPv6?
     }
 
-    string admin_password;
-    ret = file_read_all(admin_password_file, &admin_password);
+    string auth_password;
+    ret = file_read_all(auth_password_file, &auth_password);
     if (ret < 0) {
         printf("Couldn't read password file\n");
         return -1;
     }
+    void *auth_password_original = auth_password.ptr;
+    auth_password = trim(auth_password);
 
     CHTTP_Client client;
     ret = chttp_client_init(&client);
     if (ret < 0) {
         printf("Couldn't initialize client (%s)\n", chttp_strerror(ret));
-        free(admin_password.ptr);
+        free(auth_password_original);
         return -1;
     }
 
@@ -185,24 +191,50 @@ int main_client(int argc, char **argv)
             continue;
         }
 
-        string timestamp = { NULL, 0 }; // TODO: implement
-        u32 expire = 0; // TODO: implement
-        string nonce = { NULL, 0 }; // TODO: implement
+        UnixTime timestamp = get_current_unix_time();
+        if (timestamp == INVALID_UNIX_TIME) {
+            ASSERT(0); // TODO
+        }
 
-        char signature[64];
+        char timestamp_buf[32];
+        int timestamp_len = snprintf(timestamp_buf, sizeof(timestamp_buf), "%lld", timestamp);
+        if (timestamp_len < 0 || timestamp_len >= (int) sizeof(timestamp_buf)) {
+            ASSERT(0); // TODO
+        }
+        string timestamp_str = { timestamp_buf, timestamp_len };
+
+        u32 expire = 300; // 5 minutes
+
+        char nonce_buf[BASE64_LEN(NONCE_RAW_LEN)];
+        ret = generate_random_bytes(nonce_buf, NONCE_RAW_LEN);
+        if (ret < 0) {
+            ASSERT(0); // TODO
+        }
+        assert(ret == 0);
+
+        ret = encode_inplace(nonce_buf, NONCE_RAW_LEN, 0, sizeof(nonce_buf), ENCODING_B64);
+        if (ret < 0) {
+            ASSERT(0); // TODO
+        }
+        assert(ret == BASE64_LEN(NONCE_RAW_LEN));
+        string nonce = { nonce_buf, ret };
+
+        char signature_buf[64];
         ret = calculate_request_signature(
             CHTTP_METHOD_PUT,
             files[i],
             remote_host,
-            timestamp,
+            timestamp_str,
             expire,
             nonce,
             data,
-            admin_password,
-            signature);
+            auth_password,
+            signature_buf,
+            sizeof(signature_buf));
         if (ret < 0) {
             ASSERT(0); // TODO
         }
+        string signature = { signature_buf, ret };
 
         CHTTP_RequestBuilder builder = chttp_client_get_builder(&client);
         chttp_request_builder_set_user(builder, u);
@@ -219,7 +251,7 @@ int main_client(int argc, char **argv)
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Timestamp: %.*s", UNPACK(timestamp));
+            "X-BlogTech-Timestamp: %.*s", UNPACK(timestamp_str));
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
             ASSERT(0); // TODO
         }
@@ -233,7 +265,7 @@ int main_client(int argc, char **argv)
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Signature: %.*s", (int) sizeof(signature), signature);
+            "X-BlogTech-Signature: %.*s", UNPACK(signature));
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
             ASSERT(0); // TODO
         }
@@ -273,7 +305,7 @@ int main_client(int argc, char **argv)
     }
 
     chttp_client_free(&client);
-    free(admin_password.ptr);
+    free(auth_password_original);
     config_reader_free(&config_reader);
     return 0;
 }

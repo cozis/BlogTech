@@ -1,16 +1,14 @@
 #ifndef AUTH_INCLUDED
 #define AUTH_INCLUDED
 
+#include "static_config.h"
+
 #include "lib/time.h"
 #include "lib/chttp.h"
 
-#define BAD_NONCE 0
-#define MAX_NONCES 32
-#define MIN_PASSWORD_LEN 32
-
 typedef struct {
-    u64    value;
-    Time   expire;
+    char     value[RAW_NONCE_LEN];
+    UnixTime expire;
 } AppliedNonce;
 
 typedef struct {

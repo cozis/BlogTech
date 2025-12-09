@@ -2,6 +2,7 @@
 #include "request_signature.h"
 
 #include "lib/chttp.h"
+#include "lib/encode.h"
 #include "lib/file_system.h"
 
 int auth_init(Auth *auth, string password_file)
@@ -10,7 +11,7 @@ int auth_init(Auth *auth, string password_file)
     auth->password.len = 0;
 
     for (int i = 0; i < MAX_NONCES; i++)
-        auth->nonces[i].value = BAD_NONCE;
+        auth->nonces[i].expire = INVALID_UNIX_TIME;
 
     if (password_file.len == 0)
         return 0;
@@ -43,27 +44,12 @@ void auth_free(Auth *auth)
     (void) auth;
 }
 
-static b8 is_invalidated(Auth *auth, u64 nonce_value)
+static b8 is_invalidated(Auth *auth, char *nonce)
 {
     for (int i = 0; i < MAX_NONCES; i++)
-        if (nonce_value == auth->nonces[i].value)
+        if (!memcmp(nonce, auth->nonces[i].value, RAW_NONCE_LEN))
             return true;
     return false;
-}
-
-static u64 parse_nonce(string str)
-{
-    u64 value = 0;
-    for (int i = 0; i < str.len; i++) {
-        char c = str.ptr[i];
-        if (c < '0' || c > '9')
-            return BAD_NONCE;
-        u64 prev = value;
-        value = value * 10 + (c - '0');
-        if (value < prev) // overflow
-            return BAD_NONCE;
-    }
-    return value;
 }
 
 static u32 parse_expire(string str)
@@ -112,30 +98,34 @@ static b8 is_expired(string timestamp_str, u32 expire_seconds)
 static void cleanup_expired_nonces(Auth *auth)
 {
     time_t now = time(NULL);
-    for (int i = 0; i < MAX_NONCES; i++) {
-        if (auth->nonces[i].value != BAD_NONCE && auth->nonces[i].expire < now) {
-            auth->nonces[i].value = BAD_NONCE;
-        }
-    }
+    for (int i = 0; i < MAX_NONCES; i++)
+        if (auth->nonces[i].expire != INVALID_UNIX_TIME &&
+            auth->nonces[i].expire < now)
+            auth->nonces[i].expire = INVALID_UNIX_TIME;
 }
 
-static b8 store_nonce(Auth *auth, u64 nonce_value, time_t expire)
+static b8 store_nonce(Auth *auth, char *nonce, UnixTime expire)
 {
     int i = 0;
-    while (i < MAX_NONCES && auth->nonces[i].value != BAD_NONCE)
+    while (i < MAX_NONCES && auth->nonces[i].expire != INVALID_UNIX_TIME)
         i++;
 
     if (i == MAX_NONCES) {
+
         // Try to clean up expired nonces to make room
         cleanup_expired_nonces(auth);
+
+        // Look again
         i = 0;
-        while (i < MAX_NONCES && auth->nonces[i].value != BAD_NONCE)
+        while (i < MAX_NONCES && auth->nonces[i].expire != INVALID_UNIX_TIME)
             i++;
+
+        // No luck
         if (i == MAX_NONCES)
             return false;
     }
 
-    auth->nonces[i].value = nonce_value;
+    memcpy(auth->nonces[i].value, nonce, RAW_NONCE_LEN);
     auth->nonces[i].expire = expire;
     return true;
 }
@@ -148,6 +138,12 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     if (auth->password.len < MIN_PASSWORD_LEN)
         return 1;
 
+    string path = request->url.path;
+    if (path.len > 0 && path.ptr[0] == '/') {
+        path.ptr++;
+        path.len--;
+    }
+
     int idx = chttp_find_header(
         request->headers,
         request->num_headers,
@@ -155,6 +151,15 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     if (idx < 0)
         return 1;
     string host = request->headers[idx].value;
+
+    // Remove port from the host (this is a very bad way to do it)
+    {
+        int semicol = -1;
+        for (int i = 0; i < host.len; i++)
+            if (host.ptr[i] == ':')
+                semicol = i;
+        host.len = semicol;
+    }
 
     idx = chttp_find_header(
         request->headers,
@@ -193,13 +198,17 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     if (expire == 0)
         return 1;
 
-    // Parse the nonce value
-    u64 nonce_value = parse_nonce(nonce_str);
-    if (nonce_value == BAD_NONCE)
+    // Parse nonce
+    char nonce[BASE64_LEN(RAW_NONCE_LEN)];
+    if (nonce_str.len > sizeof(nonce))
+        return 1;
+    memcpy(nonce, nonce_str.ptr, nonce_str.len);
+    int ret = decode_inplace(nonce, nonce_str.len, sizeof(nonce), ENCODING_B64);
+    if (ret != RAW_NONCE_LEN)
         return 1;
 
     // Check if nonce has already been used
-    if (is_invalidated(auth, nonce_value))
+    if (is_invalidated(auth, nonce))
         return 1;
 
     // Check if the request has expired
@@ -207,27 +216,28 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         return 1;
 
     // Verify the signature
-    char expected_signature[64];
-    int ret = calculate_request_signature(
+    char expected_signature_buf[128];
+    ret = calculate_request_signature(
         request->method,
-        request->url.path,
+        path,
         host,
         timestamp,
         expire,
         nonce_str,
         request->body,
         auth->password,
-        expected_signature);
+        expected_signature_buf,
+        sizeof(expected_signature_buf));
     if (ret < 0)
         return -1;
+    string expected_signature = { expected_signature_buf, ret };
 
-    if (signature.len != sizeof(expected_signature)
-        || memcmp(expected_signature, signature.ptr, sizeof(expected_signature)))
+    if (!streq(signature, expected_signature))
         return 1;
 
     // Store the nonce to prevent replay attacks
     time_t nonce_expire = parse_timestamp(timestamp) + (time_t) expire;
-    if (!store_nonce(auth, nonce_value, nonce_expire))
+    if (!store_nonce(auth, nonce, nonce_expire))
         return -1;
 
     return 0;

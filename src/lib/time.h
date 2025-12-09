@@ -4,12 +4,17 @@
 #include "basic.h"
 
 typedef u64 Time;
+typedef u64 UnixTime;
 
-#define INVALID_TIME U64_MAX
+#define INVALID_TIME ((Time) U64_MAX)
+#define INVALID_UNIX_TIME ((UnixTime) U64_MAX)
 
 // Returns the current time in milliseconds since
 // an unspecified time in the past (useful to calculate
 // elapsed time intervals)
 Time get_current_time(void);
+
+// Number of seconds since 1 Jan, 1970 UTC
+UnixTime get_current_unix_time(void);
 
 #endif // TIME_INCLUDED

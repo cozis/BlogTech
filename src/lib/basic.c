@@ -46,6 +46,28 @@ string allocstr(string s)
     return (string) { p, s.len };
 }
 
+string trim(string s)
+{
+	int i = 0;
+	while (i < s.len && (s.ptr[i] == ' ' || s.ptr[i] == '\t' || s.ptr[i] == '\r' || s.ptr[i] == '\n'))
+		i++;
+
+	if (i == s.len) {
+		s.ptr = NULL;
+		s.len = 0;
+	} else {
+		s.ptr += i;
+		s.len -= i;
+		while (s.ptr[s.len-1] == ' '
+		    || s.ptr[s.len-1] == '\t'
+			|| s.ptr[s.len-1] == '\r'
+			|| s.ptr[s.len-1] == '\n')
+			s.len--;
+	}
+
+	return s;
+}
+
 int strlen_(char *p)
 {
     ASSERT(p);

@@ -267,10 +267,12 @@ static int b64_len(char *str, int len, b8 pad, b8 url)
     (void) str;
     (void) url;
     int olen = (len + 2) / 3 * 4;
-    int rem = len % 3;
-    if (0) {}
-    else if (rem == 2) olen -= 1;
-    else if (rem == 1) olen -= 2;
+    if (!pad) {
+        int rem = len % 3;
+        if (0) {}
+        else if (rem == 2) olen -= 1;
+        else if (rem == 1) olen -= 2;
+    }
     return olen;
 }
 
@@ -348,17 +350,17 @@ int encode_len(char *buf, int len1, int len2, Encoding enc)
         return sha256_len(buf, len1);
     case ENCODING_HMAC:
         return hmac_len(buf, len1, len2);
-    case ENCODING_HEXU:
+    case ENCODING_HEX:
     case ENCODING_HEXL:
         return hex_len(buf, len1);
-    case ENCODING_PCTU:
+    case ENCODING_PCT:
     case ENCODING_PCTL:
         return pct_len(buf, len1);
-    case ENCODING_B64P:
+    case ENCODING_B64:
         return b64_len(buf, len1, true, false);
     case ENCODING_B64NP:
         return b64_len(buf, len1, false, false);
-    case ENCODING_B64URLP:
+    case ENCODING_B64URL:
         return b64_len(buf, len1, true, true);
     case ENCODING_B64URLNP:
         return b64_len(buf, len1, false, true);
@@ -368,34 +370,243 @@ int encode_len(char *buf, int len1, int len2, Encoding enc)
 
 int encode_inplace(char *buf, int len1, int len2, int cap, Encoding enc)
 {
-    int olen = encode_len(buf, len1, len2, enc);
-    if (olen < 0)
-        return -1;
     if (enc != ENCODING_HMAC && len2 > 0)
         return -1;
-    if (cap < olen)
-        return -1;
+
+    int olen = encode_len(buf, len1, len2, enc);
+    if (olen < 0 || olen > cap)
+        return olen;
+
+    int ret;
     switch (enc) {
     case ENCODING_SHA256:
-        return inplace_sha256(buf, len1);
+        ret = inplace_sha256(buf, len1);
+        break;
     case ENCODING_HMAC:
-        return inplace_hmac(buf, len1, len2);
-    case ENCODING_HEXU:
-        return inplace_hex(buf, len1, true);
+        ret = inplace_hmac(buf, len1, len2);
+        break;
+    case ENCODING_HEX:
+        ret = inplace_hex(buf, len1, true);
+        break;
     case ENCODING_HEXL:
-        return inplace_hex(buf, len1, false);
-    case ENCODING_PCTU:
-        return inplace_pct(buf, len1, true);
+        ret = inplace_hex(buf, len1, false);
+        break;
+    case ENCODING_PCT:
+        ret = inplace_pct(buf, len1, true);
+        break;
     case ENCODING_PCTL:
-        return inplace_pct(buf, len1, false);
-    case ENCODING_B64P:
-        return inplace_b64(buf, len1, true, false);
+        ret = inplace_pct(buf, len1, false);
+        break;
+    case ENCODING_B64:
+        ret = inplace_b64(buf, len1, true, false);
+        break;
     case ENCODING_B64NP:
-        return inplace_b64(buf, len1, false, false);
-    case ENCODING_B64URLP:
-        return inplace_b64(buf, len1, true, true);
+        ret = inplace_b64(buf, len1, false, false);
+        break;
+    case ENCODING_B64URL:
+        ret = inplace_b64(buf, len1, true, true);
+        break;
     case ENCODING_B64URLNP:
-        return inplace_b64(buf, len1, false, true);
+        ret = inplace_b64(buf, len1, false, true);
+        break;
+    }
+    if (ret < 0)
+        return ret;
+
+    return olen;
+}
+
+static int hex_char_to_int(char c)
+{
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= '0' && c <= '9') return c - '0';
+    return -1;
+}
+
+static int decode_hex_len(char *buf, int len)
+{
+    (void) buf;
+    return (len >> 1) + (len & 1);
+}
+
+static int inplace_decode_hex(char *buf, int len)
+{
+    int odd = len & 1;
+    len -= odd;
+
+    for (int i = 0; i < len; i += 2) {
+        int a = hex_char_to_int(buf[i+0]);
+        int b = hex_char_to_int(buf[i+1]);
+        if (a < 0 || b < 0) return -1;
+        buf[i >> 1] = (char) ((a << 4) | b);
+    }
+
+    if (odd) {
+        int a = hex_char_to_int(buf[len]);
+        if (a < 0) return -1;
+        buf[len >> 1] = (char) (a << 4); // TODO: is this right? Should it be shifted by 0?
+    }
+
+    return 0;
+}
+
+static int decode_pct_len(char *buf, int len)
+{
+    int olen = 0;
+    for (int i = 0; i < len; i++) {
+        if (buf[i] == '%')
+            i += 2;
+        olen++;
+    }
+    return olen;
+}
+
+static int inplace_decode_pct(char *buf, int len)
+{
+    int rd = 0;
+    int wr = 0;
+    while (rd < len) {
+        char c;
+        if (buf[rd] == '%') {
+            if (len - rd <= 2)
+                return -1;
+            int a = hex_char_to_int(buf[rd+1]);
+            int b = hex_char_to_int(buf[rd+2]);
+            if (a < 0 || b < 0)
+                return -1;
+            c = (char) ((a << 4) | b);
+            rd += 3;
+        } else {
+            c = buf[rd];
+            rd++;
+        }
+
+        buf[wr] = c;
+        wr++;
+    }
+    return 0;
+}
+
+static int remove_padding(char *buf, int len)
+{
+    while (len > 0 && buf[len-1] == '=')
+        len--;
+    return len;
+}
+
+static int decode_b64_len(char *buf, int len)
+{
+    len = remove_padding(buf, len);
+    int rem = len % 4;
+    int olen = len / 4 * 3;
+    if (0) {}
+    else if (rem == 2) olen += 1;
+    else if (rem == 3) olen += 2;
+    return olen;
+}
+
+static int b64_char_to_int(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '-' || c == '+') return 62;
+    if (c == '_' || c == '/') return 63;
+    return -1;
+}
+
+static int inplace_decode_b64(char *buf, int len)
+{
+    len = remove_padding(buf, len);
+
+    int rem = len % 4;
+    len -= rem;
+
+    int ridx = 0;
+    int widx = 0;
+
+    while (ridx < len) {
+
+        int a = b64_char_to_int(buf[ridx+0]);
+        int b = b64_char_to_int(buf[ridx+1]);
+        int c = b64_char_to_int(buf[ridx+2]);
+        int d = b64_char_to_int(buf[ridx+3]);
+
+        if (a < 0 || b < 0 ||
+            c < 0 || d < 0)
+            return -1;
+
+        buf[widx+0] = (char) ((a << 2) | (b >> 4));
+        buf[widx+1] = (char) ((b << 4) | (c >> 2));
+        buf[widx+2] = (char) ((c << 6) | (d >> 0));
+
+        ridx += 4;
+        widx += 3;
+    }
+
+    switch (rem) {
+        int a;
+        int b;
+        int c;
+    case 1:
+        return -1;
+    case 2:
+        a = b64_char_to_int(buf[len+0]);
+        b = b64_char_to_int(buf[len+1]);
+        if (a < 0 || b < 0)
+            return -1;
+        buf[widx+0] = (char) ((a << 2) | (b >> 4));
+        widx += 1;
+        break;
+    case 3:
+        a = b64_char_to_int(buf[len+0]);
+        b = b64_char_to_int(buf[len+1]);
+        c = b64_char_to_int(buf[len+2]);
+        if (a < 0 || b < 0 || c < 0)
+            return -1;
+        buf[widx+0] = (char) ((a << 2) | (b >> 4));
+        buf[widx+1] = (char) ((b << 4) | (c >> 2));
+        widx += 2;
+        break;
+    }
+
+    return 0;
+}
+
+int decode_len(char *buf, int len, Encoding enc)
+{
+    switch (enc) {
+    case ENCODING_HEX:
+        return decode_hex_len(buf, len);
+    case ENCODING_PCT:
+        return decode_pct_len(buf, len);
+    case ENCODING_B64:
+        return decode_b64_len(buf, len);
     }
     return -1;
+}
+
+int decode_inplace(char *buf, int len, int cap, Encoding enc)
+{
+    int olen = decode_len(buf, len, enc);
+    if (olen < 0 || olen > len)
+        return olen;
+
+    int ret;
+    switch (enc) {
+    case ENCODING_HEX:
+        ret = inplace_decode_hex(buf, len);
+        break;
+    case ENCODING_PCT:
+        ret = inplace_decode_pct(buf, len);
+        break;
+    case ENCODING_B64:
+        ret = inplace_decode_b64(buf, len);
+        break;
+    }
+    if (ret < 0)
+        return ret;
+
+    return olen;
 }

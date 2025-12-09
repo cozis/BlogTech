@@ -57,13 +57,13 @@ STATIC_ASSERT(sizeof(s64) == 8);
 #define U8_MAX (~(u8) 0)
 #define U8_MIN 0
 
-#define U16_MAX (~(u16) 0)
+#define U16_MAX ((u16) ~(u16) 0)
 #define U16_MIN 0
 
-#define U32_MAX (~(u32) 0)
+#define U32_MAX ((u32) ~(u32) 0)
 #define U32_MIN 0
 
-#define U64_MAX (~(u64) 0)
+#define U64_MAX ((u64) ~(u64) 0)
 #define U64_MIN 0
 
 /////////////////////////////////////////////////////////////////////////
@@ -103,6 +103,7 @@ b8     streq(string s1, string s2);
 b8     streqcase(string s1, string s2);
 string allocstr(string s);
 void   memcpy_(char *dst, char *src, int len);
+string trim(string s);
 
 /////////////////////////////////////////////////////////////////////////
 // PRIVATE USE FOR MACROS
