@@ -80,8 +80,6 @@ int main_client(int argc, char **argv)
     b8 have_remote = false;
     b8 have_admin_password_file = false;
 
-    // TODO: set default values for optional parameters
-    //       and check that necessary parameters are set.
     b8 bad_config = false;
     string name, value;
     while (config_reader_next(&config_reader, &name, &value)) {
