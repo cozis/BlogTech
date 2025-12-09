@@ -59,7 +59,30 @@ Options can be specified via command line or configuration file. By default, Blo
 # Lines starting with # are comments
 # Use "---" for empty/unset values
 
-document-root /var/www/html
-http-addr     0.0.0.0
-http-port     8080
+document-root       /var/www/html
+http-addr           0.0.0.0
+http-port           8080
+auth-password-file  /path/to/password.txt
 ```
+
+## Authentication
+
+PUT and DELETE requests require authentication. To enable authenticated uploads:
+
+1. Create a password file with at least 32 characters:
+```sh
+openssl rand -base64 48 > password.txt
+```
+
+2. Configure the server to use it:
+```sh
+./blogtech --serve --document-root=docroot --auth-password-file=password.txt
+```
+
+Requests are authenticated using HMAC-SHA256 signatures. The client must include the following headers:
+- `X-Blogtech-Timestamp`: Unix epoch seconds when the request was created
+- `X-Blogtech-Expire`: Seconds until the request expires
+- `X-Blogtech-Nonce`: Unique value to prevent replay attacks
+- `X-Blogtech-Signature`: HMAC-SHA256 signature of the request
+
+If no password file is configured or the password is shorter than 32 characters, all PUT/DELETE requests will be rejected.

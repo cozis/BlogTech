@@ -10,6 +10,7 @@ typedef struct {
     uint16_t    http_port;
     bool        reuse_addr;
     bool        trace_bytes;
+    HTTP_String auth_password_file;
     bool        https_enabled;
     HTTP_String https_addr;
     uint16_t    https_port;

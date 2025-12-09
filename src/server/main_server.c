@@ -121,7 +121,7 @@ int main_server(int argc, char **argv)
     }
 
     Auth auth;
-    if (auth_init(&auth) < 0) {
+    if (auth_init(&auth, server_config.auth_password_file) < 0) {
         fprintf(stderr, "Couldn't initialize authentication system\n");
         config_reader_free(&config_reader);
         return -1;

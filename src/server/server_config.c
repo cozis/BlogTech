@@ -9,6 +9,7 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
     config->http_port = 8080;
     config->reuse_addr = true;
     config->trace_bytes = false;
+    config->auth_password_file = HTTP_STR("");
     config->https_enabled = false;
     config->acme_enabled = false;
 
@@ -37,6 +38,8 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
             parse_config_value_yn(name, value, &config->https_enabled, &bad_config);
         } else if (http_streq(name, HTTP_STR("acme-enabled"))) {
             parse_config_value_yn(name, value, &config->acme_enabled, &bad_config);
+        } else if (http_streq(name, HTTP_STR("auth-password-file"))) {
+            config->auth_password_file = value;
         } else if (http_streq(name, HTTP_STR("help")) || http_streq(name, HTTP_STR("h"))) {
             print_usage();
             return 0;
