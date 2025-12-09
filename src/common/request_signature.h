@@ -1,7 +1,7 @@
 #ifndef REQUEST_SIGNATURE_INCLUDED
 #define REQUEST_SIGNATURE_INCLUDED
 
-#include "../lib/http.h"
+#include "../lib/chttp.h"
 
 int calculate_request_signature(
     CHTTP_Method method,

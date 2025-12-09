@@ -1,13 +1,15 @@
-#include <string.h>
-#include <stdbool.h>
+#include "lib/basic.h"
 #include "client/main_client.h"
 #include "server/main_server.h"
 
-static bool is_server(int argc, char **argv)
+static b8 is_server(int argc, char **argv)
 {
-    for (int i = 1; i < argc; i++)
-        if (!strcmp(argv[i], "--serve") || !strcmp(argv[i], "-s"))
+    for (int i = 1; i < argc; i++) {
+        string arg = ZT2S(argv[i]);
+        if (streq(arg, S("--serve")) ||
+            streq(arg, S("-s")))
             return true;
+    }
     return false;
 }
 

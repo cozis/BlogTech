@@ -2,7 +2,7 @@
 #include "auth.h"
 #include "acme.h"
 #include "server_config.h"
-#include "../lib/http.h"
+#include "../lib/chttp.h"
 #include "../lib/file_system.h"
 #include "../common/config_reader.h"
 
@@ -64,7 +64,7 @@ int main_server(int argc, char **argv)
         server_config.trace_bytes);
 
     ret = chttp_server_listen_tcp(&server,
-        S2H(server_config.http_addr),
+        server_config.http_addr,
         server_config.http_port);
     if (ret < 0) {
         fprintf(stderr, "Couldn't start listening (%s)\n",
@@ -103,10 +103,10 @@ int main_server(int argc, char **argv)
 
     if (server_config.https_enabled && file_exists(server_config.cert_file)) {
         ret = chttp_server_listen_tls(&server,
-            S2H(server_config.https_addr),
+            server_config.https_addr,
             server_config.https_port,
-            S2H(server_config.cert_file),
-            S2H(server_config.cert_key_file));
+            server_config.cert_file,
+            server_config.cert_key_file);
         if (ret < 0) {
             fprintf(stderr, "Couldn't start listening (%s)\n",
                 chttp_strerror(ret));
@@ -125,7 +125,7 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
-    bool restart = false;
+    b8 restart = false;
     while (running) {
 
         void*           ptrs[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
@@ -167,7 +167,7 @@ int main_server(int argc, char **argv)
         CHTTP_Response *response;
         chttp_client_process_events(&client, client_reg);
         while (chttp_client_next_response(&client, &result, &user, &response)) {
-            bool new_certificate = acme_process_response(&acme, result, response);
+            b8 new_certificate = acme_process_response(&acme, result, response);
             chttp_free_response(response);
             if (new_certificate) {
                 running = 0;
@@ -189,7 +189,7 @@ int main_server(int argc, char **argv)
             case CHTTP_METHOD_GET:
                 {
                     char buf[1<<10];
-                    int ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
+                    int ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
                         chttp_response_builder_status(response_builder, 500); // TODO: better error code
                         chttp_response_builder_send(response_builder);
@@ -213,7 +213,7 @@ int main_server(int argc, char **argv)
                         }
                         break;
                     }
-                    size_t len;
+                    u64 len;
                     ret = file_size(fd, &len);
                     if (ret < 0) {
                         file_close(fd);
@@ -257,7 +257,7 @@ int main_server(int argc, char **argv)
                     }
 
                     char buf[1<<10];
-                    ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
                         chttp_response_builder_status(response_builder, 500); // TODO: better error code
                         chttp_response_builder_send(response_builder);
@@ -274,7 +274,7 @@ int main_server(int argc, char **argv)
                         break;
                     }
                     chttp_response_builder_status(response_builder, 200);
-                    string body = H2S(request->body);
+                    string body = request->body;
                     for (int copied = 0; copied < body.len; ) {
                         ret = file_write(fd,
                             body.ptr + copied,
@@ -305,7 +305,7 @@ int main_server(int argc, char **argv)
                     }
 
                     char buf[1<<10];
-                    ret = translate_path(H2S(request->url.path), server_config.document_root, buf, (int) sizeof(buf));
+                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
                     if (ret < 0) {
                         chttp_response_builder_status(response_builder, 500); // TODO: better error code
                         chttp_response_builder_send(response_builder);

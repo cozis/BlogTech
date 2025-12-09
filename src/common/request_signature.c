@@ -103,7 +103,7 @@ int calculate_request_signature(
 
     if (b.status != 0)
         return b.status;
-    assert(b.len == 64);
+    ASSERT(b.len == 64);
     memcpy(dst, b.dst, 64);
     return 0;
 }

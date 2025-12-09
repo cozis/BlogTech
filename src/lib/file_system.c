@@ -1,13 +1,9 @@
 #include <stdio.h>
-#include <errno.h>
-#include <limits.h>
-#include <string.h>
-#include <assert.h>
 #include <stdlib.h>
-#include <stdint.h>
 
 #ifdef _WIN32
 #else
+#include <errno.h>
 #include <unistd.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -18,7 +14,7 @@
 
 int rename_file_or_dir(string oldpath, string newpath);
 
-bool file_exists(string path)
+b8 file_exists(string path)
 {
     // TODO: make a proper implementation of this
     Handle fd;
@@ -34,7 +30,7 @@ int file_open(string path, Handle *fd, FileOpenMode mode)
     char zt[1<<10];
     if (path.len >= (int) sizeof(zt))
         return -1;
-    memcpy(zt, path.ptr, path.len);
+    memcpy_(zt, path.ptr, path.len);
     zt[path.len] = '\0';
 
     int flags = 0;
@@ -212,15 +208,15 @@ int file_write(Handle fd, char *src, int len)
 #endif
 }
 
-int file_size(Handle fd, size_t *len)
+int file_size(Handle fd, u64 *len)
 {
 #ifdef __linux__
     struct stat buf;
     if (fstat((int) fd.data, &buf) < 0)
         return -1;
-    if (buf.st_size < 0 || (u64) buf.st_size > SIZE_MAX)
+    if (buf.st_size < 0 || (u64) buf.st_size > U64_MAX)
         return -1;
-    *len = (size_t) buf.st_size;
+    *len = (u64) buf.st_size;
     return 0;
 #endif
 
@@ -240,7 +236,7 @@ int create_dir(string path)
     char zt[PATH_MAX];
     if (path.len >= (int) sizeof(zt))
         return -1;
-    memcpy(zt, path.ptr, path.len);
+    memcpy_(zt, path.ptr, path.len);
     zt[path.len] = '\0';
 
 #ifdef _WIN32
@@ -259,13 +255,13 @@ int rename_file_or_dir(string oldpath, string newpath)
     char oldpath_zt[PATH_MAX];
     if (oldpath.len >= (int) sizeof(oldpath_zt))
         return -1;
-    memcpy(oldpath_zt, oldpath.ptr, oldpath.len);
+    memcpy_(oldpath_zt, oldpath.ptr, oldpath.len);
     oldpath_zt[oldpath.len] = '\0';
 
     char newpath_zt[PATH_MAX];
     if (newpath.len >= (int) sizeof(newpath_zt))
         return -1;
-    memcpy(newpath_zt, newpath.ptr, newpath.len);
+    memcpy_(newpath_zt, newpath.ptr, newpath.len);
     newpath_zt[newpath.len] = '\0';
 
     if (rename(oldpath_zt, newpath_zt))
@@ -278,7 +274,7 @@ int remove_file_or_dir(string path)
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
         return -1;
-    memcpy(path_zt, path.ptr, path.len);
+    memcpy_(path_zt, path.ptr, path.len);
     path_zt[path.len] = '\0';
 
     if (remove(path_zt))
@@ -291,7 +287,7 @@ int get_full_path(string path, char *dst)
     char path_zt[PATH_MAX];
     if (path.len >= (int) sizeof(path_zt))
         return -1;
-    memcpy(path_zt, path.ptr, path.len);
+    memcpy_(path_zt, path.ptr, path.len);
     path_zt[path.len] = '\0';
 
 #ifdef __linux__
@@ -304,7 +300,7 @@ int get_full_path(string path, char *dst)
         return -1;
 #endif
 
-    size_t path_len = strlen(dst);
+    size_t path_len = strlen_(dst);
     if (path_len > 0 && dst[path_len-1] == '/')
         dst[path_len-1] = '\0';
 
@@ -318,7 +314,7 @@ int file_read_all(string path, string *data)
     if (ret < 0)
         return -1;
 
-    size_t len;
+    u64 len;
     ret = file_size(fd, &len);
     if (ret < 0) {
         file_close(fd);
@@ -428,7 +424,7 @@ int directory_scanner_init(DirectoryScanner *scanner, string path)
     char path_copy[PATH_MAX];
     if (path.len >= PATH_MAX)
         return -1;
-    memcpy(path_copy, path.ptr, path.len);
+    memcpy_(path_copy, path.ptr, path.len);
     path_copy[path.len] = '\0';
 
     scanner->d = opendir(path_copy);
@@ -452,7 +448,7 @@ int directory_scanner_next(DirectoryScanner *scanner, string *name)
         return 1;
     }
 
-    *name = (string) { scanner->e->d_name, strlen(scanner->e->d_name) };
+    *name = ZT2S(scanner->e->d_name);
     return 0;
 }
 
@@ -465,7 +461,7 @@ void directory_scanner_free(DirectoryScanner *scanner)
 
 int parse_path(string path, string *comps, int max)
 {
-    bool is_absolute = false;
+    b8 is_absolute = false;
     if (path.len > 0 && path.ptr[0] == '/') {
         is_absolute = true;
         path.ptr++;
@@ -506,7 +502,7 @@ int parse_path(string path, string *comps, int max)
         if (i == (u32) path.len)
             break;
 
-        assert(path.ptr[i] == '/');
+        ASSERT(path.ptr[i] == '/');
         i++;
 
         if (i == (u32) path.len)
@@ -547,7 +543,7 @@ int translate_path(string path,
         dst[num++] = '.';
     for (int i = 0; i < num_comps; i++) {
         dst[num++] = '/';
-        memcpy(dst + num, comps[i].ptr, comps[i].len);
+        memcpy_(dst + num, comps[i].ptr, comps[i].len);
         num += comps[i].len;
     }
 

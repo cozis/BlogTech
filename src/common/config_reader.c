@@ -1,9 +1,7 @@
-#include "config_reader.h"
-#include "../lib/file_system.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+#include "config_reader.h"
+#include "../lib/file_system.h"
 
 #ifndef DEFAULT_CONFIG_FILE
 #define DEFAULT_CONFIG_FILE "blogtech.conf"
@@ -11,24 +9,26 @@
 
 static int read_config_file(int argc, char **argv, string *text)
 {
-    bool no_config = false;
-    string file = { NULL, 0 };
+    b8 no_config = false;
+    string file = EMPTY_STRING;
     for (int i = 1; i < argc; i++) {
 
-        if (!strcmp(argv[i], "--config")) {
+        string arg = ZT2S(argv[i]);
+
+        if (streq(arg, S("--config"))) {
             i++;
             if (i == argc) {
                 fprintf(stderr, "Missing path after --config\n");
                 return -1;
             }
             no_config = false;
-            file = (string) { argv[i], strlen(argv[i]) };
+            file = arg;
             break;
         }
 
-        if (!strcmp(argv[i], "--no-config")) {
+        if (streq(arg, S("--no-config"))) {
             no_config = true;
-            file = (string) { NULL, 0 };
+            file = EMPTY_STRING;
             break;
         }
     }
@@ -38,7 +38,7 @@ static int read_config_file(int argc, char **argv, string *text)
             file = S(DEFAULT_CONFIG_FILE);
 
     if (file.len == 0)
-        *text = (string) { NULL, 0 };
+        *text = EMPTY_STRING;
     else {
         int ret = file_read_all(file, text);
         if (ret < 0) {
@@ -50,7 +50,7 @@ static int read_config_file(int argc, char **argv, string *text)
     return 0;
 }
 
-static bool is_white_space(char c)
+static b8 is_white_space(char c)
 {
     return c == ' '
         || c == '\t'
@@ -73,7 +73,7 @@ consume_whitespace_and_comments(ConfigReader *reader)
             reader->cur++;
     }
 
-    assert(reader->cur == reader->len || !is_white_space(reader->src[reader->cur]));
+    ASSERT(reader->cur == reader->len || !is_white_space(reader->src[reader->cur]));
 }
 
 int config_reader_init(ConfigReader *reader, int argc, char **argv)
@@ -102,7 +102,7 @@ static int read_value_from_file(ConfigReader *reader,
 {
     // Either the source ended or we found something
     // that is not white space.
-    assert(reader->cur == reader->len || !is_white_space(reader->src[reader->cur]));
+    ASSERT(reader->cur == reader->len || !is_white_space(reader->src[reader->cur]));
 
     if (reader->cur == reader->len)
         return 0; // Source ended
@@ -123,7 +123,7 @@ static int read_value_from_file(ConfigReader *reader,
         || reader->src[reader->cur] == '\n'
         || reader->src[reader->cur] == '\r'
         || reader->src[reader->cur] == '#') {
-        *value = (string) { NULL, 0 };
+        *value = EMPTY_STRING;
     } else {
 
         off = reader->cur;
@@ -139,7 +139,7 @@ static int read_value_from_file(ConfigReader *reader,
         };
 
         if (streq(*value, S("---")))
-            *value = (string) { NULL, 0 };
+            *value = EMPTY_STRING;
     }
 
     consume_whitespace_and_comments(reader);
@@ -152,8 +152,11 @@ static int read_value_from_cmdline(ConfigReader *reader,
     if (reader->argidx == reader->argc)
         return 0;
 
-    char *src = reader->argv[reader->argidx++];
-    int   len = strlen(src);
+    string arg = ZT2S(reader->argv[reader->argidx]);
+    reader->argidx++;
+
+    char *src = arg.ptr;
+    int   len = arg.len;
     int   cur = 0;
 
     if (cur == len) {
@@ -163,7 +166,7 @@ static int read_value_from_cmdline(ConfigReader *reader,
 
     if (src[cur] != '-') {
         // Unnamed option
-        *name = (string) { NULL, 0 };
+        *name = EMPTY_STRING;
         *value = (string) { src, len };
         return 1;
     }
@@ -196,7 +199,7 @@ static int read_value_from_cmdline(ConfigReader *reader,
     *name = (string) { src + off, cur - off };
 
     if (cur == len) {
-        *value = (string) { NULL, 0 };
+        *value = EMPTY_STRING;
     } else {
         cur++;
         *value = (string) { src + cur, len - cur };
@@ -205,7 +208,7 @@ static int read_value_from_cmdline(ConfigReader *reader,
     return 1;
 }
 
-bool config_reader_next(ConfigReader *reader, string *name, string *value)
+b8 config_reader_next(ConfigReader *reader, string *name, string *value)
 {
     int ret;
     do {
@@ -231,9 +234,9 @@ void config_reader_rewind(ConfigReader *reader)
 }
 
 void parse_config_value_yn(string name, string value,
-    bool *out, bool *bad_config)
+    b8 *out, b8 *bad_config)
 {
-    if (streq(value, S("yes")) || streq(value, S(""))) {
+    if (streq(value, S("yes")) || streq(value, EMPTY_STRING)) {
         *out = true;
     } else if (streq(value, S("no"))) {
         *out = false;
@@ -245,13 +248,13 @@ void parse_config_value_yn(string name, string value,
     }
 }
 
-static bool is_digit(char c)
+static b8 is_digit(char c)
 {
     return c >= '0' && c <= '9';
 }
 
 void parse_config_value_port(string name, string value,
-    u16 *out, bool *bad_config)
+    u16 *out, b8 *bad_config)
 {
     char *src = value.ptr;
     int   len = value.len;

@@ -1,11 +1,4 @@
 #include "string_builder.h"
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
-//////////////////////////////////////////////////////////////////
-// BUILDER
-//////////////////////////////////////////////////////////////////
 
 void sb_init(StringBuilder *b, char *dst, int cap)
 {
@@ -57,7 +50,7 @@ void sb_write_(StringBuilder *b, string s, char *file, int line)
         if (b->cap - b->len < s.len) {
             b->status = SB_OUT_OF_MEMORY;
         } else {
-            memcpy(b->dst + b->len, s.ptr, s.len);
+            memcpy_(b->dst + b->len, s.ptr, s.len);
         }
     }
     b->len += s.len;
@@ -72,7 +65,7 @@ void sb_write_(StringBuilder *b, string s, char *file, int line)
 
 void sb_push_mod(StringBuilder *b, Encoding m)
 {
-    assert(b->num_mods < SB_MODIFIER_LIMIT);
+    ASSERT(b->num_mods < SB_MODIFIER_LIMIT);
 
     b->mods[b->num_mods].type = m;
     b->mods[b->num_mods].off_0 = b->len;
@@ -85,16 +78,16 @@ void sb_flush(StringBuilder *b)
     if (b->status != 0)
         return;
 
-    assert(b->num_mods > 0);
-    assert(b->mods[b->num_mods-1].type == ENCODING_HMAC);
-    assert(b->mods[b->num_mods-1].off_1 == -1);
+    ASSERT(b->num_mods > 0);
+    ASSERT(b->mods[b->num_mods-1].type == ENCODING_HMAC);
+    ASSERT(b->mods[b->num_mods-1].off_1 == -1);
 
     b->mods[b->num_mods-1].off_1 = b->len;
 }
 
 void sb_pop_mod_(StringBuilder *b, char *file, int line)
 {
-    assert(b->num_mods > 0);
+    ASSERT(b->num_mods > 0);
     SB_Modifier mod = b->mods[--b->num_mods];
 
     int len1, len2;

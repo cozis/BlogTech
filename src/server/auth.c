@@ -1,9 +1,7 @@
 #include "auth.h"
-#include "../common/request_signature.h"
+#include "../lib/chttp.h"
 #include "../lib/file_system.h"
-#include "../lib/http.h"
-#include <stdlib.h>
-#include <string.h>
+#include "../common/request_signature.h"
 
 int auth_init(Auth *auth, string password_file)
 {
@@ -31,7 +29,7 @@ int auth_init(Auth *auth, string password_file)
         return -1;
     }
 
-    memcpy(auth->password_buf, content.ptr, content.len);
+    memcpy_(auth->password_buf, content.ptr, content.len);
     auth->password.ptr = auth->password_buf;
     auth->password.len = content.len;
     free(content.ptr);
@@ -44,7 +42,7 @@ void auth_free(Auth *auth)
     (void) auth;
 }
 
-static bool is_invalidated(Auth *auth, u64 nonce_value)
+static b8 is_invalidated(Auth *auth, u64 nonce_value)
 {
     for (int i = 0; i < MAX_NONCES; i++)
         if (nonce_value == auth->nonces[i].value)
@@ -100,7 +98,7 @@ static time_t parse_timestamp(string str)
     return value;
 }
 
-static bool is_expired(string timestamp_str, u32 expire_seconds)
+static b8 is_expired(string timestamp_str, u32 expire_seconds)
 {
     time_t timestamp = parse_timestamp(timestamp_str);
     if (timestamp == 0)
@@ -120,7 +118,7 @@ static void cleanup_expired_nonces(Auth *auth)
     }
 }
 
-static bool store_nonce(Auth *auth, u64 nonce_value, time_t expire)
+static b8 store_nonce(Auth *auth, u64 nonce_value, time_t expire)
 {
     int i = 0;
     while (i < MAX_NONCES && auth->nonces[i].value != BAD_NONCE)
@@ -155,7 +153,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         CHTTP_STR("Host"));
     if (idx < 0)
         return 1;
-    string host = H2S(request->headers[idx].value);
+    string host = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
@@ -163,7 +161,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         CHTTP_STR("X-BlogTech-Nonce"));
     if (idx < 0)
         return 1;
-    string nonce_str = H2S(request->headers[idx].value);
+    string nonce_str = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
@@ -171,7 +169,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         CHTTP_STR("X-BlogTech-Timestamp"));
     if (idx < 0)
         return 1;
-    string timestamp = H2S(request->headers[idx].value);
+    string timestamp = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
@@ -179,7 +177,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         CHTTP_STR("X-BlogTech-Expire"));
     if (idx < 0)
         return 1;
-    string expire_str = H2S(request->headers[idx].value);
+    string expire_str = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
@@ -187,7 +185,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         CHTTP_STR("X-BlogTech-Signature"));
     if (idx < 0)
         return 1;
-    string signature = H2S(request->headers[idx].value);
+    string signature = request->headers[idx].value;
 
     // Parse the expire value
     u32 expire = parse_expire(expire_str);
@@ -211,12 +209,12 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     char expected_signature[64];
     int ret = calculate_request_signature(
         request->method,
-        H2S(request->url.path),
+        request->url.path,
         host,
         timestamp,
         expire,
         nonce_str,
-        H2S(request->body),
+        request->body,
         auth->password,
         expected_signature);
     if (ret < 0)

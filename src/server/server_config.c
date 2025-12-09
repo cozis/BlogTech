@@ -1,6 +1,6 @@
 #include "server_config.h"
-#include "../common/print_usage.h"
 #include "../lib/basic.h"
+#include "../common/print_usage.h"
 
 int load_server_config(ConfigReader *reader, ServerConfig *config)
 {
@@ -9,13 +9,13 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
     config->http_port = 8080;
     config->reuse_addr = true;
     config->trace_bytes = false;
-    config->auth_password_file = S("");
+    config->auth_password_file = EMPTY_STRING;
     config->https_enabled = false;
     config->acme_enabled = false;
 
-    bool have_document_root = false;
+    b8 have_document_root = false;
 
-    bool bad_config = false;
+    b8 bad_config = false;
     string name, value;
     while (config_reader_next(reader, &name, &value)) {
         if (streq(name, S("document-root"))) {
@@ -53,11 +53,11 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
 
     if (config->https_enabled) {
 
-        config->https_addr = S("");
+        config->https_addr = EMPTY_STRING;
         config->https_port = 8443;
 
-        bool have_cert_file     = false;
-        bool have_cert_key_file = false;
+        b8 have_cert_file     = false;
+        b8 have_cert_key_file = false;
 
         config_reader_rewind(reader);
         while (config_reader_next(reader, &name, &value)) {
@@ -105,9 +105,9 @@ int load_server_config(ConfigReader *reader, ServerConfig *config)
         config->acme_agree_tos = false;
         config->acme_url       = S("https://acme-v02.api.letsencrypt.org/directory");
 
-        bool have_acme_email   = false;
-        bool have_acme_country = false;
-        bool have_acme_org     = false;
+        b8 have_acme_email   = false;
+        b8 have_acme_country = false;
+        b8 have_acme_org     = false;
 
         config_reader_rewind(reader);
         while (config_reader_next(reader, &name, &value)) {

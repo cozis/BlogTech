@@ -18,14 +18,14 @@ typedef struct {
 typedef struct {
     HANDLE handle;
     WIN32_FIND_DATA find_data;
-    bool first;
-    bool done;
+    b8 first;
+    b8 done;
 } DirectoryScanner;
 #else
 typedef struct {
     DIR *d;
     struct dirent *e;
-    bool done;
+    b8 done;
 } DirectoryScanner;
 #endif
 
@@ -34,7 +34,7 @@ typedef enum {
     FILE_OPEN_READ,
 } FileOpenMode;
 
-bool file_exists(string path);
+b8   file_exists(string path);
 int  file_open(string path, Handle *fd, FileOpenMode mode);
 void file_close(Handle fd);
 int  file_set_offset(Handle fd, int off);
@@ -44,7 +44,7 @@ int  file_unlock(Handle fd);
 int  file_sync(Handle fd);
 int  file_read(Handle fd, char *dst, int max);
 int  file_write(Handle fd, char *src, int len);
-int  file_size(Handle fd, size_t *len);
+int  file_size(Handle fd, u64 *len);
 int  file_write_atomic(string path, string content);
 int  create_dir(string path);
 int  rename_file_or_dir(string oldpath, string newpath);

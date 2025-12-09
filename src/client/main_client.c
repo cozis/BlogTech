@@ -1,4 +1,4 @@
-#include "../lib/http.h"
+#include "../lib/chttp.h"
 #include "../lib/file_system.h"
 #include "../common/print_usage.h"
 #include "../common/config_reader.h"
@@ -7,7 +7,7 @@
 #define MAX_FILES (1<<7)
 
 typedef struct {
-    bool   pending;
+    b8     pending;
     string file;
     string url;
     char   filebuf[1<<10];
@@ -36,7 +36,7 @@ static void wait_completion(CHTTP_Client *client)
     CHTTP_Response *response;
     chttp_client_wait_response(client, &result, &user, &response);
 
-    assert(user);
+    ASSERT(user);
     Upload *completed_upload = user;
 
     if (result == CHTTP_OK) {
@@ -72,17 +72,17 @@ int main_client(int argc, char **argv)
         return -1;
 
     string remote;
-    bool   trace_bytes;
+    b8     trace_bytes;
     string admin_password_file;
     string files[MAX_FILES];
     int    num_files = 0;
 
-    bool have_remote = false;
-    bool have_admin_password_file = false;
+    b8 have_remote = false;
+    b8 have_admin_password_file = false;
 
     // TODO: set default values for optional parameters
     //       and check that necessary parameters are set.
-    bool bad_config = false;
+    b8 bad_config = false;
     string name, value;
     while (config_reader_next(&config_reader, &name, &value)) {
         if (streq(name, S("remote"))) {
@@ -107,7 +107,7 @@ int main_client(int argc, char **argv)
             print_usage();
             config_reader_free(&config_reader);
             return 0;
-        } else if (streq(name, S(""))) {
+        } else if (streq(name, EMPTY_STRING)) {
             if (num_files == MAX_FILES) {
                 printf("Config Error: File limit of %d reached\n", MAX_FILES);
                 bad_config = true;
@@ -145,7 +145,7 @@ int main_client(int argc, char **argv)
             printf("Config Error: Invalid remote\n");
             return -1;
         }
-        remote_host = H2S(parsed_url.authority.host.name); // TODO: will this work for IPv6?
+        remote_host = parsed_url.authority.host.name; // TODO: will this work for IPv6?
     }
 
     string admin_password;
@@ -172,7 +172,7 @@ int main_client(int argc, char **argv)
         Upload *u = uploads;
         while (u->pending) {
             u++;
-            assert(u < uploads + CHTTP_CLIENT_CAPACITY);
+            ASSERT(u < uploads + CHTTP_CLIENT_CAPACITY);
         }
 
         char urlbuf[1<<10];
@@ -207,45 +207,45 @@ int main_client(int argc, char **argv)
             admin_password,
             signature);
         if (ret < 0) {
-            assert(0); // TODO
+            ASSERT(0); // TODO
         }
 
         CHTTP_RequestBuilder builder = chttp_client_get_builder(&client);
         chttp_request_builder_set_user(builder, u);
         chttp_request_builder_trace(builder, trace_bytes);
         chttp_request_builder_method(builder, CHTTP_METHOD_PUT);
-        chttp_request_builder_target(builder, S2H(url));
+        chttp_request_builder_target(builder, url);
 
         char hdrbuf[1<<9];
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
             "X-BlogTech-Nonce: %.*s", UNPACK(nonce));
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            assert(0); // TODO
+            ASSERT(0); // TODO
         }
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
             "X-BlogTech-Timestamp: %.*s", UNPACK(timestamp));
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            assert(0); // TODO
+            ASSERT(0); // TODO
         }
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
             "X-BlogTech-Expire: %u", expire);
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            assert(0); // TODO
+            ASSERT(0); // TODO
         }
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
         ret = snprintf(hdrbuf, sizeof(hdrbuf),
             "X-BlogTech-Signature: %.*s", (int) sizeof(signature), signature);
         if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            assert(0); // TODO
+            ASSERT(0); // TODO
         }
         chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
 
-        chttp_request_builder_body(builder, S2H(data));
+        chttp_request_builder_body(builder, data);
 
         ret = chttp_request_builder_send(builder);
         if (ret < 0) {
@@ -265,7 +265,7 @@ int main_client(int argc, char **argv)
 
     for (;;) {
 
-        bool completed = true;
+        b8 completed = true;
         for (int i = 0; i < MAX_FILES; i++)
             if (uploads[i].pending) {
                 completed = false;

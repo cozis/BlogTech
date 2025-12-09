@@ -4,7 +4,7 @@
 #include <openssl/evp.h>
 
 #include "../lib/time.h"
-#include "../lib/http.h"
+#include "../lib/chttp.h"
 
 #define ACME_DOMAIN_LIMIT 32
 
@@ -21,7 +21,7 @@ typedef struct {
 
     string directory_url;
 
-    bool   dont_verify_cert;
+    b8     dont_verify_cert;
 
     /////////////////////////////////////////////
     // Information
@@ -34,7 +34,7 @@ typedef struct {
     string domains[ACME_DOMAIN_LIMIT];
     int    num_domains;
 
-    bool   agree_tos;
+    b8     agree_tos;
 
     /////////////////////////////////////////////
     // File paths
@@ -48,7 +48,7 @@ typedef struct {
 
     CHTTP_Client *client;
 
-    bool error;
+    b8   error;
 
 } ACME_Config;
 
@@ -151,10 +151,10 @@ typedef struct {
     string email;
     string country;
     string organization;
-    bool   agree_tos;
+    b8     agree_tos;
 
     CHTTP_Client *client;
-    bool          dont_verify_cert;
+    b8            dont_verify_cert;
 
     string account_key_file;
     string certificate_file;
@@ -251,13 +251,13 @@ void acme_process_timeout(ACME *acme, CHTTP_Client *client);
 // Process an HTTP request. If the request wasn't
 // directed to the ACME client, false is returned.
 // If the request was processed, true is returned.
-bool acme_process_request(ACME *acme, CHTTP_Request *request,
+b8 acme_process_request(ACME *acme, CHTTP_Request *request,
     CHTTP_ResponseBuilder builder);
 
 // Process an HTTP response directed to the ACME
 // client. Returns true if a new certificate is
 // available.
-bool acme_process_response(ACME *acme, int result,
+b8 acme_process_response(ACME *acme, int result,
     CHTTP_Response *response);
 
 #endif // ACME_INCLUDED

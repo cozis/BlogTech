@@ -5,15 +5,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "basic.h"
+
 /////////////////////////////////////////////////////////
 // BASICS
 /////////////////////////////////////////////////////////
 
 // Utility string type
-typedef struct {
-    char *ptr;
-    int   len;
-} JSON_String;
+#define JSON_String string
 
 // Translate string literal to JSON_String
 #define JSON_STR(X) ((JSON_String) { (X), (int) sizeof(X)-1 })

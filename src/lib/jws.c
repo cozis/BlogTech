@@ -1,6 +1,3 @@
-#include <assert.h>
-#include <limits.h>
-#include <string.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/ec.h>
@@ -9,20 +6,7 @@
 
 #include "jws.h"
 #include "encode.h"
-#include "../3p/json.h"
-
-#define CEIL(X, Y) (((X) + (Y) - 1) / (Y))
-
-// Wrapper for base64url encoding without padding
-int jws_base64url_encode_inplace(char *buf, int len, int cap, bool with_padding)
-{
-    Encoding enc = with_padding ? ENCODING_B64URLPL : ENCODING_B64URLNPL;
-    return encode_inplace(buf, len, 0, cap, enc);
-}
-
-// Number of bytes required to encode
-// N bytes as base64url
-#define BASE64URL_LEN(N) (CEIL(N, 3) * 4)
+#include "json.h"
 
 static void
 append(JWS_Builder *builder, char *str, int len)
@@ -34,13 +18,13 @@ append(JWS_Builder *builder, char *str, int len)
         builder->state = JWS_BUILDER_STATE_ERROR;
         builder->reason = JWS_ERROR_OOM;
     } else {
-        memcpy(builder->dst + builder->len, str, len);
+        memcpy_(builder->dst + builder->len, str, len);
         builder->len += len;
     }
 }
 
 void jws_builder_init(JWS_Builder *builder,
-    EVP_PKEY *private_key, bool flat,
+    EVP_PKEY *private_key, b8 flat,
     char *dst, int cap)
 {
     builder->state = JWS_BUILDER_STATE_PROTECTED;
@@ -76,7 +60,7 @@ void jws_builder_write(JWS_Builder *builder, const char *str, int len)
     append(builder, (char*)str, len);
 }
 
-static bool key_and_alg_compat(EVP_PKEY *key, JWS_Alg alg)
+static b8 key_and_alg_compat(EVP_PKEY *key, JWS_Alg alg)
 {
     int id = EVP_PKEY_base_id(key);
     switch (alg) {
@@ -134,7 +118,7 @@ static const EVP_MD *get_openssl_md(JWS_Alg alg)
     return NULL;
 }
 
-static bool is_ec_alg(JWS_Alg alg)
+static b8 is_ec_alg(JWS_Alg alg)
 {
     return alg == JWS_ALG_ES256
         || alg == JWS_ALG_ES384
@@ -142,7 +126,7 @@ static bool is_ec_alg(JWS_Alg alg)
 }
 
 // Check if algorithm requires PSS Padding
-static bool is_pss_alg(JWS_Alg alg) {
+static b8 is_pss_alg(JWS_Alg alg) {
     return alg == JWS_ALG_PS256
         || alg == JWS_ALG_PS384
         || alg == JWS_ALG_PS512;
@@ -163,7 +147,7 @@ static int get_ec_sig_component_len(JWS_Alg alg)
 // JWS format: R || S (concatenated, fixed-length)
 //
 // TODO: Test this function
-static int der_to_raw_signature(const uint8_t *der,
+static int der_to_raw_signature(uint8_t *der,
     int der_len, uint8_t *raw, int component_len)
 {
     if (der_len < 8) // Minimum valid DER signature size
@@ -190,7 +174,7 @@ static int der_to_raw_signature(const uint8_t *der,
     if (r_len & 0x80 || r_len > component_len + 1)
         return -1;
 
-    const uint8_t *r_data = &der[pos];
+    uint8_t *r_data = &der[pos];
     pos += r_len;
 
     // Skip leading zero byte if present (DER adds it when high bit is set)
@@ -210,7 +194,7 @@ static int der_to_raw_signature(const uint8_t *der,
     if (s_len & 0x80 || s_len > component_len + 1)
         return -1;
 
-    const uint8_t *s_data = &der[pos];
+    uint8_t *s_data = &der[pos];
 
     // Skip leading zero byte if present
     if (s_len > component_len && s_data[0] == 0x00) {
@@ -223,11 +207,11 @@ static int der_to_raw_signature(const uint8_t *der,
 
     // Write R to output (left-padded with zeros if needed)
     memset(raw, 0, component_len);
-    memcpy(raw + component_len - r_len, r_data, r_len);
+    memcpy_(raw + component_len - r_len, r_data, r_len);
 
     // Write S to output (left-padded with zeros if needed)
     memset(raw + component_len, 0, component_len);
-    memcpy(raw + 2 * component_len - s_len, s_data, s_len);
+    memcpy_(raw + 2 * component_len - s_len, s_data, s_len);
 
     return 2 * component_len;
 }
@@ -350,7 +334,7 @@ void jws_builder_flush(JWS_Builder *builder)
                 builder->reason = JWS_ERROR_BADJSON;
                 return;
             }
-            JSON_String alg = json_get_string(json_get_field(json, JSON_STR("alg")));
+            string alg = json_get_string(json_get_field(json, S("alg")));
 
             if (alg.len == 4) {
                 if (memcmp(alg.ptr, "NONE", 4)) {
@@ -392,11 +376,12 @@ void jws_builder_flush(JWS_Builder *builder)
                 return;
             }
 
-            int prot_len = jws_base64url_encode_inplace(
+            int prot_len = encode_inplace(
                 builder->dst + builder->prot_off,
                 builder->len - builder->prot_off,
+                0,
                 builder->cap - builder->prot_off,
-                false);
+                ENCODING_B64URLNP);
             if (prot_len < 0) {
                 // Buffer isn't large enough to hold
                 // the Base64URL-encoded version of the
@@ -424,11 +409,12 @@ void jws_builder_flush(JWS_Builder *builder)
         break;
     case JWS_BUILDER_STATE_PAYLOAD:
         {
-            int pay_len = jws_base64url_encode_inplace(
+            int pay_len = encode_inplace(
                 builder->dst + builder->pay_off,
                 builder->len - builder->pay_off,
+                0,
                 builder->cap - builder->pay_off,
-                false);
+                ENCODING_B64URLNP);
             if (pay_len < 0) {
                 // Buffer isn't large enough to hold
                 // the Base64URL-encoded version of the
@@ -477,11 +463,12 @@ void jws_builder_flush(JWS_Builder *builder)
             }
             builder->len += ret;
 
-            ret = jws_base64url_encode_inplace(
+            ret = encode_inplace(
                 builder->dst + sign_off,
                 builder->len - sign_off,
+                0,
                 builder->cap - sign_off,
-                false);
+                ENCODING_B64URLNP);
             if (ret < 0) {
                 // Signature didn't fit in the buffer
                 builder->state = JWS_BUILDER_STATE_ERROR;
@@ -535,7 +522,7 @@ int jws_builder_result(JWS_Builder *builder)
 #define JWK_EC_BASE64_BYTES BASE64URL_LEN(JWK_EC_BYTES)
 
 typedef struct {
-    bool is_rsa;
+    b8 is_rsa;
     union {
         struct {
             int nlen;
@@ -575,8 +562,12 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             return -1;
         }
 
-        jwk->rsa.nlen = jws_base64url_encode_inplace(jwk->rsa.n,
-            jwk->rsa.nlen, (int) sizeof(jwk->rsa.n), false);
+        jwk->rsa.nlen = encode_inplace(
+            jwk->rsa.n,
+            jwk->rsa.nlen,
+            0,
+            (int) sizeof(jwk->rsa.n),
+            ENCODING_B64URLNP);
         if (jwk->rsa.nlen < 0) {
             BN_free(n);
             return -1;
@@ -597,8 +588,12 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             return -1;
         }
 
-        jwk->rsa.elen = jws_base64url_encode_inplace(jwk->rsa.e,
-            jwk->rsa.elen, (int) sizeof(jwk->rsa.e), false);
+        jwk->rsa.elen = encode_inplace(
+            jwk->rsa.e,
+            jwk->rsa.elen,
+            0,
+            (int) sizeof(jwk->rsa.e),
+            ENCODING_B64URLNP);
         if (jwk->rsa.elen < 0) {
             BN_free(e);
             return -1;
@@ -649,7 +644,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         // to store it. Other curves have smaller coordinates.
         #define MAX_COORD_SIZE 66
 
-        assert(coord_size <= MAX_COORD_SIZE);
+        ASSERT(coord_size <= MAX_COORD_SIZE);
 
         jwk->ec.xlen = BN_num_bytes(x);
         if (jwk->ec.xlen > (int) sizeof(jwk->ec.x)) {
@@ -657,7 +652,7 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
             BN_free(x);
             return -1;
         }
-        assert(jwk->ec.xlen <= sizeof(jwk->ec.x));
+        ASSERT(jwk->ec.xlen <= sizeof(jwk->ec.x));
 
         // BN_bn2bin will drop any leading zeros for the number,
         // so if the coordinate needs a maximum of 521 bits but
@@ -673,8 +668,12 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         }
         jwk->ec.xlen = coord_size;
 
-        jwk->ec.xlen = jws_base64url_encode_inplace(jwk->ec.x, jwk->ec.xlen,
-            (int) sizeof(jwk->ec.x), false);
+        jwk->ec.xlen = encode_inplace(
+            jwk->ec.x,
+            jwk->ec.xlen,
+            0,
+            (int) sizeof(jwk->ec.x),
+            ENCODING_B64URLNP);
         if (jwk->ec.xlen < 0) {
             BN_free(y);
             BN_free(x);
@@ -696,8 +695,12 @@ static int parse_jwk(JWK *jwk, EVP_PKEY *pkey)
         }
         jwk->ec.ylen = coord_size;
 
-        jwk->ec.ylen = jws_base64url_encode_inplace(jwk->ec.y,
-            jwk->ec.ylen, (int) sizeof(jwk->ec.y), false);
+        jwk->ec.ylen = encode_inplace(
+            jwk->ec.y,
+            jwk->ec.ylen,
+            0,
+            (int) sizeof(jwk->ec.y),
+            ENCODING_B64URLNP);
         if (jwk->ec.ylen < 0) {
             BN_free(y);
             BN_free(x);
@@ -789,13 +792,13 @@ int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
         return -1;
     }
 
-    len = jws_base64url_encode_inplace(buf, (int) hlen, sizeof(buf), false);
+    len = encode_inplace(buf, (int) hlen, 0, sizeof(buf), ENCODING_B64URLNP);
     if (len < 0) {
         EVP_MD_CTX_free(ctx);
         return -1;
     }
 
-    memcpy(dst, buf, len);
+    memcpy_(dst, buf, len);
     EVP_MD_CTX_free(ctx);
     return len;
 }

@@ -1,9 +1,9 @@
 #ifndef JWS_INCLUDED
 #define JWS_INCLUDED
 
-#include <stdbool.h>
-#include <stdint.h>
 #include <openssl/evp.h>
+
+#include "basic.h"
 
 typedef enum {
     JWS_BUILDER_STATE_PROTECTED,
@@ -42,8 +42,8 @@ typedef struct {
 
     int reason;
 
-    bool flat;
-    bool allow_none;
+    b8 flat;
+    b8 allow_none;
 
     EVP_PKEY *private_key;
 
@@ -64,7 +64,7 @@ typedef struct {
 } JWS_Builder;
 
 void jws_builder_init(JWS_Builder *builder,
-    EVP_PKEY *private_key, bool flat,
+    EVP_PKEY *private_key, b8 flat,
     char *dst, int cap);
 
 void jws_builder_allow_none(JWS_Builder *builder);
@@ -78,8 +78,5 @@ int jws_builder_result(JWS_Builder *builder);
 
 int jws_write_jwk(JWS_Builder *jws_builder, EVP_PKEY *pkey);
 int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap);
-
-// Base64url encoding helper
-int jws_base64url_encode_inplace(char *buf, int len, int cap, bool with_padding);
 
 #endif // JWS_INCLUDED

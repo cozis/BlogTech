@@ -39,6 +39,8 @@
 #include <openssl/x509v3.h>
 #endif
 
+#include "basic.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/basic.h
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -67,10 +69,7 @@ enum {
 };
 
 // String type used throughout cHTTP.
-typedef struct {
-	char *ptr;
-	int   len;
-} CHTTP_String;
+#define CHTTP_String string
 
 // Compare two strings and return true iff they have
 // the same contents.

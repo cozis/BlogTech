@@ -4,9 +4,13 @@
 // HELPER MACROS
 /////////////////////////////////////////////////////////////////////////
 
+#ifndef NULL
 #define NULL ((void*) 0)
+#endif
+
 #define COUNT(X) (int) (sizeof(X) / sizeof((X)[0]))
 #define SIZEOF(X) (int) sizeof(X)
+#define CEIL(X, Y) (((X) + (Y) - 1) / (Y))
 
 /////////////////////////////////////////////////////////////////////////
 // ASSERTIONS
@@ -21,7 +25,7 @@
 #ifdef NDEBUG
 #define ASSERT(X) {}
 #else
-#define ASSERT(X) { if (!(x)) __builtin_trap(); }
+#define ASSERT(X) { if (!(X)) __builtin_trap(); }
 #endif
 
 #define STATIC_ASSERT _Static_assert
@@ -66,12 +70,20 @@ STATIC_ASSERT(sizeof(s64) == 8);
 // BOOLEAN TYPE
 /////////////////////////////////////////////////////////////////////////
 
-typedef unsigned char bool;
+typedef unsigned char b8;
 
-STATIC_ASSERT(sizeof(bool) == 1);
+STATIC_ASSERT(sizeof(b8) == 1);
 
-#define true  ((bool) 1)
-#define false ((bool) 0)
+#ifdef true
+#undef true
+#endif
+
+#ifdef false
+#undef false
+#endif
+
+#define true  ((b8) 1)
+#define false ((b8) 0)
 
 /////////////////////////////////////////////////////////////////////////
 // STRING TYPE
@@ -83,12 +95,20 @@ typedef struct {
 } string;
 
 #define S(X) (string) { (X), sizeof(X)-1 }
+#define ZT2S(X) (string) { (X), strlen_(X) }
 #define UNPACK(S) (S).len, (S).ptr
 #define EMPTY_STRING (string) { NULL, 0 }
 
-bool   streq(string s1, string s2);
-bool   streqcase(string s1, string s2);
+b8     streq(string s1, string s2);
+b8     streqcase(string s1, string s2);
 string allocstr(string s);
+void   memcpy_(char *dst, char *src, int len);
+
+/////////////////////////////////////////////////////////////////////////
+// PRIVATE USE FOR MACROS
+/////////////////////////////////////////////////////////////////////////
+
+int strlen_(char *p);
 
 /////////////////////////////////////////////////////////////////////////
 #endif // BASIC_INCLUDED

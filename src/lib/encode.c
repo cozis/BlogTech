@@ -11,8 +11,6 @@
 
 #include "basic.h"
 #include "encode.h"
-#include <assert.h>
-#include <string.h>
 
 static int hex_len(char *str, int len)
 {
@@ -20,7 +18,7 @@ static int hex_len(char *str, int len)
     return 2 * len;
 }
 
-static int inplace_hex(char *buf, int len, bool up)
+static int inplace_hex(char *buf, int len, b8 up)
 {
     int olen = hex_len(buf, len);
     if (olen == 0)
@@ -37,13 +35,13 @@ static int inplace_hex(char *buf, int len, bool up)
         buf[--wlen] = (up ? uptable : lotable)[b & 0xF];
         buf[--wlen] = (up ? uptable : lotable)[b >> 4];
     }
-    assert(rlen == 0);
-    assert(wlen == 0);
+    ASSERT(rlen == 0);
+    ASSERT(wlen == 0);
 
     return 0;
 }
 
-static bool needs_percent(char c)
+static b8 needs_percent(char c)
 {
     if ((c >= 'a' && c <= 'z') ||
         (c >= 'A' && c <= 'Z') ||
@@ -65,7 +63,7 @@ static int pct_len(char *str, int len)
     return olen;
 }
 
-static int inplace_pct(char *buf, int len, bool up)
+static int inplace_pct(char *buf, int len, b8 up)
 {
     int olen = pct_len(buf, len);
     if (olen == 0)
@@ -88,8 +86,8 @@ static int inplace_pct(char *buf, int len, bool up)
             buf[--widx] = c;
         }
     }
-    assert(ridx == 0);
-    assert(widx == 0);
+    ASSERT(ridx == 0);
+    ASSERT(widx == 0);
 
     return 0;
 }
@@ -264,7 +262,7 @@ static int inplace_hmac(char *buf, int len1, int len2)
 #endif
 }
 
-static int b64_len(char *str, int len, bool pad, bool url)
+static int b64_len(char *str, int len, b8 pad, b8 url)
 {
     (void) str;
     (void) url;
@@ -276,14 +274,14 @@ static int b64_len(char *str, int len, bool pad, bool url)
     return olen;
 }
 
-static int inplace_b64(char *buf, int len, bool pad, bool url)
+static int inplace_b64(char *buf, int len, b8 pad, b8 url)
 {
     u8 *ptr = (u8*) buf;
 
     int olen = b64_len((char*) ptr, len, pad, url);
     if (olen == 0)
         return 0;
-    assert(len > 0);
+    ASSERT(len > 0);
 
     // Since the conversion happens in-place, we need to translate
     // left to right to avoid overwriting the input with the output
@@ -356,17 +354,13 @@ int encode_len(char *buf, int len1, int len2, Encoding enc)
     case ENCODING_PCTU:
     case ENCODING_PCTL:
         return pct_len(buf, len1);
-    case ENCODING_B64PU:
-    case ENCODING_B64PL:
+    case ENCODING_B64P:
         return b64_len(buf, len1, true, false);
-    case ENCODING_B64URLPU:
-    case ENCODING_B64URLPL:
-        return b64_len(buf, len1, true, true);
-    case ENCODING_B64NPU:
-    case ENCODING_B64NPL:
+    case ENCODING_B64NP:
         return b64_len(buf, len1, false, false);
-    case ENCODING_B64URLNPU:
-    case ENCODING_B64URLNPL:
+    case ENCODING_B64URLP:
+        return b64_len(buf, len1, true, true);
+    case ENCODING_B64URLNP:
         return b64_len(buf, len1, false, true);
     }
     return -1;
@@ -394,17 +388,13 @@ int encode_inplace(char *buf, int len1, int len2, int cap, Encoding enc)
         return inplace_pct(buf, len1, true);
     case ENCODING_PCTL:
         return inplace_pct(buf, len1, false);
-    case ENCODING_B64PU:
-    case ENCODING_B64PL:
+    case ENCODING_B64P:
         return inplace_b64(buf, len1, true, false);
-    case ENCODING_B64URLPU:
-    case ENCODING_B64URLPL:
-        return inplace_b64(buf, len1, true, true);
-    case ENCODING_B64NPU:
-    case ENCODING_B64NPL:
+    case ENCODING_B64NP:
         return inplace_b64(buf, len1, false, false);
-    case ENCODING_B64URLNPU:
-    case ENCODING_B64URLNPL:
+    case ENCODING_B64URLP:
+        return inplace_b64(buf, len1, true, true);
+    case ENCODING_B64URLNP:
         return inplace_b64(buf, len1, false, true);
     }
     return -1;
