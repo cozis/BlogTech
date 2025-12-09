@@ -76,9 +76,6 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
             parse_config_value_yn(name, value, &config->acme_enabled, &bad_config);
         } else if (streq(name, S("auth-password-file"))) {
             config->auth_password_file = value;
-        } else if (streq(name, S("help")) || streq(name, S("h"))) {
-            print_usage();
-            return 0;
         }
     }
 

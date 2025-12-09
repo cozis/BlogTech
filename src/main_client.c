@@ -1,4 +1,3 @@
-#include "print_usage.h"
 #include "config_reader.h"
 #include "request_signature.h"
 
@@ -104,10 +103,6 @@ int main_client(int argc, char **argv)
             }
         } else if (streq(name, S("trace-bytes"))) {
             parse_config_value_yn(name, value, &trace_bytes, &bad_config);
-        } else if (streq(name, S("help")) || streq(name, S("h"))) {
-            print_usage();
-            config_reader_free(&config_reader);
-            return 0;
         } else if (streq(name, EMPTY_STRING)) {
             if (num_files == MAX_FILES) {
                 printf("Config Error: File limit of %d reached\n", MAX_FILES);
