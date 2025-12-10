@@ -61,3 +61,21 @@ Note how we didn't create it into the document root of our server. That's becaus
 ```
 
 You should now find the text "<b>Hello, world!</b>" when visiting `http://localhost:8080/`!
+
+By the way, that's a lot of parameters! Let's move them to a blogtech.conf file:
+
+```
+document-root      docroot
+auth-password-file admin.pwd
+remote             http://localhost:8080
+```
+
+`blogtech` will automatically use parameters from a `blogtech.conf` file if present in the current directory. If you want ignore it, pass `--no-config`, and if you want a different configuration file pass `--config=<path>`. Also, note that `-s` and `-u` are shorthands for `--serve` and `--upload`, which means we can now do:
+
+```sh
+# Start the server
+./blogtech -s
+
+# Upload a file
+./blogtech -u index.html
+```
