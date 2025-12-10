@@ -23,4 +23,10 @@ void parse_config_value_yn(string name, string value,
 void parse_config_value_port(string name, string value,
     u16 *out, b8 *bad_config);
 
+void parse_config_value_time_ms(string name, string value,
+    s32 *out, b8 *bad_config);
+
+void parse_config_value_buffer_size(string name, string value,
+    s32 *out, b8 *bad_config);
+
 #endif // CONFIG_READER_INCLUDED

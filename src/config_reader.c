@@ -255,41 +255,64 @@ static b8 is_digit(char c)
     return c >= '0' && c <= '9';
 }
 
-void parse_config_value_port(string name, string value,
-    u16 *out, b8 *bad_config)
+static int parse_u64(char *src, int len, u64 *out)
 {
-    char *src = value.ptr;
-    int   len = value.len;
-    int   cur = 0;
+    int cur = 0;
 
-    if (cur == len || !is_digit(src[cur])) {
-        printf("Config Error: Option '%.*s' is not a valid port number\n",
-            UNPACK(name));
-        *bad_config = true;
-        return;
-    }
+    if (cur == len || !is_digit(src[cur]))
+        return -1;
 
-    u16 buf = src[cur] - '0';
+    u64 buf = src[cur] - '0';
     cur++;
 
     while (cur < len && is_digit(src[cur])) {
         int d = src[cur] - '0';
         cur++;
-        if (buf > (U16_MAX - d) / 10) {
-            printf("Config Error: Option '%.*s' is not a valid port number (must be in range [0, 65535])\n",
-                UNPACK(name));
-            *bad_config = true;
-            return;
-        }
+        if (buf > (U64_MAX - d) / 10)
+            return -1;
         buf = buf * 10 + d;
     }
 
-    if (cur < len) {
+    if (cur < len)
+        return -1;
+
+    *out = buf;
+    return 0;
+}
+
+void parse_config_value_port(string name, string value,
+    u16 *out, b8 *bad_config)
+{
+    u64 tmp;
+    if (parse_u64(value.ptr, value.len, &tmp) < 0 || tmp > U16_MAX) {
         printf("Config Error: Option '%.*s' is not a valid port number\n",
             UNPACK(name));
         *bad_config = true;
         return;
     }
+    *out = (u16) tmp;
+}
 
-    *out = buf;
+void parse_config_value_time_ms(string name, string value, s32 *out, b8 *bad_config)
+{
+    u64 tmp;
+    if (parse_u64(value.ptr, value.len, &tmp) < 0 || tmp > S32_MAX) {
+        printf("Config Error: Option '%.*s' is not a valid time interval in milliseconds\n",
+            UNPACK(name));
+        *bad_config = true;
+        return;
+    }
+    *out = (s32) tmp;
+}
+
+void parse_config_value_buffer_size(string name, string value, s32 *out, b8 *bad_config)
+{
+    u64 tmp;
+    if (parse_u64(value.ptr, value.len, &tmp) < 0 || tmp > S32_MAX) {
+        printf("Config Error: Option '%.*s' is not a valid buffer size in bytes\n",
+            UNPACK(name));
+        *bad_config = true;
+        return;
+    }
+    *out = (s32) tmp;
 }

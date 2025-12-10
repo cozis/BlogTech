@@ -22,7 +22,13 @@ typedef struct {
     u16    http_port;
     b8     reuse_addr;
     b8     trace_bytes;
+    string request_log_file;
+    s32    request_log_buffer;
+    s32    request_log_timeout;
     string auth_password_file;
+    string auth_log_file;
+    s32    auth_log_buffer;
+    s32    auth_log_timeout;
     b8     https_enabled;
     string https_addr;
     u16    https_port;
@@ -30,6 +36,9 @@ typedef struct {
     string cert_key_file;
     b8     acme_enabled;
     string acme_key_file;
+    string acme_log_file;
+    s32    acme_log_buffer;
+    s32    acme_log_timeout;
     b8     acme_agree_tos;
     string acme_url;
     string acme_email;
@@ -49,6 +58,12 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
     config->auth_password_file = EMPTY_STRING;
     config->https_enabled = false;
     config->acme_enabled = false;
+    config->auth_log_file = S("auth.log");
+    config->auth_log_buffer = 1<<16;
+    config->auth_log_timeout = 10000;
+    config->request_log_file = S("request.log");
+    config->request_log_buffer = 1<<10;
+    config->request_log_timeout = 10000;
 
     b8 have_document_root = false;
 
@@ -76,7 +91,34 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
         } else if (streq(name, S("acme-enabled"))) {
             parse_config_value_yn(name, value, &config->acme_enabled, &bad_config);
         } else if (streq(name, S("auth-password-file"))) {
-            config->auth_password_file = value;
+            if (value.len == 0) {
+                printf("Config Error: Invalid password file\n");
+                bad_config = true;
+            } else {
+                config->auth_password_file = value;
+            }
+        } else if (streq(name, S("auth-log-file"))) {
+            if (value.len == 0) {
+                printf("Config Error: Invalid auth log file\n");
+                bad_config = true;
+            } else {
+                config->auth_log_file = value;
+            }
+        } else if (streq(name, S("auth-log-buffer"))) {
+            parse_config_value_buffer_size(name, value, &config->auth_log_buffer, &bad_config);
+        } else if (streq(name, S("auth-log-timeout"))) {
+            parse_config_value_time_ms(name, value, &config->auth_log_timeout, &bad_config);
+        } else if (streq(name, S("request-log-file"))) {
+            if (value.len == 0) {
+                printf("Config Error: Invalid request log file\n");
+                bad_config = true;
+            } else {
+                config->request_log_file = value;
+            }
+        } else if (streq(name, S("request-log-buffer"))) {
+            parse_config_value_buffer_size(name, value, &config->request_log_buffer, &bad_config);
+        } else if (streq(name, S("request-log-timeout"))) {
+            parse_config_value_time_ms(name, value, &config->request_log_timeout, &bad_config);
         }
     }
 
@@ -135,9 +177,12 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
             bad_config = true;
         }
 
-        config->acme_key_file  = S("acme_key.pem");
-        config->acme_agree_tos = false;
-        config->acme_url       = S("https://acme-v02.api.letsencrypt.org/directory");
+        config->acme_key_file    = S("acme_key.pem");
+        config->acme_log_file    = S("acme.log");
+        config->acme_log_buffer  = 1<<16;
+        config->acme_log_timeout = 10000;
+        config->acme_agree_tos   = false;
+        config->acme_url         = S("https://acme-v02.api.letsencrypt.org/directory");
 
         b8 have_acme_email   = false;
         b8 have_acme_country = false;
@@ -152,6 +197,17 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                 } else {
                     config->acme_key_file = value;
                 }
+            } else if (streq(name, S("acme-log-file"))) {
+                if (value.len == 0) {
+                    printf("Config Error: Invalid ACME log file\n");
+                    bad_config = true;
+                } else {
+                    config->acme_log_file = value;
+                }
+            } else if (streq(name, S("acme-log-buffer"))) {
+                parse_config_value_buffer_size(name, value, &config->acme_log_buffer, &bad_config);
+            } else if (streq(name, S("acme-log-timeout"))) {
+                parse_config_value_time_ms(name, value, &config->acme_log_timeout, &bad_config);
             } else if (streq(name, S("acme-agree-tos"))) {
                 parse_config_value_yn(name, value, &config->acme_agree_tos, &bad_config);
             } else if (streq(name, S("acme-url"))) {
@@ -287,7 +343,10 @@ int main_server(int argc, char **argv)
     Logger acme_logger;
     if (server_config.acme_enabled) {
 
-        if (logger_init(&acme_logger, 1<<16, 10000, S("acme.log")) < 0) {
+        if (logger_init(&acme_logger,
+            server_config.acme_log_buffer,
+            server_config.acme_log_timeout,
+            server_config.acme_log_file) < 0) {
             ASSERT(0);
         }
 
@@ -331,7 +390,10 @@ int main_server(int argc, char **argv)
     }
 
     Logger auth_logger;
-    if (logger_init(&auth_logger, 1<<16, 10000, S("auth.log")) < 0) {
+    if (logger_init(&auth_logger,
+        server_config.auth_log_buffer,
+        server_config.auth_log_timeout,
+        server_config.auth_log_file) < 0) {
         ASSERT(0);
     }
 
@@ -343,7 +405,10 @@ int main_server(int argc, char **argv)
     }
 
     Logger request_logger;
-    if (logger_init(&request_logger, 1<<20, 10000, S("request.log")) < 0) {
+    if (logger_init(&request_logger,
+        server_config.request_log_buffer,
+        server_config.request_log_timeout,
+        server_config.request_log_file) < 0) {
         ASSERT(0);
     }
 
