@@ -531,7 +531,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     string account_key;
     int ret = file_read_all(config->account_key_file, &account_key);
     if (ret < 0) {
-        if (ret != ERROR_FILE_NOT_FOUND) {
+        if (ret != FILE_SYSTEM_NOT_FOUND) {
             log(acme->logger, S("Coultn't open account key file '{}'. Aborting ACME initialization.\n"), V(config->account_key_file));
             acme_free(acme);
             return -1;
@@ -556,7 +556,7 @@ int acme_init(ACME *acme, ACME_Config *config)
         string certificate;
         ret = file_read_all(acme->certificate_file, &certificate);
         if (ret < 0) {
-            if (ret != ERROR_FILE_NOT_FOUND) {
+            if (ret != FILE_SYSTEM_NOT_FOUND) {
                 log(acme->logger, S("Coultn't open certificate file '{}'. Aborting ACME initialization.\n"), V(config->certificate_file));
                 acme_free(acme);
                 return -1;
@@ -568,7 +568,7 @@ int acme_init(ACME *acme, ACME_Config *config)
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
             if (ret < 0) {
                 free(certificate.ptr);
-                if (ret != ERROR_FILE_NOT_FOUND) {
+                if (ret != FILE_SYSTEM_NOT_FOUND) {
                     acme_free(acme);
                     return -1;
                 }

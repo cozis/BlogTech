@@ -21,7 +21,7 @@ process_request_get(string document_root, CHTTP_Request *request,
     Handle fd;
     ret = file_open(file_path, &fd, FILE_OPEN_READ);
     if (ret < 0) {
-        if (ret == ERROR_FILE_NOT_FOUND) {
+        if (ret == FILE_SYSTEM_NOT_FOUND) {
             chttp_response_builder_status(builder, 404); // TODO: better error code
             chttp_response_builder_send(builder);
         } else {

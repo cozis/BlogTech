@@ -1,0 +1,1 @@
+gcc unity.c -o blogtech -ggdb -funwind-tables -lssl -lcrypto -DHTTPS_ENABLED
