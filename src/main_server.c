@@ -4,6 +4,7 @@
 #include "acme.h"
 #include "config_reader.h"
 
+#include "crash_logger.h"
 #include "lib/http.h"
 #include "lib/logger.h"
 #include "lib/file_system.h"
@@ -290,15 +291,21 @@ static int pick_timeout(int *arr, int num)
 
 int main_server(int argc, char **argv)
 {
+    if (crash_logger_init() < 0)
+        return -1;
+
     ConfigReader config_reader;
     int ret = config_reader_init(&config_reader, argc, argv);
-    if (ret < 0)
+    if (ret < 0) {
+        crash_logger_free();
         return -1;
+    }
 
     ServerConfig server_config;
     ret = load_server_config(&config_reader, &server_config);
     if (ret != 1) {
         config_reader_free(&config_reader);
+        crash_logger_free();
         return ret;
     }
 
@@ -310,6 +317,7 @@ int main_server(int argc, char **argv)
         printf("Couldn't initialize client (%s)\n",
             chttp_strerror(ret));
         config_reader_free(&config_reader);
+        crash_logger_free();
         return -1;
     }
 
@@ -319,6 +327,7 @@ int main_server(int argc, char **argv)
         fprintf(stderr, "Couldn't initialize server (%s)\n",
             chttp_strerror(ret));
         config_reader_free(&config_reader);
+        crash_logger_free();
         return -1;
     }
     chttp_server_set_reuse_addr(&server,
@@ -333,6 +342,7 @@ int main_server(int argc, char **argv)
         fprintf(stderr, "Couldn't start listening (%s)\n",
             chttp_strerror(ret));
         config_reader_free(&config_reader);
+        crash_logger_free();
         return -1;
     }
     printf("HTTP server on interface %.*s:%d\n",
@@ -368,6 +378,7 @@ int main_server(int argc, char **argv)
         if (acme_init(&acme, &acme_config) < 0) {
             fprintf(stderr, "Couldn't initialize ACME client\n");
             config_reader_free(&config_reader);
+            crash_logger_free();
             return -1;
         }
     }
@@ -382,6 +393,7 @@ int main_server(int argc, char **argv)
             fprintf(stderr, "Couldn't start listening (%s)\n",
                 chttp_strerror(ret));
             config_reader_free(&config_reader);
+            crash_logger_free();
             return -1;
         }
         printf("HTTPS server on interface %.*s:%d\n",
@@ -401,6 +413,7 @@ int main_server(int argc, char **argv)
     if (auth_init(&auth, server_config.auth_password_file, &auth_logger) < 0) {
         fprintf(stderr, "Couldn't initialize authentication system\n");
         config_reader_free(&config_reader);
+        crash_logger_free();
         return -1;
     }
 
@@ -647,6 +660,7 @@ int main_server(int argc, char **argv)
     chttp_server_free(&server);
     chttp_client_free(&client);
     config_reader_free(&config_reader);
+    crash_logger_free();
     if (restart)
         execv(argv[0], argv);
     return 0;

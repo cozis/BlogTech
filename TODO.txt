@@ -1,6 +1,7 @@
 [X] Find a way to clean up all snprintf calls
 [X] Add logging to the ACME client
 [X] Add request logging
-[ ] Add a crash logger
+[X] Add a crash logger
 [ ] Make blogtech compile to windows with HTTPS disabled
 [ ] Clean up the parsing code of auth headers in auth.c
+[ ] Add serving of files from multiple virtual hosts
