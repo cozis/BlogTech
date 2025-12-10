@@ -18,7 +18,7 @@ void sb_init(StringBuilder *b, char *dst, int cap)
             v = -v;                 \
         }                           \
     }                               \
-    int magn = 1;                   \
+    u64 magn = 1;                   \
     for (int i = 0; i < (N)-1; i++) \
         magn *= 10;                 \
     dst[0] = '0';                   \
@@ -206,13 +206,14 @@ void sb_write_fmt(StringBuilder *b, string fmt, Args args)
             continue; // Error
         }
 
-        if (argidx == -2)
-            argidx = nextarg++;
-
-        if (nextarg >= args.len) {
-            cur = oldcur;
-            continue;
+        if (argidx == -2) {
+            argidx = nextarg;
+            if (nextarg < args.len)
+                nextarg++;
         }
+
+        if (argidx == args.len)
+            continue;
 
         Arg arg = args.ptr[argidx];
         sb_write_arg(b, arg);
@@ -272,4 +273,14 @@ void sb_pop_mod(StringBuilder *b)
     }
 
     b->len = mod.off_0 + olen;
+}
+
+string fmtorempty(string fmt, Args args, char *buf, int cap)
+{
+    StringBuilder sb;
+    sb_init(&sb, buf, cap);
+    sb_write_fmt(&sb, fmt, args);
+    if (sb.status < 0 || sb.len >= cap)
+        return EMPTY_STRING;
+    return (string) { buf, sb.len };
 }

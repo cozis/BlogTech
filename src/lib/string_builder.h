@@ -45,4 +45,6 @@ void sb_flush(StringBuilder *b);
 void sb_push_mod(StringBuilder *b, Encoding m);
 void sb_pop_mod(StringBuilder *b);
 
+string fmtorempty(string fmt, Args args, char *buf, int cap);
+
 #endif // STRING_BUILDER_INCLUDED

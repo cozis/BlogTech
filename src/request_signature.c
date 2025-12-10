@@ -60,14 +60,14 @@ int calculate_request_signature(
         return -1;
 
     // Convert expire and body length to strings
-    char expire_str[16];
-    int expire_len = snprintf(expire_str, sizeof(expire_str), "%u", expire);
-    if (expire_len < 0 || expire_len >= (int) sizeof(expire_str))
+    char expire_buf[16];
+    string expire_str = fmtorempty(S("{}"), V(expire), expire_buf, sizeof(expire_buf));
+    if (expire_str.len == 0)
         return -1;
 
-    char body_len_str[16];
-    int body_len_len = snprintf(body_len_str, sizeof(body_len_str), "%d", body.len);
-    if (body_len_len < 0 || body_len_len >= (int) sizeof(body_len_str))
+    char body_len_buf[16];
+    string body_len_str = fmtorempty(S("{}"), V(body.len), body_len_buf, sizeof(body_len_buf));
+    if (body_len_str.len == 0)
         return -1;
 
     char pool[1<<12];
@@ -87,11 +87,11 @@ int calculate_request_signature(
             sb_write_str(&b, S("\n"));
             sb_write_str(&b, date);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, ((string) { expire_str, expire_len }));
+            sb_write_str(&b, expire_str);
             sb_write_str(&b, S("\n"));
             sb_write_str(&b, nonce);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, ((string) { body_len_str, body_len_len }));
+            sb_write_str(&b, body_len_str);
             sb_write_str(&b, S("\n"));
             sb_push_mod(&b, ENCODING_HEXL);
                 sb_write_str(&b, ((string) { body_hash, sizeof(body_hash) }));

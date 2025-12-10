@@ -7,6 +7,7 @@
 #include "lib/random.h"
 #include "lib/encode.h"
 #include "lib/file_system.h"
+#include "lib/string_builder.h"
 
 #define MAX_FILES (1<<7)
 
@@ -175,14 +176,12 @@ int main_client(int argc, char **argv)
             ASSERT(u < uploads + CHTTP_CLIENT_CAPACITY);
         }
 
-        char urlbuf[1<<10];
-        int urllen = snprintf(urlbuf, sizeof(urlbuf), "%.*s/%.*s",
-            UNPACK(remote), UNPACK(files[i]));
-        if (urllen < 0 || urllen >= (int) sizeof(urlbuf)) {
-            printf("Error: URL is too long\n");
-            continue;
+        char url_buf[1<<10];
+        string url = fmtorempty(S("{}/{}"), V(remote, files[i]),
+            url_buf, sizeof(url_buf));
+        if (url.len == 0) {
+            ASSERT(0);
         }
-        string url = { urlbuf, urllen };
 
         string data;
         int ret = file_read_all(files[i], &data);
@@ -191,17 +190,13 @@ int main_client(int argc, char **argv)
             continue;
         }
 
-        UnixTime timestamp = get_current_unix_time();
-        if (timestamp == INVALID_UNIX_TIME) {
-            ASSERT(0); // TODO
-        }
-
         char timestamp_buf[32];
-        int timestamp_len = snprintf(timestamp_buf, sizeof(timestamp_buf), "%lld", timestamp);
-        if (timestamp_len < 0 || timestamp_len >= (int) sizeof(timestamp_buf)) {
-            ASSERT(0); // TODO
+        string timestamp = fmtorempty(
+            S("{}"), V(get_current_unix_time()),
+            timestamp_buf, sizeof(timestamp_buf));
+        if (timestamp.len == 0) {
+            ASSERT(0);
         }
-        string timestamp_str = { timestamp_buf, timestamp_len };
 
         u32 expire = 300; // 5 minutes
 
@@ -224,7 +219,7 @@ int main_client(int argc, char **argv)
             CHTTP_METHOD_PUT,
             files[i],
             remote_host,
-            timestamp_str,
+            timestamp,
             expire,
             nonce,
             data,
@@ -242,34 +237,22 @@ int main_client(int argc, char **argv)
         chttp_request_builder_method(builder, CHTTP_METHOD_PUT);
         chttp_request_builder_target(builder, url);
 
-        char hdrbuf[1<<9];
-        ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Nonce: %.*s", UNPACK(nonce));
-        if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            ASSERT(0); // TODO
-        }
-        chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
+        char header_buf[1<<8];
+        chttp_request_builder_header(builder,
+            fmtorempty(S("X-BlogTech-Nonce: {}"), V(nonce),
+                header_buf, sizeof(header_buf)));
 
-        ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Timestamp: %.*s", UNPACK(timestamp_str));
-        if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            ASSERT(0); // TODO
-        }
-        chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
+        chttp_request_builder_header(builder,
+            fmtorempty(S("X-BlogTech-Timestamp: {}"), V(timestamp),
+                header_buf, sizeof(header_buf)));
 
-        ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Expire: %u", expire);
-        if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            ASSERT(0); // TODO
-        }
-        chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
+        chttp_request_builder_header(builder,
+            fmtorempty(S("X-BlogTech-Expire: {}"), V(expire),
+                header_buf, sizeof(header_buf)));
 
-        ret = snprintf(hdrbuf, sizeof(hdrbuf),
-            "X-BlogTech-Signature: %.*s", UNPACK(signature));
-        if (ret < 0 || ret >= (int) sizeof(hdrbuf)) {
-            ASSERT(0); // TODO
-        }
-        chttp_request_builder_header(builder, (CHTTP_String) { hdrbuf, ret });
+        chttp_request_builder_header(builder,
+            fmtorempty(S("X-BlogTech-Signature: {}"), V(signature),
+                header_buf, sizeof(header_buf)));
 
         chttp_request_builder_body(builder, data);
 
