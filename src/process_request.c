@@ -1,0 +1,172 @@
+#include "process_request.h"
+#include "lib/file_system.h"
+
+static void
+process_request_get(string document_root, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder, Auth *auth)
+{
+    char buf[1<<10];
+    int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+    string file_path = { buf, ret };
+
+    chttp_response_builder_status(builder, 200); // TODO: better error code
+
+    // TODO: As file_open is currently implemented, when a
+    //       file isn't found it's created, which is very bad
+    Handle fd;
+    ret = file_open(file_path, &fd, FILE_OPEN_READ);
+    if (ret < 0) {
+        if (ret == ERROR_FILE_NOT_FOUND) {
+            chttp_response_builder_status(builder, 404); // TODO: better error code
+            chttp_response_builder_send(builder);
+        } else {
+            chttp_response_builder_status(builder, 500); // TODO: better error code
+            chttp_response_builder_send(builder);
+        }
+        return;
+    }
+    u64 len;
+    ret = file_size(fd, &len);
+    if (ret < 0) {
+        file_close(fd);
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+    chttp_response_builder_body_cap(builder, len);
+
+    int dummy;
+    char *dst = chttp_response_builder_body_buf(builder, &dummy);
+    if (dst) {
+        for (int copied = 0; copied < len; ) {
+            ret = file_read(fd, dst + copied, len - copied);
+            if (ret <= 0) {
+                file_close(fd);
+                chttp_response_builder_status(builder, 500); // TODO: better error code
+                chttp_response_builder_send(builder);
+                return;
+            }
+            copied += ret;
+        }
+        chttp_response_builder_body_ack(builder, len);
+    }
+    file_close(fd);
+    chttp_response_builder_send(builder);
+}
+
+static void
+process_request_put(string document_root, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder, Auth *auth)
+{
+    int ret = auth_verify(auth, request);
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500);
+        chttp_response_builder_send(builder);
+        return;
+    }
+    if (ret == 1) {
+        chttp_response_builder_status(builder, 401);
+        chttp_response_builder_send(builder);
+        return;
+    }
+
+    char buf[1<<10];
+    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+    string file_path = { buf, ret };
+
+    // TODO: delete the previous version if it exists
+    Handle fd;
+    ret = file_open(file_path, &fd, FILE_OPEN_WRITE);
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+    chttp_response_builder_status(builder, 200);
+    string body = request->body;
+    for (int copied = 0; copied < body.len; ) {
+        ret = file_write(fd,
+            body.ptr + copied,
+            body.len - copied);
+        if (ret < 0) {
+            chttp_response_builder_status(builder, 500); // TODO: better error code
+            chttp_response_builder_send(builder);
+            return;
+        }
+        copied += ret;
+    }
+    chttp_response_builder_send(builder);
+    file_close(fd);
+}
+
+static void
+process_request_delete(string document_root, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder, Auth *auth)
+{
+    int ret = auth_verify(auth, request);
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500);
+        chttp_response_builder_send(builder);
+        return;
+    }
+    if (ret == 1) {
+        chttp_response_builder_status(builder, 401);
+        chttp_response_builder_send(builder);
+        return;
+    }
+
+    char buf[1<<10];
+    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+    string file_path = { buf, ret };
+
+    if (remove_file_or_dir(file_path) < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+    } else {
+        chttp_response_builder_status(builder, 200); // TODO: better error code
+        chttp_response_builder_send(builder);
+    }
+}
+
+void process_request(string document_root, CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder, Auth *auth)
+{
+    switch (request->method) {
+    case CHTTP_METHOD_GET:
+        process_request_get(document_root, request, builder, auth);
+        break;
+    case CHTTP_METHOD_PUT:
+        process_request_put(document_root, request, builder, auth);
+        break;
+    case CHTTP_METHOD_DELETE:
+        process_request_delete(document_root, request, builder, auth);
+        break;
+    case CHTTP_METHOD_OPTIONS:
+        chttp_response_builder_status(builder, 200);
+        chttp_response_builder_header(builder,
+            CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+        chttp_response_builder_send(builder);
+        break;
+    default:
+        chttp_response_builder_status(builder, 405);
+        chttp_response_builder_header(builder,
+            CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+        chttp_response_builder_send(builder);
+        break;
+    }
+}

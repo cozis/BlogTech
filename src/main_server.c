@@ -3,8 +3,8 @@
 #include "auth.h"
 #include "acme.h"
 #include "config_reader.h"
-
 #include "crash_logger.h"
+#include "process_request.h"
 #include "lib/http.h"
 #include "lib/logger.h"
 #include "lib/file_system.h"
@@ -294,6 +294,10 @@ int main_server(int argc, char **argv)
     if (crash_logger_init() < 0)
         return -1;
 
+    ///////////////////////////////////////////////////////////////////////////////
+    // LOAD CONFIGURATION
+    ///////////////////////////////////////////////////////////////////////////////
+
     ConfigReader config_reader;
     int ret = config_reader_init(&config_reader, argc, argv);
     if (ret < 0) {
@@ -306,16 +310,18 @@ int main_server(int argc, char **argv)
     if (ret != 1) {
         config_reader_free(&config_reader);
         crash_logger_free();
-        return ret;
+        return -1;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // INITIALIZE
+    ///////////////////////////////////////////////////////////////////////////////
 
     running = 1;
 
     CHTTP_Client client;
     ret = chttp_client_init(&client);
     if (ret < 0) {
-        printf("Couldn't initialize client (%s)\n",
-            chttp_strerror(ret));
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
@@ -324,31 +330,45 @@ int main_server(int argc, char **argv)
     CHTTP_Server server;
     ret = chttp_server_init(&server);
     if (ret < 0) {
-        fprintf(stderr, "Couldn't initialize server (%s)\n",
-            chttp_strerror(ret));
+        chttp_client_free(&client);
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
     }
-    chttp_server_set_reuse_addr(&server,
-        server_config.reuse_addr);
-    chttp_server_set_trace_bytes(&server,
-        server_config.trace_bytes);
+    chttp_server_set_reuse_addr(&server, server_config.reuse_addr);
+    chttp_server_set_trace_bytes(&server, server_config.trace_bytes);
 
     ret = chttp_server_listen_tcp(&server,
         server_config.http_addr,
         server_config.http_port);
     if (ret < 0) {
-        fprintf(stderr, "Couldn't start listening (%s)\n",
-            chttp_strerror(ret));
+        chttp_server_free(&server);
+        chttp_client_free(&client);
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
     }
-    printf("HTTP server on interface %.*s:%d\n",
-        CHTTP_UNPACK(server_config.http_addr),
-        server_config.http_port);
 
+    if (server_config.https_enabled && file_exists(server_config.cert_file)) {
+#ifdef HTTPS_ENABLED
+        ret = chttp_server_listen_tls(&server,
+            server_config.https_addr,
+            server_config.https_port,
+            server_config.cert_file,
+            server_config.cert_key_file);
+#else
+        ret = -1;
+#endif
+        if (ret < 0) {
+            chttp_server_free(&server);
+            chttp_client_free(&client);
+            config_reader_free(&config_reader);
+            crash_logger_free();
+            return -1;
+        }
+    }
+
+#ifdef HTTPS_ENABLED
     ACME acme;
     Logger acme_logger;
     if (server_config.acme_enabled) {
@@ -357,7 +377,11 @@ int main_server(int argc, char **argv)
             server_config.acme_log_buffer,
             server_config.acme_log_timeout,
             server_config.acme_log_file) < 0) {
-            ASSERT(0);
+            chttp_server_free(&server);
+            chttp_client_free(&client);
+            config_reader_free(&config_reader);
+            crash_logger_free();
+            return -1;
         }
 
         ACME_Config acme_config;
@@ -376,42 +400,53 @@ int main_server(int argc, char **argv)
         acme_config.certificate_file = server_config.cert_file;
         acme_config.certificate_key_file = server_config.cert_key_file;
         if (acme_init(&acme, &acme_config) < 0) {
-            fprintf(stderr, "Couldn't initialize ACME client\n");
+            logger_free(&acme_logger);
+            chttp_server_free(&server);
+            chttp_client_free(&client);
             config_reader_free(&config_reader);
             crash_logger_free();
             return -1;
         }
     }
-
-    if (server_config.https_enabled && file_exists(server_config.cert_file)) {
-        ret = chttp_server_listen_tls(&server,
-            server_config.https_addr,
-            server_config.https_port,
-            server_config.cert_file,
-            server_config.cert_key_file);
-        if (ret < 0) {
-            fprintf(stderr, "Couldn't start listening (%s)\n",
-                chttp_strerror(ret));
-            config_reader_free(&config_reader);
-            crash_logger_free();
-            return -1;
-        }
-        printf("HTTPS server on interface %.*s:%d\n",
-            CHTTP_UNPACK(server_config.https_addr),
-            server_config.https_port);
+#else
+    if (server_config.acme_enabled) {
+        chttp_server_free(&server);
+        chttp_client_free(&client);
+        config_reader_free(&config_reader);
+        crash_logger_free();
+        return -1;
     }
+#endif // HTTPS_ENABLED
 
     Logger auth_logger;
     if (logger_init(&auth_logger,
         server_config.auth_log_buffer,
         server_config.auth_log_timeout,
         server_config.auth_log_file) < 0) {
-        ASSERT(0);
+#ifdef HTTPS_ENABLED
+        if (server_config.acme_enabled) {
+            acme_free(&acme);
+            logger_free(&acme_logger);
+        }
+#endif
+        chttp_server_free(&server);
+        chttp_client_free(&client);
+        config_reader_free(&config_reader);
+        crash_logger_free();
+        return -1;
     }
 
     Auth auth;
     if (auth_init(&auth, server_config.auth_password_file, &auth_logger) < 0) {
-        fprintf(stderr, "Couldn't initialize authentication system\n");
+        logger_free(&auth_logger);
+#ifdef HTTPS_ENABLED
+        if (server_config.acme_enabled) {
+            acme_free(&acme);
+            logger_free(&acme_logger);
+        }
+#endif
+        chttp_server_free(&server);
+        chttp_client_free(&client);
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
@@ -422,8 +457,24 @@ int main_server(int argc, char **argv)
         server_config.request_log_buffer,
         server_config.request_log_timeout,
         server_config.request_log_file) < 0) {
-        ASSERT(0);
+        auth_free(&auth);
+        logger_free(&auth_logger);
+#ifdef HTTPS_ENABLED
+        if (server_config.acme_enabled) {
+            acme_free(&acme);
+            logger_free(&acme_logger);
+        }
+#endif
+        chttp_server_free(&server);
+        chttp_client_free(&client);
+        config_reader_free(&config_reader);
+        crash_logger_free();
+        return -1;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // MAIN LOOP
+    ///////////////////////////////////////////////////////////////////////////////
 
     b8 restart = false;
     while (running) {
@@ -448,8 +499,10 @@ int main_server(int argc, char **argv)
         int timeouts[] = {
             logger_next_timeout(&request_logger),
             logger_next_timeout(&auth_logger),
+#ifdef HTTPS_ENABLED
             server_config.acme_enabled ? acme_next_timeout(&acme) : -1,
             server_config.acme_enabled ? logger_next_timeout(&acme_logger) : -1,
+#endif // HTTPS_ENABLED
         };
         int timeout = pick_timeout(timeouts, COUNT(timeouts));
 
@@ -463,20 +516,27 @@ int main_server(int argc, char **argv)
         // TODO: These should not be called at each iteration but when
         //       the timeout actually triggered
         {
+#ifdef HTTPS_ENABLED
             if (server_config.acme_enabled) {
                 acme_process_timeout(&acme, &client);
                 logger_flush(&acme_logger);
             }
+#endif // HTTPS_ENABLED
             logger_flush(&request_logger);
             logger_flush(&auth_logger);
         }
 
+        chttp_client_process_events(&client, client_reg);
+        chttp_server_process_events(&server, server_reg);
+
         int result;
         void *user;
         CHTTP_Response *response;
-        chttp_client_process_events(&client, client_reg);
         while (chttp_client_next_response(&client, &result, &user, &response)) {
-            b8 new_certificate = acme_process_response(&acme, result, response);
+            b8 new_certificate = false;
+#ifdef HTTPS_ENABLED
+            new_certificate = acme_process_response(&acme, result, response);
+#endif
             chttp_free_response(response);
             if (new_certificate) {
                 running = 0;
@@ -485,183 +545,45 @@ int main_server(int argc, char **argv)
         }
 
         CHTTP_Request *request;
-        CHTTP_ResponseBuilder response_builder;
-        chttp_server_process_events(&server, server_reg);
-        while (chttp_server_next_request(&server, &request, &response_builder)) {
+        CHTTP_ResponseBuilder builder;
+        while (chttp_server_next_request(&server, &request, &builder)) {
 
             string method_str = method_to_str(request->method);
             log(&request_logger, S("{} {}\n"), V(method_str, request->url.path)); // IMPROVE: add more information to the log
 
+#ifdef HTTPS_ENABLED
             if (server_config.acme_enabled) {
-                if (acme_process_request(&acme, request, response_builder))
+                if (acme_process_request(&acme, request, builder))
                     continue;
             }
-
-            switch (request->method) {
-            case CHTTP_METHOD_GET:
-                {
-                    char buf[1<<10];
-                    int ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    string file_path = { buf, ret };
-
-                    chttp_response_builder_status(response_builder, 200); // TODO: better error code
-
-                    // TODO: As file_open is currently implemented, when a
-                    //       file isn't found it's created, which is very bad
-                    Handle fd;
-                    ret = file_open(file_path, &fd, FILE_OPEN_READ);
-                    if (ret < 0) {
-                        if (ret == ERROR_FILE_NOT_FOUND) {
-                            chttp_response_builder_status(response_builder, 404); // TODO: better error code
-                            chttp_response_builder_send(response_builder);
-                        } else {
-                            chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                            chttp_response_builder_send(response_builder);
-                        }
-                        break;
-                    }
-                    u64 len;
-                    ret = file_size(fd, &len);
-                    if (ret < 0) {
-                        file_close(fd);
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    chttp_response_builder_body_cap(response_builder, len);
-
-                    int dummy;
-                    char *dst = chttp_response_builder_body_buf(response_builder, &dummy);
-                    if (dst) {
-                        for (int copied = 0; copied < len; ) {
-                            ret = file_read(fd, dst + copied, len - copied);
-                            if (ret <= 0) {
-                                file_close(fd);
-                                chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                                chttp_response_builder_send(response_builder);
-                                break;
-                            }
-                            copied += ret;
-                        }
-                        chttp_response_builder_body_ack(response_builder, len);
-                    }
-                    file_close(fd);
-                    chttp_response_builder_send(response_builder);
-                }
-                break;
-            case CHTTP_METHOD_PUT:
-                {
-                    int ret = auth_verify(&auth, request);
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500);
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    if (ret == 1) {
-                        chttp_response_builder_status(response_builder, 401);
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-
-                    char buf[1<<10];
-                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    string file_path = { buf, ret };
-
-                    // TODO: delete the previous version if it exists
-                    Handle fd;
-                    ret = file_open(file_path, &fd, FILE_OPEN_WRITE);
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    chttp_response_builder_status(response_builder, 200);
-                    string body = request->body;
-                    for (int copied = 0; copied < body.len; ) {
-                        ret = file_write(fd,
-                            body.ptr + copied,
-                            body.len - copied);
-                        if (ret < 0) {
-                            chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                            chttp_response_builder_send(response_builder);
-                            break;
-                        }
-                        copied += ret;
-                    }
-                    chttp_response_builder_send(response_builder);
-                    file_close(fd);
-                }
-                break;
-            case CHTTP_METHOD_DELETE:
-                {
-                    int ret = auth_verify(&auth, request);
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500);
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    if (ret == 1) {
-                        chttp_response_builder_status(response_builder, 401);
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-
-                    char buf[1<<10];
-                    ret = translate_path(request->url.path, server_config.document_root, buf, (int) sizeof(buf));
-                    if (ret < 0) {
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                        break;
-                    }
-                    string file_path = { buf, ret };
-
-                    if (remove_file_or_dir(file_path) < 0) {
-                        chttp_response_builder_status(response_builder, 500); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                    } else {
-                        chttp_response_builder_status(response_builder, 200); // TODO: better error code
-                        chttp_response_builder_send(response_builder);
-                    }
-                }
-                break;
-            case CHTTP_METHOD_OPTIONS:
-                chttp_response_builder_status(response_builder, 200);
-                chttp_response_builder_header(response_builder,
-                    CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
-                chttp_response_builder_send(response_builder);
-                break;
-            default:
-                chttp_response_builder_status(response_builder, 405);
-                chttp_response_builder_header(response_builder,
-                    CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
-                chttp_response_builder_send(response_builder);
-                break;
-            }
+#endif // HTTPS_ENABLED
+            process_request(server_config.document_root, request, builder, &auth);
         }
     }
 
-    logger_free(&request_logger);
+    ///////////////////////////////////////////////////////////////////////////////
+    // CLEANUP
+    ///////////////////////////////////////////////////////////////////////////////
+
     auth_free(&auth);
     logger_free(&auth_logger);
+#ifdef HTTPS_ENABLED
     if (server_config.acme_enabled) {
         acme_free(&acme);
         logger_free(&acme_logger);
     }
+#endif
     chttp_server_free(&server);
     chttp_client_free(&client);
     config_reader_free(&config_reader);
     crash_logger_free();
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // EXIT OR RESTART
+    ///////////////////////////////////////////////////////////////////////////////
+#ifdef HTTPS_ENABLED
     if (restart)
         execv(argv[0], argv);
+#endif
     return 0;
 }

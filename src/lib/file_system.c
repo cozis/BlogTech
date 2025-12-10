@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#include <direct.h>
 #else
 #include <errno.h>
 #include <unistd.h>
@@ -46,7 +47,7 @@ int file_open(string path, Handle *fd, FileOpenMode mode)
     int ret = open(zt, flags, 0644);
     if (ret < 0) {
         if (errno == ENOENT)
-            return ERROR_FILE_NOT_FOUND;
+            return FILE_SYSTEM_NOT_FOUND;
         return -1;
     }
 
@@ -73,7 +74,7 @@ int file_open(string path, Handle *fd, FileOpenMode mode)
     );
     if (h == INVALID_HANDLE_VALUE) {
         if (GetLastError() == ERROR_FILE_NOT_FOUND)
-            return ERROR_FILE_NOT_FOUND;
+            return FILE_SYSTEM_NOT_FOUND;
         return -1;
     }
 

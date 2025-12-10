@@ -1,4 +1,5 @@
 #ifdef _WIN32
+#include <windows.h>
 #else
 #include <errno.h>
 #include <sys/random.h>

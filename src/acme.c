@@ -1,9 +1,11 @@
+#ifndef _WIN32
+
+#include "acme.h"
+
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
-
-#include "acme.h"
 
 #include "lib/jws.h"
 #include "lib/json.h"
@@ -1881,3 +1883,4 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
 //////////////////////////////////////////////////////////////////////////////////////
 // End
 //////////////////////////////////////////////////////////////////////////////////////
+#endif // !_WIN32

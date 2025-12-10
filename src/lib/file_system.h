@@ -1,14 +1,14 @@
 #ifndef FILE_SYSTEM_INCLUDED
 #define FILE_SYSTEM_INCLUDED
 
-#ifndef _WIN32
-#include <dirent.h>
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
 #include "basic.h"
 
-#define ERROR_GENERIC        -1
-#define ERROR_FILE_NOT_FOUND -2
+#define ERROR_GENERIC   -1
+#define FILE_SYSTEM_NOT_FOUND -2
 
 typedef struct {
     u64 data;

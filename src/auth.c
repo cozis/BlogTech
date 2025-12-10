@@ -1,7 +1,10 @@
+#include "lib/http.h"
+
 #include "auth.h"
+#include "lib/basic.h"
+#include "lib/time.h"
 #include "request_signature.h"
 
-#include "lib/http.h"
 #include "lib/encode.h"
 #include "lib/file_system.h"
 
@@ -9,8 +12,7 @@ int auth_init(Auth *auth, string password_file, Logger *logger)
 {
     auth->logger = logger;
 
-    auth->password.ptr = NULL;
-    auth->password.len = 0;
+    auth->password = EMPTY_STRING;
 
     for (int i = 0; i < MAX_NONCES; i++)
         auth->nonces[i].expire = INVALID_UNIX_TIME;
@@ -24,11 +26,7 @@ int auth_init(Auth *auth, string password_file, Logger *logger)
         return -1;
     }
 
-    // Trim trailing newlines
-    while (content.len > 0 &&
-           (content.ptr[content.len - 1] == '\n' ||
-            content.ptr[content.len - 1] == '\r'))
-        content.len--;
+    content = trim(content);
 
     if (content.len >= sizeof(auth->password_buf)) {
         log(logger, S("Password is longer than expected\n"), V());
@@ -96,14 +94,20 @@ static b8 is_expired(string timestamp_str, u32 expire_seconds)
     time_t timestamp = parse_timestamp(timestamp_str);
     if (timestamp == 0)
         return true;
-    time_t now = time(NULL);
+    UnixTime now = get_current_unix_time();
+    if (now == INVALID_UNIX_TIME) {
+        // TODO
+    }
     return now > timestamp + (time_t) expire_seconds;
 }
 
 // Remove expired nonces from the table
 static void cleanup_expired_nonces(Auth *auth)
 {
-    time_t now = time(NULL);
+    UnixTime now = get_current_unix_time();
+    if (now == INVALID_UNIX_TIME) {
+        // TODO
+    }
     for (int i = 0; i < MAX_NONCES; i++)
         if (auth->nonces[i].expire != INVALID_UNIX_TIME &&
             auth->nonces[i].expire < now)

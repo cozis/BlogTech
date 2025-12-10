@@ -1,3 +1,5 @@
+#ifndef _WIN32
+
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/ec.h>
@@ -5,8 +7,8 @@
 #include <openssl/param_build.h>
 
 #include "jws.h"
-#include "encode.h"
 #include "json.h"
+#include "encode.h"
 
 static void
 append(JWS_Builder *builder, char *str, int len)
@@ -802,3 +804,5 @@ int jwk_thumbprint(EVP_PKEY *key, char *dst, int cap)
     EVP_MD_CTX_free(ctx);
     return len;
 }
+
+#endif // !_WIN32

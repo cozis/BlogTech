@@ -298,14 +298,14 @@ static int inplace_b64(char *buf, int len, b8 pad, b8 url)
     // First we handle the input bytes that don't form a full group
     int rem = len % 3;
     if (rem == 2) {
-        uint8_t b = ptr[--ridx];
-        uint8_t a = ptr[--ridx];
+        u8 b = ptr[--ridx];
+        u8 a = ptr[--ridx];
         ptr[--widx] = '=';
         ptr[--widx] = table[(b << 2) & 0x3F];
         ptr[--widx] = table[((a << 4) | (b >> 4)) & 0x3F];
         ptr[--widx] = table[a >> 2];
     } else if (rem == 1) {
-        uint8_t a = ptr[--ridx];
+        u8 a = ptr[--ridx];
         ptr[--widx] = '=';
         ptr[--widx] = '=';
         ptr[--widx] = table[(a << 4) & 0x3F];
@@ -315,10 +315,10 @@ static int inplace_b64(char *buf, int len, b8 pad, b8 url)
     while (ridx > 0) {
         ridx -= 3;
         widx -= 4;
-        uint8_t a = ptr[ridx+0] >> 2;
-        uint8_t b = ((ptr[ridx+0] << 4) | (ptr[ridx+1] >> 4)) & 0x3F;
-        uint8_t c = ((ptr[ridx+1] << 2) | (ptr[ridx+2] >> 6)) & 0x3F;
-        uint8_t d = ptr[ridx+2] & 0x3F;
+        u8 a = ptr[ridx+0] >> 2;
+        u8 b = ((ptr[ridx+0] << 4) | (ptr[ridx+1] >> 4)) & 0x3F;
+        u8 c = ((ptr[ridx+1] << 2) | (ptr[ridx+2] >> 6)) & 0x3F;
+        u8 d = ptr[ridx+2] & 0x3F;
         ptr[widx+0] = table[a];
         ptr[widx+1] = table[b];
         ptr[widx+2] = table[c];

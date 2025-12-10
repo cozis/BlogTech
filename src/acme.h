@@ -1,12 +1,13 @@
+#ifndef _WIN32
 #ifndef ACME_INCLUDED
 #define ACME_INCLUDED
+
+#include "lib/http.h"
 
 #include <openssl/evp.h>
 
 #include "static_config.h"
-
 #include "lib/time.h"
-#include "lib/http.h"
 #include "lib/logger.h"
 
 typedef struct {
@@ -259,3 +260,4 @@ b8 acme_process_response(ACME *acme, int result,
     CHTTP_Response *response);
 
 #endif // ACME_INCLUDED
+#endif // !_WIN32

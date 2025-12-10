@@ -1,7 +1,7 @@
 #include "time.h"
 
-#ifndef _WIN32
-#include <time.h>
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
 Time get_current_time(void)
