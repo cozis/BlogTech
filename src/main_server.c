@@ -4,7 +4,7 @@
 #include "acme.h"
 #include "config_reader.h"
 
-#include "lib/chttp.h"
+#include "lib/http.h"
 #include "lib/logger.h"
 #include "lib/file_system.h"
 
@@ -284,7 +284,12 @@ int main_server(int argc, char **argv)
         server_config.http_port);
 
     ACME acme;
+    Logger acme_logger;
     if (server_config.acme_enabled) {
+
+        if (logger_init(&acme_logger, 1<<16, 10000, S("acme.log")) < 0) {
+            ASSERT(0);
+        }
 
         ACME_Config acme_config;
         acme_config_init(&acme_config, &client,
@@ -325,22 +330,25 @@ int main_server(int argc, char **argv)
             server_config.https_port);
     }
 
+    Logger auth_logger;
+    if (logger_init(&auth_logger, 1<<16, 10000, S("auth.log")) < 0) {
+        ASSERT(0);
+    }
+
     Auth auth;
-    if (auth_init(&auth, server_config.auth_password_file) < 0) {
+    if (auth_init(&auth, server_config.auth_password_file, &auth_logger) < 0) {
         fprintf(stderr, "Couldn't initialize authentication system\n");
         config_reader_free(&config_reader);
         return -1;
     }
 
-    Logger logger;
-    if (logger_init(&logger, 1<<16, 10000, S("error.log")) < 0) {
+    Logger request_logger;
+    if (logger_init(&request_logger, 1<<20, 10000, S("request.log")) < 0) {
         ASSERT(0);
     }
 
     b8 restart = false;
     while (running) {
-
-        log(&logger, S("Running... {1} {0}\n"), V(-4, 2));
 
         void*           ptrs[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
         struct pollfd polled[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
@@ -359,11 +367,12 @@ int main_server(int argc, char **argv)
         };
         chttp_client_register_events(&client, &client_reg);
 
-        int timeouts[4];
-        timeouts[0] = -1; // Server timeout
-        timeouts[1] = -1; // Client timeout
-        timeouts[2] = server_config.acme_enabled ? acme_next_timeout(&acme) : -1; // Acme timeout
-        timeouts[3] = logger_next_timeout(&logger);
+        int timeouts[] = {
+            logger_next_timeout(&request_logger),
+            logger_next_timeout(&auth_logger),
+            server_config.acme_enabled ? acme_next_timeout(&acme) : -1,
+            server_config.acme_enabled ? logger_next_timeout(&acme_logger) : -1,
+        };
         int timeout = pick_timeout(timeouts, COUNT(timeouts));
 
         if (server_reg.num_polled > 0 &&
@@ -373,11 +382,16 @@ int main_server(int argc, char **argv)
             POLL(polled, num_polled, timeout);
         }
 
-        if (server_config.acme_enabled) {
-            acme_process_timeout(&acme, &client); // TODO: This should not be called every iteration
+        // TODO: These should not be called at each iteration but when
+        //       the timeout actually triggered
+        {
+            if (server_config.acme_enabled) {
+                acme_process_timeout(&acme, &client);
+                logger_flush(&acme_logger);
+            }
+            logger_flush(&request_logger);
+            logger_flush(&auth_logger);
         }
-
-        logger_flush(&logger); // TODO: This should not be called every iteration
 
         int result;
         void *user;
@@ -396,6 +410,9 @@ int main_server(int argc, char **argv)
         CHTTP_ResponseBuilder response_builder;
         chttp_server_process_events(&server, server_reg);
         while (chttp_server_next_request(&server, &request, &response_builder)) {
+
+            string method_str = method_to_str(request->method);
+            log(&request_logger, S("{} {}\n"), V(method_str, request->url.path)); // IMPROVE: add more information to the log
 
             if (server_config.acme_enabled) {
                 if (acme_process_request(&acme, request, response_builder))
@@ -555,8 +572,13 @@ int main_server(int argc, char **argv)
         }
     }
 
+    logger_free(&request_logger);
     auth_free(&auth);
-    acme_free(&acme);
+    logger_free(&auth_logger);
+    if (server_config.acme_enabled) {
+        acme_free(&acme);
+        logger_free(&acme_logger);
+    }
     chttp_server_free(&server);
     chttp_client_free(&client);
     config_reader_free(&config_reader);

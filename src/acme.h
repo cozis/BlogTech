@@ -6,7 +6,7 @@
 #include "static_config.h"
 
 #include "lib/time.h"
-#include "lib/chttp.h"
+#include "lib/http.h"
 #include "lib/logger.h"
 
 typedef struct {

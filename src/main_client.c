@@ -3,7 +3,7 @@
 #include "request_signature.h"
 
 #include "lib/time.h"
-#include "lib/chttp.h"
+#include "lib/http.h"
 #include "lib/random.h"
 #include "lib/encode.h"
 #include "lib/file_system.h"

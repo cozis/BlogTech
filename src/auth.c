@@ -1,12 +1,14 @@
 #include "auth.h"
 #include "request_signature.h"
 
-#include "lib/chttp.h"
+#include "lib/http.h"
 #include "lib/encode.h"
 #include "lib/file_system.h"
 
-int auth_init(Auth *auth, string password_file)
+int auth_init(Auth *auth, string password_file, Logger *logger)
 {
+    auth->logger = logger;
+
     auth->password.ptr = NULL;
     auth->password.len = 0;
 
@@ -17,8 +19,10 @@ int auth_init(Auth *auth, string password_file)
         return 0;
 
     string content;
-    if (file_read_all(password_file, &content) < 0)
+    if (file_read_all(password_file, &content) < 0) {
+        log(logger, S("Couldn't read password from '{}'\n"), V(password_file));
         return -1;
+    }
 
     // Trim trailing newlines
     while (content.len > 0 &&
@@ -27,6 +31,7 @@ int auth_init(Auth *auth, string password_file)
         content.len--;
 
     if (content.len >= sizeof(auth->password_buf)) {
+        log(logger, S("Password is longer than expected\n"), V());
         free(content.ptr);
         return -1;
     }
@@ -36,6 +41,7 @@ int auth_init(Auth *auth, string password_file)
     auth->password.len = content.len;
     free(content.ptr);
 
+    log(logger, S("Authentication system initialized\n"), V());
     return 0;
 }
 
@@ -134,9 +140,13 @@ static b8 store_nonce(Auth *auth, char *nonce, UnixTime expire)
 // not verified, and -1 if an error occurred.
 int auth_verify(Auth *auth, CHTTP_Request *request)
 {
+    log(auth->logger, S("Verifying request authentication\n"), V());
+
     // Reject all requests if password is too short
-    if (auth->password.len < MIN_PASSWORD_LEN)
+    if (auth->password.len < MIN_PASSWORD_LEN) {
+        log(auth->logger, S("Request rejected preemptively because the password is too short\n"), V());
         return 1;
+    }
 
     string path = request->url.path;
     if (path.len > 0 && path.ptr[0] == '/') {
@@ -148,8 +158,10 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         request->headers,
         request->num_headers,
         CHTTP_STR("Host"));
-    if (idx < 0)
+    if (idx < 0) {
+        log(auth->logger, S("Request marked as not authenticated because it's missing the 'Host' header\n"), V());
         return 1;
+    }
     string host = request->headers[idx].value;
 
     // Remove port from the host (this is a very bad way to do it)
@@ -165,55 +177,73 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         request->headers,
         request->num_headers,
         CHTTP_STR("X-BlogTech-Nonce"));
-    if (idx < 0)
+    if (idx < 0) {
+        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Nonce' header\n"), V());
         return 1;
+    }
     string nonce_str = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
         request->num_headers,
         CHTTP_STR("X-BlogTech-Timestamp"));
-    if (idx < 0)
+    if (idx < 0) {
+        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Timestamp' header\n"), V());
         return 1;
+    }
     string timestamp = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
         request->num_headers,
         CHTTP_STR("X-BlogTech-Expire"));
-    if (idx < 0)
+    if (idx < 0) {
+        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Expire' header\n"), V());
         return 1;
+    }
     string expire_str = request->headers[idx].value;
 
     idx = chttp_find_header(
         request->headers,
         request->num_headers,
         CHTTP_STR("X-BlogTech-Signature"));
-    if (idx < 0)
+    if (idx < 0) {
+        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Signature' header\n"), V());
         return 1;
+    }
     string signature = request->headers[idx].value;
 
     // Parse the expire value
     u32 expire = parse_expire(expire_str);
-    if (expire == 0)
+    if (expire == 0) {
+        log(auth->logger, S("Request marked as not authenticated because the expiration '{}' is invalid\n"), V(expire_str));
         return 1;
+    }
 
     // Parse nonce
     char nonce[BASE64_LEN(RAW_NONCE_LEN)];
-    if (nonce_str.len > sizeof(nonce))
+    if (nonce_str.len > sizeof(nonce)) {
+        log(auth->logger, S("Request marked as not authenticated because the nonce is too long\n"), V());
         return 1;
+    }
     memcpy(nonce, nonce_str.ptr, nonce_str.len);
     int ret = decode_inplace(nonce, nonce_str.len, sizeof(nonce), ENCODING_B64);
-    if (ret != RAW_NONCE_LEN)
+    if (ret != RAW_NONCE_LEN) {
+        log(auth->logger, S("Request marked as not authenticated because the nonce couldn't be decode from Base64\n"), V());
         return 1;
+    }
 
     // Check if nonce has already been used
-    if (is_invalidated(auth, nonce))
+    if (is_invalidated(auth, nonce)) {
+        log(auth->logger, S("Request marked as not authenticated because the nonce was invalidated\n"), V());
         return 1;
+    }
 
     // Check if the request has expired
-    if (is_expired(timestamp, expire))
+    if (is_expired(timestamp, expire)) {
+        log(auth->logger, S("Request marked as not authenticated because it expired\n"), V());
         return 1;
+    }
 
     // Verify the signature
     char expected_signature_buf[128];
@@ -228,17 +258,24 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         auth->password,
         expected_signature_buf,
         sizeof(expected_signature_buf));
-    if (ret < 0)
+    if (ret < 0) {
+        log(auth->logger, S("Request verification failed because it wasn't possible to calculate the signature\n"), V());
         return -1;
+    }
     string expected_signature = { expected_signature_buf, ret };
 
-    if (!streq(signature, expected_signature))
+    if (!streq(signature, expected_signature)) {
+        log(auth->logger, S("Request marked as not authenticated because its signature is invalid\n"), V());
         return 1;
+    }
 
     // Store the nonce to prevent replay attacks
     time_t nonce_expire = parse_timestamp(timestamp) + (time_t) expire;
-    if (!store_nonce(auth, nonce, nonce_expire))
+    if (!store_nonce(auth, nonce, nonce_expire)) {
+        log(auth->logger, S("Request verification failed because the nonce store is full\n"), V());
         return -1;
+    }
 
+    log(auth->logger, S("Request marked as authenticated\n"), V());
     return 0;
 }

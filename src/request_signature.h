@@ -1,7 +1,7 @@
 #ifndef REQUEST_SIGNATURE_INCLUDED
 #define REQUEST_SIGNATURE_INCLUDED
 
-#include "lib/chttp.h"
+#include "lib/http.h"
 
 #define NONCE_RAW_LEN 32
 
