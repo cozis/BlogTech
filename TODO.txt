@@ -1,0 +1,6 @@
+[ ] Find a way to clean up all snprintf calls
+[ ] Add logging to the ACME client
+[ ] Add request logging
+[ ] Add a crash logger
+[ ] Make blogtech compile to windows with HTTPS disabled
+[ ] Isolate OpenSSL code

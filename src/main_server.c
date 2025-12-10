@@ -5,6 +5,7 @@
 #include "config_reader.h"
 
 #include "lib/chttp.h"
+#include "lib/logger.h"
 #include "lib/file_system.h"
 
 #ifdef _WIN32
@@ -331,8 +332,15 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
+    Logger logger;
+    if (logger_init(&logger, 1<<16, 10000, S("error.log")) < 0) {
+        ASSERT(0);
+    }
+
     b8 restart = false;
     while (running) {
+
+        log(&logger, S("Running... {1} {0}\n"), V(-4, 2));
 
         void*           ptrs[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
         struct pollfd polled[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
@@ -351,11 +359,12 @@ int main_server(int argc, char **argv)
         };
         chttp_client_register_events(&client, &client_reg);
 
-        int timeouts[3];
+        int timeouts[4];
         timeouts[0] = -1; // Server timeout
         timeouts[1] = -1; // Client timeout
         timeouts[2] = server_config.acme_enabled ? acme_next_timeout(&acme) : -1; // Acme timeout
-        int timeout = pick_timeout(timeouts, 3);
+        timeouts[3] = logger_next_timeout(&logger);
+        int timeout = pick_timeout(timeouts, COUNT(timeouts));
 
         if (server_reg.num_polled > 0 &&
             client_reg.num_polled > 0) {
@@ -365,8 +374,10 @@ int main_server(int argc, char **argv)
         }
 
         if (server_config.acme_enabled) {
-            acme_process_timeout(&acme, &client); // This should not be called every iteration
+            acme_process_timeout(&acme, &client); // TODO: This should not be called every iteration
         }
+
+        logger_flush(&logger); // TODO: This should not be called every iteration
 
         int result;
         void *user;

@@ -3,12 +3,7 @@
 
 #include "basic.h"
 #include "encode.h"
-
-// If the output is not being created correctly,
-// uncomment this do dump the state of the builder
-// at each step:
-//
-//    #define SB_TRACE
+#include "variadic.h"
 
 // Error codes for the builder
 enum {
@@ -34,27 +29,20 @@ typedef struct {
 } StringBuilder;
 
 void sb_init(StringBuilder *b, char *dst, int cap);
-void sb_write_(StringBuilder *b, string s, char *file, int line);
+void sb_write_u8(StringBuilder *b, u8 v);
+void sb_write_u16(StringBuilder *b, u16 v);
+void sb_write_u32(StringBuilder *b, u32 v);
+void sb_write_u64(StringBuilder *b, u64 v);
+void sb_write_s8(StringBuilder *b, s8 v);
+void sb_write_s16(StringBuilder *b, s16 v);
+void sb_write_s32(StringBuilder *b, s32 v);
+void sb_write_s64(StringBuilder *b, s64 v);
+void sb_write_b8(StringBuilder *b, b8 v);
+void sb_write_str(StringBuilder *b, string s);
+void sb_write_arg(StringBuilder *b, Arg arg);
+void sb_write_fmt(StringBuilder *b, string fmt, Args args);
 void sb_flush(StringBuilder *b);
 void sb_push_mod(StringBuilder *b, Encoding m);
-void sb_pop_mod_(StringBuilder *b, char *file, int line);
-
-#ifdef SB_TRACE
-
-#define sb_write(b, s) \
-    sb_write_(b, s, __FILE__, __LINE__)
-
-#define sb_pop_mod(b) \
-    sb_pop_mod_(b, __FILE__, __LINE__)
-
-#else
-
-#define sb_write(b, s) \
-    sb_write_(b, s, NULL, 0)
-
-#define sb_pop_mod(b) \
-    sb_pop_mod_(b, NULL, 0)
-
-#endif
+void sb_pop_mod(StringBuilder *b);
 
 #endif // STRING_BUILDER_INCLUDED

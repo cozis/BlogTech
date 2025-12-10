@@ -2,10 +2,6 @@
 
 #include "lib/string_builder.h"
 
-//////////////////////////////////////////////////////////////////
-// SIGNING FUNCTION
-//////////////////////////////////////////////////////////////////
-
 // REQUEST AUTHENTICATION
 //
 // Requests are signed by clients using a secret shared with
@@ -79,26 +75,26 @@ int calculate_request_signature(
     sb_init(&b, pool, sizeof(pool));
     sb_push_mod(&b, ENCODING_B64);
         sb_push_mod(&b, ENCODING_HMAC);
-            sb_write(&b, secret);
+            sb_write_str(&b, secret);
             sb_flush(&b);
-            sb_write(&b, method_to_str(method));
-            sb_write(&b, S("\n"));
+            sb_write_str(&b, method_to_str(method));
+            sb_write_str(&b, S("\n"));
             sb_push_mod(&b, ENCODING_PCTL);
-                sb_write(&b, path);
+                sb_write_str(&b, path);
             sb_pop_mod(&b);
-            sb_write(&b, S("\n"));
-            sb_write(&b, host);
-            sb_write(&b, S("\n"));
-            sb_write(&b, date);
-            sb_write(&b, S("\n"));
-            sb_write(&b, ((string) { expire_str, expire_len }));
-            sb_write(&b, S("\n"));
-            sb_write(&b, nonce);
-            sb_write(&b, S("\n"));
-            sb_write(&b, ((string) { body_len_str, body_len_len }));
-            sb_write(&b, S("\n"));
+            sb_write_str(&b, S("\n"));
+            sb_write_str(&b, host);
+            sb_write_str(&b, S("\n"));
+            sb_write_str(&b, date);
+            sb_write_str(&b, S("\n"));
+            sb_write_str(&b, ((string) { expire_str, expire_len }));
+            sb_write_str(&b, S("\n"));
+            sb_write_str(&b, nonce);
+            sb_write_str(&b, S("\n"));
+            sb_write_str(&b, ((string) { body_len_str, body_len_len }));
+            sb_write_str(&b, S("\n"));
             sb_push_mod(&b, ENCODING_HEXL);
-                sb_write(&b, ((string) { body_hash, sizeof(body_hash) }));
+                sb_write_str(&b, ((string) { body_hash, sizeof(body_hash) }));
             sb_pop_mod(&b);
         sb_pop_mod(&b);
     sb_pop_mod(&b);

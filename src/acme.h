@@ -3,16 +3,10 @@
 
 #include <openssl/evp.h>
 
+#include "static_config.h"
+
 #include "lib/time.h"
 #include "lib/chttp.h"
-
-#define ACME_DOMAIN_LIMIT 32
-
-// RFC 8555 doesn't specify a length for a nonce string,
-// but the Pebble client implemented by Let's Encrypt is
-// 22 characters long. We allocate 100 bytes just to be
-// safe.
-#define ACME_NONCE_CAPACITY 100
 
 typedef struct {
 

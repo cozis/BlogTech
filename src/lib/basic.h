@@ -54,6 +54,8 @@ STATIC_ASSERT(sizeof(s16) == 2);
 STATIC_ASSERT(sizeof(s32) == 4);
 STATIC_ASSERT(sizeof(s64) == 8);
 
+// TODO: check the following macros
+
 #define U8_MAX (~(u8) 0)
 #define U8_MIN 0
 
@@ -66,11 +68,23 @@ STATIC_ASSERT(sizeof(s64) == 8);
 #define U64_MAX ((u64) ~(u64) 0)
 #define U64_MIN 0
 
+#define S8_MAX ((s8) ((~(u8) 0) / 2))
+#define S8_MIN ((s8) (-(~(u8) 0) / 2 - 1))
+
+#define S16_MAX ((s16) ((~(u16) 0) / 2))
+#define S16_MIN ((s16) (-(~(u16) 0) / 2 - 1))
+
+#define S32_MAX ((s32) ((~(u32) 0) / 2))
+#define S32_MIN ((s32) (-(~(u32) 0) / 2 - 1))
+
+#define S64_MAX ((s64) ((~(u64) 0) / 2))
+#define S64_MIN ((s64) (-(~(u64) 0) / 2 - 1))
+
 /////////////////////////////////////////////////////////////////////////
 // BOOLEAN TYPE
 /////////////////////////////////////////////////////////////////////////
 
-typedef unsigned char b8;
+typedef char b8;
 
 STATIC_ASSERT(sizeof(b8) == 1);
 

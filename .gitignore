@@ -3,3 +3,4 @@ docroot/*
 pebble
 *.pem
 *.pwd
+*.log
