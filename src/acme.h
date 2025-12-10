@@ -7,6 +7,7 @@
 
 #include "lib/time.h"
 #include "lib/chttp.h"
+#include "lib/logger.h"
 
 typedef struct {
 
@@ -16,6 +17,8 @@ typedef struct {
     string directory_url;
 
     b8     dont_verify_cert;
+
+    Logger *logger;
 
     /////////////////////////////////////////////
     // Information
@@ -149,6 +152,7 @@ typedef struct {
 
     CHTTP_Client *client;
     b8            dont_verify_cert;
+    Logger       *logger;
 
     string account_key_file;
     string certificate_file;

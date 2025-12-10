@@ -51,21 +51,25 @@ static char *state_str(ACME_State state)
 // OpenSSL
 //////////////////////////////////////////////////////////////////////////////////////
 
-static int generate_account_key(ACME_Account *account)
+static int generate_account_key(ACME_Account *account, Logger *logger)
 {
     // Create context for key generation
     EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
-    if (!pctx)
+    if (!pctx) {
+        log(logger, S("Failed to create EVP_PKEY_CTX\n"), V());
         return -1;
+    }
 
     // Initialize key generation
     if (EVP_PKEY_keygen_init(pctx) <= 0) {
+        log(logger, S("Call to EVP_PKEY_keygen_init failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
 
     // Set the curve to P-256 (prime256v1/secp256r1)
     if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_X9_62_prime256v1) <= 0) {
+        log(logger, S("Call to EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
@@ -73,6 +77,7 @@ static int generate_account_key(ACME_Account *account)
     // Generate the key pair
     EVP_PKEY *pkey = NULL;
     if (EVP_PKEY_keygen(pctx, &pkey) <= 0) {
+        log(logger, S("Call to EVP_PKEY_keygen failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
@@ -86,24 +91,28 @@ static int
 create_certificate_signing_request(EVP_PKEY **out_pkey,
     string *domains, int num_domains,
     string country, string org,
-    char *dst, int cap)
+    char *dst, int cap,
+    Logger *logger)
 {
-    if (num_domains < 1)
-        return -1;
+    ASSERT(num_domains > 0);
 
     // Generate a new key pair
     EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
-    if (!pctx)
+    if (!pctx) {
+        log(logger, S("Call to EVP_PKEY_CTX_new_id failed\n"), V());
         return -1;
+    }
 
     // Initialize key generation
     if (EVP_PKEY_keygen_init(pctx) <= 0) {
+        log(logger, S("Call to EVP_PKEY_keygen_init failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
 
     // Set the curve to P-256 (prime256v1/secp256r1)
     if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_X9_62_prime256v1) <= 0) {
+        log(logger, S("Call to EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
@@ -111,6 +120,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     // Generate the key pair
     EVP_PKEY *pkey = NULL;
     if (EVP_PKEY_keygen(pctx, &pkey) <= 0) {
+        log(logger, S("Call to EVP_PKEY_keygen failed\n"), V());
         EVP_PKEY_CTX_free(pctx);
         return -1;
     }
@@ -119,12 +129,14 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     // Create the CSR structure
     X509_REQ *req = X509_REQ_new();
     if (!req) {
+        log(logger, S("Call to X509_REQ_new failed\n"), V());
         EVP_PKEY_free(pkey);
         return -1;
     }
 
     // Set version (version 0 for CSR)
     if (!X509_REQ_set_version(req, 0L)) {
+        log(logger, S("Call to X509_REQ_set_version failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -133,6 +145,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     // Get the subject name
     X509_NAME *name = X509_REQ_get_subject_name(req);
     if (!name) {
+        log(logger, S("Call to X509_REQ_get_subject_name failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -159,6 +172,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
 
     char *san_str = OPENSSL_malloc(san_len);
     if (!san_str) {
+        log(logger, S("Call to OPENSSL_malloc failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -181,6 +195,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     OPENSSL_free(san_str);
 
     if (!san_ext) {
+        log(logger, S("Call to X509V3_EXT_conf_nid failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -189,6 +204,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     // Add extension to CSR
     X509_EXTENSIONS *exts = sk_X509_EXTENSION_new_null();
     if (!exts) {
+        log(logger, S("Call to sk_X509_EXTENSION_new_null failed\n"), V());
         X509_EXTENSION_free(san_ext);
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
@@ -200,6 +216,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
 
     // Set the public key
     if (!X509_REQ_set_pubkey(req, pkey)) {
+        log(logger, S("Call to X509_REQ_set_pubkey failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -207,6 +224,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
 
     // Sign the CSR with the private key
     if (!X509_REQ_sign(req, pkey, EVP_sha256())) {
+        log(logger, S("Call to X509_REQ_sign failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -215,6 +233,7 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     // Get required length
     int len = i2d_X509_REQ(req, NULL);
     if (len < 0 || len > cap) {
+        log(logger, S("Call to i2d_X509_REQ failed\n"), V());
         X509_REQ_free(req);
         EVP_PKEY_free(pkey);
         return -1;
@@ -234,13 +253,17 @@ create_certificate_signing_request(EVP_PKEY **out_pkey,
     return len;
 }
 
-static EVP_PKEY *parse_private_key(string str)
+static EVP_PKEY *parse_private_key(string str, Logger *logger)
 {
     BIO *bio = BIO_new_mem_buf(str.ptr, str.len);
-    if (bio == NULL)
+    if (bio == NULL) {
+        log(logger, S("Call to BIO_new_mem_buf failed\n"), V());
         return NULL;
+    }
 
     EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
+    if (pkey == NULL)
+        log(logger, S("Call to PEM_read_bio_PrivateKey failed\n"), V());
 
     BIO_free(bio);
     return pkey;
@@ -252,9 +275,10 @@ static EVP_PKEY *parse_private_key(string str)
 
 typedef struct {
 
-    b8     error;
-    b8     dont_verify_cert;
-    string url;
+    Logger *logger;
+    b8      error;
+    b8      dont_verify_cert;
+    string  url;
 
     JWS_Builder jws_builder;
     char        jws_buffer[1<<10];
@@ -266,10 +290,12 @@ typedef struct {
 static void
 request_builder_init(RequestBuilder *builder,
     ACME_Account account, string nonce,
-    b8 dont_verify_cert, string url)
+    b8 dont_verify_cert, string url,
+    Logger *logger)
 {
     ASSERT(account.key);
 
+    builder->logger = logger;
     builder->error = false;
     builder->dont_verify_cert = dont_verify_cert;
     builder->url = url;
@@ -318,8 +344,10 @@ request_builder_send(RequestBuilder *builder, CHTTP_Client *client)
 
     jws_builder_flush(&builder->jws_builder);
     int ret = jws_builder_result(&builder->jws_builder);
-    if (ret < 0)
+    if (ret < 0) {
+        log(builder->logger, S("JWS builder failure\n"), V());
         return -1;
+    }
     string jws = { builder->jws_buffer, ret };
 
     CHTTP_RequestBuilder http_builder = chttp_client_get_builder(client);
@@ -331,8 +359,12 @@ request_builder_send(RequestBuilder *builder, CHTTP_Client *client)
     chttp_request_builder_header(http_builder, CHTTP_STR("User-Agent: BlogTech")); // TODO: better user agnet
     chttp_request_builder_header(http_builder, CHTTP_STR("Content-Type: application/jose+json"));
     chttp_request_builder_body(http_builder, jws);
-    if (chttp_request_builder_send(http_builder) < 0)
+    ret = chttp_request_builder_send(http_builder);
+    if (ret < 0) {
+        string err = ZT2S(chttp_strerror(ret));
+        log(builder->logger, S("Coultn't start request due to an HTTP error ({})\n"), V(err));
         return -1;
+    }
 
     return 0;
 }
@@ -363,6 +395,7 @@ void acme_config_init(ACME_Config *config,
 
     config->directory_url = directory_url;
     config->dont_verify_cert = false;
+    config->logger = NULL;
 
     config->email = email;
     config->country = country;
@@ -477,6 +510,7 @@ int acme_init(ACME *acme, ACME_Config *config)
 
     acme->client = config->client;
     acme->dont_verify_cert = config->dont_verify_cert;
+    acme->logger = config->logger;
 
     acme->agree_tos = config->agree_tos;
 
@@ -496,14 +530,18 @@ int acme_init(ACME *acme, ACME_Config *config)
     int ret = file_read_all(config->account_key_file, &account_key);
     if (ret < 0) {
         if (ret != ERROR_FILE_NOT_FOUND) {
+            log(acme->logger, S("Coultn't open account key file '{}'. Aborting ACME initialization.\n"), V(config->account_key_file));
             acme_free(acme);
             return -1;
         }
         // File not found - continue without account
+        log(acme->logger, S("Account key file '{}' not found. Continuing without an account.\n"), V(config->account_key_file));
     } else {
-        EVP_PKEY *key = parse_private_key(account_key);
-        if (key == NULL)
+        EVP_PKEY *key = parse_private_key(account_key, acme->logger);
+        if (key == NULL) {
+            log(acme->logger, S("Coultn't parse ACME account key in '{}'. Deleting the file and continuing without an account.\n"), V(config->account_key_file));
             remove_file_or_dir(acme->account_key_file);
+        }
         acme->account.key = key;
         free(account_key.ptr);
     }
@@ -517,10 +555,12 @@ int acme_init(ACME *acme, ACME_Config *config)
         ret = file_read_all(acme->certificate_file, &certificate);
         if (ret < 0) {
             if (ret != ERROR_FILE_NOT_FOUND) {
+                log(acme->logger, S("Coultn't open certificate file '{}'. Aborting ACME initialization.\n"), V(config->certificate_file));
                 acme_free(acme);
                 return -1;
             }
             // File not found - continue without certificate
+            log(acme->logger, S("Certificate file '{}' not found. Continuing without a certificate.\n"), V(config->certificate_file));
         } else {
             string certificate_key;
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
@@ -531,6 +571,7 @@ int acme_init(ACME *acme, ACME_Config *config)
                     return -1;
                 }
                 // File not found - continue without certificate key
+                log(acme->logger, S("Certificate key file '{}' not found. Continuing without a certificate key.\n"), V(acme->certificate_key_file));
             } else {
                 acme->certificate = certificate;
                 acme->certificate_key = certificate_key;
@@ -538,6 +579,7 @@ int acme_init(ACME *acme, ACME_Config *config)
         }
     }
     if (acme->certificate.len == 0) {
+        log(acme->logger, S("Deleting certificate file '{}' and certificate key file '{}'\n"), V(acme->certificate_file, acme->certificate_key_file));
         remove_file_or_dir(acme->certificate_file);
         remove_file_or_dir(acme->certificate_key_file);
     }
@@ -660,8 +702,12 @@ static int send_directory_request(ACME *acme, CHTTP_Client *client)
     chttp_request_builder_insecure(builder, acme->dont_verify_cert);
     chttp_request_builder_method(builder, CHTTP_METHOD_GET);
     chttp_request_builder_target(builder, acme->directory_url);
-    if (chttp_request_builder_send(builder) < 0)
+    int ret = chttp_request_builder_send(builder);
+    if (ret < 0) {
+        string err = ZT2S(chttp_strerror(ret));
+        log(acme->logger, S("Coultn't start ACME directory request due to an HTTP error ({})\n"), V(err));
         return -1;
+    }
     return 0;
 }
 
@@ -683,20 +729,28 @@ static int send_first_nonce_request(ACME *acme, CHTTP_Client *client)
     chttp_request_builder_insecure(builder, acme->dont_verify_cert);
     chttp_request_builder_method(builder, CHTTP_METHOD_GET);
     chttp_request_builder_target(builder, acme->urls.new_nonce);
-    if (chttp_request_builder_send(builder) < 0)
+    int ret = chttp_request_builder_send(builder);
+    if (ret < 0) {
+        string err = ZT2S(chttp_strerror(ret));
+        log(acme->logger, S("Coultn't start ACME nonce request due to an HTTP error ({})\n"), V(err));
         return -1;
+    }
     return 0;
 }
 
 static int extract_nonce(ACME *acme, CHTTP_Response *response)
 {
     int idx = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Replay-Nonce"));
-    if (idx == -1)
+    if (idx == -1) {
+        log(acme->logger, S("Response is missing the 'Replay-Nonce' header\n"), V());
         return -1; // Response doesn't have a nonce
+    }
 
     string nonce = response->headers[idx].value;
-    if (nonce.len > (int) sizeof(acme->nonce_buf))
+    if (nonce.len > (int) sizeof(acme->nonce_buf)) {
+        log(acme->logger, S("Received nonce is larger than expected\n"), V());
         return -1; // Nonce is larger than the buffer
+    }
 
     memset(acme->nonce_buf, 0, sizeof(acme->nonce_buf));
     memcpy_(acme->nonce_buf, nonce.ptr, nonce.len);
@@ -709,8 +763,10 @@ static int extract_nonce(ACME *acme, CHTTP_Response *response)
 
 static int complete_first_nonce_request(ACME *acme, CHTTP_Response *response)
 {
-    if (response->status != 204)
+    if (response->status != 204) {
+        log(acme->logger, S("Response to nonce request returned status {} (was expecting 204)\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -721,12 +777,12 @@ static int complete_first_nonce_request(ACME *acme, CHTTP_Response *response)
 
 static int send_account_creation_request(ACME *acme, CHTTP_Client *client)
 {
-    if (generate_account_key(&acme->account) < 0)
+    if (generate_account_key(&acme->account, acme->logger) < 0)
         return -1;
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->urls.new_account);
+        acme->dont_verify_cert, acme->urls.new_account, acme->logger);
 
     request_builder_write(&builder, S("{\"contact\":[\"mailto:"));
     request_builder_write(&builder, acme->email);
@@ -741,25 +797,34 @@ static int complete_account_creation_request(ACME *acme, CHTTP_Response *respons
 {
     // The server returns 201 if it created an account
     // and 200 if it already existed.
-    if (response->status != 201 && response->status != 200)
+    if (response->status != 201 && response->status != 200) {
+        log(acme->logger, S("Account creation response has status {} but 201 or 200 were expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
 
     int idx = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Location"));
-    if (idx == -1)
+    if (idx == -1) {
+        log(acme->logger, S("Account creation response is missing the 'Location' header\n"), V());
         return -1; // Location header missing
+    }
 
     acme->account.url = allocstr(response->headers[idx].value);
-    if (acme->account.url.ptr == NULL)
+    if (acme->account.url.ptr == NULL) {
+        log(acme->logger, S("Allocation failure\n"), V());
         return -1; // Allocation failed
+    }
 
     BIO *bio = BIO_new(BIO_s_mem());
-    if (!bio)
+    if (!bio) {
+        log(acme->logger, S("Call to BIO_new failed\n"), V());
         return -1;
+    }
 
     if (!PEM_write_bio_PrivateKey(bio, acme->account.key, NULL, NULL, 0, NULL, NULL)) {
+        log(acme->logger, S("Call to PEM_write_bio_PrivateKey failed\n"), V());
         BIO_free(bio);
         return -1;
     }
@@ -769,10 +834,12 @@ static int complete_account_creation_request(ACME *acme, CHTTP_Response *respons
 
     // The account was created so we can store the key
     if (file_write_all(acme->account_key_file, (string) { pem_buf, pem_len }) < 0) {
+        log(acme->logger, S("Couldn't write to file '{}'\n"), V(acme->account_key_file));
         BIO_free(bio);
         return -1;
     }
 
+    log(acme->logger, S("ACME account was created. The account key was stored in '{}'\n"), V(acme->account_key_file));
     BIO_free(bio);
     return 0;
 }
@@ -781,7 +848,7 @@ static int send_order_creation_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->urls.new_order);
+        acme->dont_verify_cert, acme->urls.new_order, acme->logger);
 
     request_builder_write(&builder, S("{\"identifiers\":["));
     for (int i = 0; i < acme->num_domains; i++) {
@@ -798,54 +865,75 @@ static int send_order_creation_request(ACME *acme, CHTTP_Client *client)
 
 static int complete_order_creation_request(ACME *acme, CHTTP_Response *response)
 {
-    if (response->status != 201)
+    if (response->status != 201) {
+        log(acme->logger, S("Order creation response has status '{}' but 201 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
 
     int i = chttp_find_header(response->headers, response->num_headers, CHTTP_STR("Location"));
-    if (i < 0)
+    if (i < 0) {
+        log(acme->logger, S("Order creation response is missing the 'Location' header\n"), V());
         return -1;
+    }
     acme->order_url = allocstr(response->headers[i].value);
-    if (acme->order_url.ptr == NULL)
+    if (acme->order_url.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         return -1;
+    }
 
     // Parse the order response to get authorizations and finalize URL
     char pool[1<<13];
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
-    if (json == NULL)
+    if (json == NULL) {
+        string err = ZT2S(error.msg);
+        log(acme->logger, S("Order creation response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
 
     string finalize_url = json_get_string(json_get_field(json, S("finalize")));
-    if (finalize_url.len == 0)
+    if (finalize_url.len == 0) {
+        log(acme->logger, S("Order creation response contains an invalid 'finalize' field\n"), V());
         return -1;
+    }
 
     acme->finalize_url = allocstr((string) { finalize_url.ptr, finalize_url.len });
-    if (acme->finalize_url.ptr == NULL)
+    if (acme->finalize_url.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         return -1;
+    }
 
     JSON *auths = json_get_field(json, JSON_STR("authorizations"));
-    if (auths == NULL || json_get_type(auths) != JSON_TYPE_ARRAY)
+    if (auths == NULL || json_get_type(auths) != JSON_TYPE_ARRAY) {
+        log(acme->logger, S("Order creation response contains an invalid 'authorizations' field\n"), V());
         return -1;
+    }
 
-    if (auths->len != acme->num_domains)
+    if (auths->len != acme->num_domains) {
+        log(acme->logger, S("Order creation response contains an invalid 'authorizations' field\n"), V());
         return -1;
+    }
 
     int j = 0;
     JSON *item = auths->head;
     while (item) {
 
         string tmp = json_get_string(item);
-        if (tmp.len == 0)
+        if (tmp.len == 0) {
+            log(acme->logger, S("Order creation response contains an invalid 'authorizations' field\n"), V());
             return -1;
+        }
         string auth_url = { tmp.ptr, tmp.len };
 
         acme->domains[j].authorization_url = allocstr(auth_url);
-        if (acme->domains[j].authorization_url.ptr == NULL)
+        if (acme->domains[j].authorization_url.ptr == NULL) {
+            log(acme->logger, S("String allocation failure\n"), V());
             return -1;
+        }
 
         j++;
         item = item->next;
@@ -862,7 +950,7 @@ static int send_next_challenge_info_request(ACME *acme, CHTTP_Client *client)
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, auth_url);
+        acme->dont_verify_cert, auth_url, acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -873,8 +961,10 @@ static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *resp
 {
     ASSERT(acme->resolved_challenges < acme->num_domains);
 
-    if (response->status != 200)
+    if (response->status != 200) {
+        log(acme->logger, S("Challenge info response has status '{}' but 200 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -884,12 +974,17 @@ static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *resp
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
-    if (json == NULL)
+    if (json == NULL) {
+        string err = ZT2S(error.msg);
+        log(acme->logger, S("Challenge info response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
 
     JSON *challenges = json_get_field(json, JSON_STR("challenges"));
-    if (challenges == NULL || json_get_type(challenges) != JSON_TYPE_ARRAY)
+    if (challenges == NULL || json_get_type(challenges) != JSON_TYPE_ARRAY) {
+        log(acme->logger, S("Challenge info response contains an invalid 'challenges' field\n"), V());
         return -1;
+    }
 
     // Get the first http-01 challenge
     JSON *challenge = challenges->head;
@@ -899,26 +994,36 @@ static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *resp
             break;
         challenge = challenge->next;
     }
-    if (challenge == NULL)
+    if (challenge == NULL) {
+        log(acme->logger, S("No 'http-01' challenges found\n"), V());
         return -1; // No http-01 challenge
+    }
 
     string tmp = json_get_string(json_get_field(challenge, S("token")));
-    if (tmp.len == 0)
+    if (tmp.len == 0) {
+        log(acme->logger, S("Challenge info response contains an invalid 'token' field\n"), V());
         return -1;
+    }
     string token = { tmp.ptr, tmp.len };
 
     tmp = json_get_string(json_get_field(challenge, JSON_STR("url")));
-    if (tmp.len == 0)
+    if (tmp.len == 0) {
+        log(acme->logger, S("Challenge info response contains an invalid 'url' field\n"), V());
         return -1;
+    }
     string url = { tmp.ptr, tmp.len };
 
     acme->domains[acme->resolved_challenges].challenge_token = allocstr(token);
-    if (acme->domains[acme->resolved_challenges].challenge_token.ptr == NULL)
+    if (acme->domains[acme->resolved_challenges].challenge_token.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         return -1;
+    }
 
     acme->domains[acme->resolved_challenges].challenge_url = allocstr(url);
-    if (acme->domains[acme->resolved_challenges].challenge_url.ptr == NULL)
+    if (acme->domains[acme->resolved_challenges].challenge_url.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         return -1;
+    }
 
     return 0;
 }
@@ -931,7 +1036,7 @@ static int send_next_challenge_begin_request(ACME *acme, CHTTP_Client *client)
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, challenge_url);
+        acme->dont_verify_cert, challenge_url, acme->logger);
 
     request_builder_write(&builder, S("{}"));
 
@@ -958,7 +1063,7 @@ static int send_challenge_status_request(ACME *acme,
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url);
+        acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url, acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -970,8 +1075,10 @@ static int complete_challenge_status_request(ACME *acme,
 {
     *challenge_completed = false;
 
-    if (response->status != 200)
+    if (response->status != 200) {
+        log(acme->logger, S("Challenge status response has status '{}' but 200 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -981,22 +1088,32 @@ static int complete_challenge_status_request(ACME *acme,
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
-    if (json == NULL)
+    if (json == NULL) {
+        string err = ZT2S(error.msg);
+        log(acme->logger, S("Challenge status response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
 
     // Check status field
     string status;
-    if (json_match(json, &error, "{'status': ?}", &status) != 0)
+    if (json_match(json, &error, "{'status': ?}", &status) != 0) {
+        log(acme->logger, S("Challenge status response JSON doesn't have the expected schema\n"), V());
         return -1;
+    }
 
     string status_http = { status.ptr, status.len };
 
-    if (chttp_streq(status_http, CHTTP_STR("invalid")))
+    if (chttp_streq(status_http, CHTTP_STR("invalid"))) {
+        log(acme->logger, S("Challenge is in the invalid state\n"), V());
         return -1;
+    }
 
     if (chttp_streq(status_http, CHTTP_STR("valid"))) {
+        log(acme->logger, S("Challenge completed\n"), V());
         acme->resolved_challenges++;
         *challenge_completed = true;
+    } else {
+        log(acme->logger, S("Challenge still hasn't completed (status is '{}')\n"), V(status_http));
     }
 
     return 0;
@@ -1011,16 +1128,20 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
 
     EVP_PKEY *cert_key;
     char csr_buf[1<<12];
-    int csr_len = create_certificate_signing_request(&cert_key, domains,
-        num_domains, acme->country, acme->organization, csr_buf, sizeof(csr_buf));
+    int csr_len = create_certificate_signing_request(&cert_key, domains, num_domains, acme->country, acme->organization, csr_buf, sizeof(csr_buf), acme->logger);
     if (csr_len < 0)
         return -1;
 
+    log(acme->logger, S("Certificate Signing Request was generated\n"), V());
+
     BIO *bio = BIO_new(BIO_s_mem());
-    if (!bio)
+    if (!bio) {
+        log(acme->logger, S("Call to BIO_new failed\n"), V());
         return -1;
+    }
 
     if (!PEM_write_bio_PrivateKey(bio, cert_key, NULL, NULL, 0, NULL, NULL)) {
+        log(acme->logger, S("Call to PEM_write_bio_PrivateKey failed\n"), V());
         BIO_free(bio);
         EVP_PKEY_free(cert_key);
         return -1;
@@ -1031,13 +1152,15 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
 
     string certificate_key = { pem_buf, pem_len };
     if (file_write_all(acme->certificate_key_file, certificate_key) < 0) {
+        log(acme->logger, S("Couldn't write certificate key to '{}'\n"), V(acme->certificate_key_file));
         BIO_free(bio);
         EVP_PKEY_free(cert_key);
         return -1;
     }
 
-    acme->certificate_key.ptr = malloc(certificate_key.len);
+    acme->certificate_key.ptr = malloc(certificate_key.len); // TODO: allocstr?
     if (acme->certificate_key.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         BIO_free(bio);
         EVP_PKEY_free(cert_key);
         return -1;
@@ -1054,13 +1177,15 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
         0,
         sizeof(csr_buf),
         ENCODING_B64URLNP);
-    if (csr_len < 0)
+    if (csr_len < 0) {
+        log(acme->logger, S("Failed to encode CSR to Base64\n"), V());
         return -1;
+    }
     string csr = { csr_buf, csr_len };
 
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->finalize_url);
+        acme->dont_verify_cert, acme->finalize_url, acme->logger);
 
     request_builder_write(&builder, S("{\"csr\":\""));
     request_builder_write(&builder, csr);
@@ -1071,8 +1196,10 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
 
 static int complete_finalize_order_request(ACME *acme, CHTTP_Response *response)
 {
-    if (response->status != 200)
+    if (response->status != 200) {
+        log(acme->logger, S("Finalize order response has status '{}' but 200 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -1082,14 +1209,19 @@ static int complete_finalize_order_request(ACME *acme, CHTTP_Response *response)
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
-    if (json == NULL)
+    if (json == NULL) {
+        string err = ZT2S(error.msg);
+        log(acme->logger, S("Finalize order response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
 
     string status = json_get_string(json_get_field(json, JSON_STR("status")));
 
     if (!streq(status, S("processing")) &&
-        !streq(status, S("valid")))
+        !streq(status, S("valid"))) {
+        log(acme->logger, S("Finalize order response contains status '{}' ('processing' or 'valid' were expected)\n"), V(status));
         return -1;
+    }
 
     return 0;
 }
@@ -1098,7 +1230,7 @@ static int send_certificate_poll_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account,
-        acme->nonce, acme->dont_verify_cert, acme->order_url);
+        acme->nonce, acme->dont_verify_cert, acme->order_url, acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1107,8 +1239,10 @@ static int send_certificate_poll_request(ACME *acme, CHTTP_Client *client)
 
 static int complete_certificate_poll_request(ACME *acme, CHTTP_Response *response)
 {
-    if (response->status != 200)
+    if (response->status != 200) {
+        log(acme->logger, S("Certificate poll response has status '{}' but 200 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
@@ -1117,20 +1251,29 @@ static int complete_certificate_poll_request(ACME *acme, CHTTP_Response *respons
     JSON_Error error;
     JSON_Arena arena = json_arena_init(pool, sizeof(pool));
     JSON *json = json_decode(response->body.ptr, response->body.len, &arena, &error);
-    if (json == NULL)
+    if (json == NULL) {
+        string err = ZT2S(error.msg);
+        log(acme->logger, S("Certificate poll response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
 
     string status = json_get_string(json_get_field(json, JSON_STR("status")));
     if (streq(status, S("valid"))) {
 
         string certificate_url = json_get_string(json_get_field(json, S("certificate")));
-        if (certificate_url.len == 0)
+        if (certificate_url.len == 0) {
+            log(acme->logger, S("Certificate poll response contains an invalid 'certificate' field\n"), V());
             return -1;
-        acme->certificate_url = allocstr((string) { certificate_url.ptr, certificate_url.len });
-        if (acme->certificate_url.ptr == NULL)
+        }
+
+        acme->certificate_url = allocstr(certificate_url);
+        if (acme->certificate_url.ptr == NULL) {
+            log(acme->logger, S("String allocation failure\n"), V());
             return -1;
+        }
 
     } else if (!streq(status, S("processing"))) {
+        log(acme->logger, S("Certificate poll response contains an invalid 'status' field '{}' ('valid' or 'processing' were expected)\n"), V(status));
         return -1;
     }
 
@@ -1141,7 +1284,7 @@ static int send_certificate_download_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
     request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->certificate_url);
+        acme->dont_verify_cert, acme->certificate_url, acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1150,19 +1293,25 @@ static int send_certificate_download_request(ACME *acme, CHTTP_Client *client)
 
 static int complete_certificate_download_request(ACME *acme, CHTTP_Response *response)
 {
-    if (response->status != 200)
+    if (response->status != 200) {
+        log(acme->logger, S("Certificate download response has status '{}' but 200 was expected\n"), V(response->status));
         return -1;
+    }
 
     if (extract_nonce(acme, response) < 0)
         return -1;
 
     string certificate = response->body;
-    if (file_write_all(acme->certificate_file, certificate) < 0)
+    if (file_write_all(acme->certificate_file, certificate) < 0) {
+        log(acme->logger, S("Couldn't write certificate to file '{}'\n"), V(acme->certificate_file));
         return -1;
+    }
 
-    acme->certificate.ptr = malloc(certificate.len);
-    if (acme->certificate.ptr == NULL)
+    acme->certificate.ptr = malloc(certificate.len); // TODO: allocstr
+    if (acme->certificate.ptr == NULL) {
+        log(acme->logger, S("String allocation failure\n"), V());
         return -1;
+    }
     memcpy_(acme->certificate.ptr, certificate.ptr, certificate.len);
     acme->certificate.len = certificate.len;
 
@@ -1320,6 +1469,8 @@ b8 acme_process_request(ACME *acme, CHTTP_Request *request,
     if (!starts_with(path, prefix))
         return false;
 
+    log(acme->logger, S("Received request for '{}'\n"), V(path));
+
     if (acme->state != ACME_STATE_CHALLENGE_2 &&
         acme->state != ACME_STATE_CHALLENGE_3 &&
         acme->state != ACME_STATE_CHALLENGE_4) {
@@ -1387,6 +1538,7 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
 {
     uint64_t current_time = get_current_time();
     if (current_time == INVALID_TIME) {
+        log(acme->logger, S("Couldn't read the time\n"), V());
         CHANGE_STATE(acme->state, ACME_STATE_ERROR);
         return false;
     }

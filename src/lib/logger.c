@@ -64,6 +64,8 @@ void logger_flush(Logger *l)
 
 void log(Logger *l, string fmt, Args args)
 {
+    if (l == NULL)
+        return;
     StringBuilder b;
     sb_init(&b,
         l->buf + l->len,
