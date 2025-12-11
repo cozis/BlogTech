@@ -35,17 +35,25 @@ static int read_config_file(int argc, char **argv, string *text)
         }
     }
 
-    if (!no_config && file.len == 0)
-        if (file_exists(S(DEFAULT_CONFIG_FILE)))
+    if (!no_config && file.len == 0) {
+        int ret = file_exists(S(DEFAULT_CONFIG_FILE));
+        if (ret < 0) {
+            if (ret != FS_ERROR_NOTFOUND)
+                return -1;
             file = S(DEFAULT_CONFIG_FILE);
+        }
+    }
 
     if (file.len == 0)
         *text = EMPTY_STRING;
     else {
         int ret = file_read_all(file, text);
         if (ret < 0) {
-            printf("Couldn't load file");
-            return -1;
+            if (ret != FS_ERROR_NOTFOUND) {
+                printf("Couldn't load file");
+                return -1;
+            }
+            *text = EMPTY_STRING;
         }
     }
 

@@ -6,7 +6,7 @@ static void
 process_request_get(string document_root, CHTTP_Request *request,
     CHTTP_ResponseBuilder builder, Auth *auth)
 {
-    char buf[1<<10];
+    char buf[PATH_LIMIT];
     int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
     if (ret < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
@@ -15,25 +15,54 @@ process_request_get(string document_root, CHTTP_Request *request,
     }
     string file_path = { buf, ret };
 
-    chttp_response_builder_status(builder, 200); // TODO: better error code
+    chttp_response_builder_status(builder, 200);
 
     FileHandle fd;
     ret = file_open(file_path, FS_OPEN_READ, &fd);
     if (ret < 0) {
+
         if (ret == FS_ERROR_NOTFOUND) {
-            chttp_response_builder_status(builder, 404); // TODO: better error code
+            chttp_response_builder_status(builder, 404);
             chttp_response_builder_send(builder);
-        } else {
-            chttp_response_builder_status(builder, 500); // TODO: better error code
-            chttp_response_builder_send(builder);
+            return;
         }
-        return;
+
+        ret = is_dir(file_path);
+        if (ret != 1) {
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
+            return;
+        }
+
+        if (file_path.len > 0 && file_path.ptr[file_path.len-1] == '/')
+            file_path.len--;
+
+        char index_file[] = "/index.html";
+        if (file_path.len + sizeof(index_file) - 1 >= sizeof(buf)) {
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
+            return;
+        }
+        memcpy(buf + file_path.len, index_file, sizeof(index_file)-1);
+        file_path.len += sizeof(index_file)-1;
+
+        ret = file_open(file_path, FS_OPEN_READ, &fd);
+        if (ret < 0) {
+            if (ret == FS_ERROR_NOTFOUND) {
+                chttp_response_builder_status(builder, 404);
+                chttp_response_builder_send(builder);
+                return;
+            }
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
+            return;
+        }
     }
     u64 len;
     ret = file_size(fd, &len);
     if (ret < 0) {
         file_close(fd);
-        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_status(builder, 500);
         chttp_response_builder_send(builder);
         return;
     }
@@ -46,7 +75,7 @@ process_request_get(string document_root, CHTTP_Request *request,
             ret = file_read(fd, dst + copied, len - copied);
             if (ret <= 0) {
                 file_close(fd);
-                chttp_response_builder_status(builder, 500); // TODO: better error code
+                chttp_response_builder_status(builder, 500);
                 chttp_response_builder_send(builder);
                 return;
             }

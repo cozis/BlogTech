@@ -56,6 +56,8 @@ int file_exists(string path);
 
 int file_delete(string path);
 
+int is_dir(string path);
+
 int file_read_all(string path, string *data);
 
 int file_write_all(string path, string data);

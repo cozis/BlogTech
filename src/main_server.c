@@ -349,13 +349,19 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
-    if (server_config.https_enabled && file_exists(server_config.cert_file)) {
+    if (server_config.https_enabled) {
 #ifdef HTTPS_ENABLED
-        ret = chttp_server_listen_tls(&server,
-            server_config.https_addr,
-            server_config.https_port,
-            server_config.cert_file,
-            server_config.cert_key_file);
+        ret = file_exists(server_config.cert_file);
+        if (ret == 0) {
+            ret = chttp_server_listen_tls(&server,
+                server_config.https_addr,
+                server_config.https_port,
+                server_config.cert_file,
+                server_config.cert_key_file);
+        } else {
+            if (ret == FS_ERROR_NOTFOUND)
+                ret = 0;
+        }
 #else
         ret = -1;
 #endif

@@ -198,6 +198,35 @@ int file_delete(string path)
     return 0;
 }
 
+int is_dir(string path)
+{
+    char path_zt[PATH_LIMIT];
+    if (path.len >= SIZEOF(path_zt))
+        return FS_ERROR_PATHTOOLONG;
+    memcpy(path_zt, path.ptr, path.len);
+    path_zt[path.len] = '\0';
+
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path_zt);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        return FS_ERROR_UNSPECIFIED;
+
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY)
+        return 1;
+
+    return 0;
+#else
+    struct stat sb;
+    if (stat(path, &sb) <)
+        return FS_ERROR_UNSPECIFIED;
+
+    if (S_ISDIR(sb.st_mode))
+        return 1;
+
+    return 0;
+#endif
+}
+
 int file_read_all(string path, string *data)
 {
     FileHandle fd;
