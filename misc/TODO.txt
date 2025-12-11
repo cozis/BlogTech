@@ -5,4 +5,4 @@
 [X] Make blogtech compile to windows with HTTPS disabled
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] Add serving of files from multiple virtual hosts
-[ ] Fix the file_open mode flags on Windows
+[X] Fix the file_open mode flags on Windows

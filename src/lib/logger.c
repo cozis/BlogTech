@@ -10,7 +10,7 @@ int logger_init(Logger *l, int cap, int timeout, string path)
     l->len = 0;
     l->cap = cap;
 
-    if (file_open(path, &l->fd, FILE_OPEN_WRITE) < 0)
+    if (file_open(path, FS_OPEN_LOG, &l->fd) < 0)
         return -1;
 
     l->timeout = timeout;

@@ -531,7 +531,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     string account_key;
     int ret = file_read_all(config->account_key_file, &account_key);
     if (ret < 0) {
-        if (ret != FILE_SYSTEM_NOT_FOUND) {
+        if (ret != FS_ERROR_NOTFOUND) {
             log(acme->logger, S("Coultn't open account key file '{}'. Aborting ACME initialization.\n"), V(config->account_key_file));
             acme_free(acme);
             return -1;
@@ -542,7 +542,7 @@ int acme_init(ACME *acme, ACME_Config *config)
         EVP_PKEY *key = parse_private_key(account_key, acme->logger);
         if (key == NULL) {
             log(acme->logger, S("Coultn't parse ACME account key in '{}'. Deleting the file and continuing without an account.\n"), V(config->account_key_file));
-            remove_file_or_dir(acme->account_key_file);
+            file_delete(acme->account_key_file);
         }
         acme->account.key = key;
         free(account_key.ptr);
@@ -556,7 +556,7 @@ int acme_init(ACME *acme, ACME_Config *config)
         string certificate;
         ret = file_read_all(acme->certificate_file, &certificate);
         if (ret < 0) {
-            if (ret != FILE_SYSTEM_NOT_FOUND) {
+            if (ret != FS_ERROR_NOTFOUND) {
                 log(acme->logger, S("Coultn't open certificate file '{}'. Aborting ACME initialization.\n"), V(config->certificate_file));
                 acme_free(acme);
                 return -1;
@@ -568,7 +568,7 @@ int acme_init(ACME *acme, ACME_Config *config)
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
             if (ret < 0) {
                 free(certificate.ptr);
-                if (ret != FILE_SYSTEM_NOT_FOUND) {
+                if (ret != FS_ERROR_NOTFOUND) {
                     acme_free(acme);
                     return -1;
                 }
@@ -582,8 +582,8 @@ int acme_init(ACME *acme, ACME_Config *config)
     }
     if (acme->certificate.len == 0) {
         log(acme->logger, S("Deleting certificate file '{}' and certificate key file '{}'\n"), V(acme->certificate_file, acme->certificate_key_file));
-        remove_file_or_dir(acme->certificate_file);
-        remove_file_or_dir(acme->certificate_key_file);
+        file_delete(acme->certificate_file);
+        file_delete(acme->certificate_key_file);
     }
 
     // TODO: before requesting a certificate, the ACME client should

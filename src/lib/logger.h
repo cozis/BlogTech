@@ -6,12 +6,12 @@
 #include "file_system.h"
 
 typedef struct {
-    char*  buf;
-    int    len;
-    int    cap;
-    Handle fd;
-    int    timeout;
-    Time   last_flush;
+    char* buf;
+    int   len;
+    int   cap;
+    FileHandle fd;
+    int   timeout;
+    Time  last_flush;
 } Logger;
 
 int  logger_init(Logger *l, int cap, int timeout, string path);

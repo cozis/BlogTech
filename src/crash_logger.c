@@ -17,8 +17,8 @@
 
 static void handler(void **stack, int depth)
 {
-    Handle fd;
-    int ret = file_open(S("crash.log"), &fd, FILE_OPEN_WRITE); // TODO: make this signal-safe
+    FileHandle fd;
+    int ret = file_open_zt("crash.log", FS_OPEN_WRITE, &fd);
     if (ret < 0)
         return;
 

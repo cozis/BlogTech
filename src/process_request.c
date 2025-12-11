@@ -1,5 +1,6 @@
 #include "process_request.h"
 #include "lib/file_system.h"
+#include <winnt.h>
 
 static void
 process_request_get(string document_root, CHTTP_Request *request,
@@ -16,12 +17,10 @@ process_request_get(string document_root, CHTTP_Request *request,
 
     chttp_response_builder_status(builder, 200); // TODO: better error code
 
-    // TODO: As file_open is currently implemented, when a
-    //       file isn't found it's created, which is very bad
-    Handle fd;
-    ret = file_open(file_path, &fd, FILE_OPEN_READ);
+    FileHandle fd;
+    ret = file_open(file_path, FS_OPEN_READ, &fd);
     if (ret < 0) {
-        if (ret == FILE_SYSTEM_NOT_FOUND) {
+        if (ret == FS_ERROR_NOTFOUND) {
             chttp_response_builder_status(builder, 404); // TODO: better error code
             chttp_response_builder_send(builder);
         } else {
@@ -84,9 +83,8 @@ process_request_put(string document_root, CHTTP_Request *request,
     }
     string file_path = { buf, ret };
 
-    // TODO: delete the previous version if it exists
-    Handle fd;
-    ret = file_open(file_path, &fd, FILE_OPEN_WRITE);
+    FileHandle fd;
+    ret = file_open(file_path, FS_OPEN_WRITE, &fd);
     if (ret < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
@@ -134,7 +132,7 @@ process_request_delete(string document_root, CHTTP_Request *request,
     }
     string file_path = { buf, ret };
 
-    if (remove_file_or_dir(file_path) < 0) {
+    if (file_delete(file_path) < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
     } else {
