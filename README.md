@@ -1,13 +1,14 @@
 # BlogTech
+
 BlogTech is a static file server and file upload utiliy for easy website management. It supports authenticated PUT/DELETE requests, automatic HTTPS certificate generation via the built-in ACME client.
 
 ## Quick Start
 
-If you are on Linux, you'll need OpenSSL to be installed on your machine. You can install it by running:
+If you are on Linux, you'll need OpenSSL and gcc to be installed on your machine. You can install them by running:
 
 ```sh
 # Ubuntu/Debian
-sudo apt install libssl-dev
+sudo apt install libssl-dev gcc
 ```
 
 Now we can build BlogTech:

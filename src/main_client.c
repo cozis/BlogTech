@@ -144,7 +144,7 @@ int main_client(int argc, char **argv)
             printf("Config Error: Invalid remote\n");
             return -1;
         }
-        remote_host = parsed_url.authority.host.name; // TODO: will this work for IPv6?
+        remote_host = parsed_url.authority.host.text; // TODO: will this work for IPv6?
     }
 
     string auth_password;
