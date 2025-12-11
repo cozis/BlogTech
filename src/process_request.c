@@ -1,6 +1,5 @@
 #include "process_request.h"
 #include "lib/file_system.h"
-#include <winnt.h>
 
 static void
 process_request_get(string document_root, CHTTP_Request *request,
@@ -128,6 +127,7 @@ process_request_put(string document_root, CHTTP_Request *request,
         if (ret < 0) {
             chttp_response_builder_status(builder, 500); // TODO: better error code
             chttp_response_builder_send(builder);
+            file_close(fd);
             return;
         }
         copied += ret;
@@ -186,13 +186,13 @@ void process_request(string document_root, CHTTP_Request *request,
     case CHTTP_METHOD_OPTIONS:
         chttp_response_builder_status(builder, 200);
         chttp_response_builder_header(builder,
-            CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+            CHTTP_STR("Allow: GET, PUT, DELETE, OPTIONS"));
         chttp_response_builder_send(builder);
         break;
     default:
         chttp_response_builder_status(builder, 405);
         chttp_response_builder_header(builder,
-            CHTTP_STR("Allow: GET, POST, PUT, DELETE, OPTIONS"));
+            CHTTP_STR("Allow: GET, PUT, DELETE, OPTIONS"));
         chttp_response_builder_send(builder);
         break;
     }

@@ -3,6 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
+#include <sys/stat.h>
 #endif
 
 #include "file_system.h"
@@ -216,11 +217,11 @@ int is_dir(string path)
 
     return 0;
 #else
-    struct stat sb;
-    if (stat(path, &sb) <)
+    struct stat buf;
+    if (stat(path_zt, &buf) < 0)
         return FS_ERROR_UNSPECIFIED;
 
-    if (S_ISDIR(sb.st_mode))
+    if (S_ISDIR(buf.st_mode))
         return 1;
 
     return 0;

@@ -174,7 +174,8 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
         for (int i = 0; i < host.len; i++)
             if (host.ptr[i] == ':')
                 semicol = i;
-        host.len = semicol;
+        if (semicol > -1)
+            host.len = semicol;
     }
 
     idx = chttp_find_header(
