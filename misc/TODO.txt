@@ -3,6 +3,8 @@
 [X] Add request logging
 [X] Add a crash logger
 [X] Make blogtech compile to windows with HTTPS disabled
+[X] Fix the file_open mode flags on Windows
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] Add serving of files from multiple virtual hosts
-[X] Fix the file_open mode flags on Windows
+[ ] Make sure CHTTP has request timeouts
+[ ] Test the crash logger
