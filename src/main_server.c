@@ -562,18 +562,22 @@ int main_server(int argc, char **argv)
         EventRegister server_reg = {
             ptrs,
             polled,
-            0
+            0,
+            -1
         };
         chttp_server_register_events(&server, &server_reg);
 
         EventRegister client_reg = {
             ptrs   + server_reg.num_polled,
             polled + server_reg.num_polled,
-            0
+            0,
+            -1
         };
         chttp_client_register_events(&client, &client_reg);
 
         int timeouts[] = {
+            server_reg.timeout,
+            client_reg.timeout,
             logger_next_timeout(&request_logger),
             logger_next_timeout(&auth_logger),
 #ifdef HTTPS_ENABLED
@@ -583,12 +587,7 @@ int main_server(int argc, char **argv)
         };
         int timeout = pick_timeout(timeouts, COUNT(timeouts));
 
-        if (server_reg.num_polled > 0 &&
-            client_reg.num_polled > 0) {
-            int num_polled = server_reg.num_polled
-                            + client_reg.num_polled;
-            POLL(polled, num_polled, timeout);
-        }
+        POLL(polled, server_reg.num_polled + client_reg.num_polled, timeout);
 
         // TODO: These should not be called at each iteration but when
         //       the timeout actually triggered

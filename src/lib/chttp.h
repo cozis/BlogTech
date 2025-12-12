@@ -17,10 +17,12 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <windows.h>
 #else
+#include <time.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -37,8 +39,6 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 #endif
-
-#include "basic.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // src/basic.h
@@ -66,6 +66,8 @@ enum {
     // TLS support not built-in
     CHTTP_ERROR_NOTLS       = -6,
 };
+
+#include "basic.h"
 
 // String type used throughout cHTTP.
 #define CHTTP_String string
@@ -283,6 +285,16 @@ typedef struct {
 int chttp_parse_set_cookie(CHTTP_String str, CHTTP_SetCookie *out);
 
 ////////////////////////////////////////////////////////////////////////////////////////
+// src/time.h
+////////////////////////////////////////////////////////////////////////////////////////
+
+typedef uint64_t Time;
+
+#define INVALID_TIME ((Time) UINT64_MAX-1)
+
+Time get_current_time(void);
+
+////////////////////////////////////////////////////////////////////////////////////////
 // src/secure_context.h
 ////////////////////////////////////////////////////////////////////////////////////////
 
@@ -396,6 +408,8 @@ typedef uint16_t Port;
 
 typedef enum {
     SOCKET_EVENT_READY,
+    SOCKET_EVENT_CREATION_TIMEOUT,
+    SOCKET_EVENT_RECV_TIMEOUT,
     SOCKET_EVENT_DISCONNECT,
 } SocketEventType;
 
@@ -493,6 +507,12 @@ typedef struct {
     // User-provided context pointer
     void *user;
 
+    Time creation_time;
+    Time last_recv_time;
+
+    Time recv_timeout;
+    Time creation_timeout;
+
     // A single connect operation may involve
     // trying to establish a connection towards
     // one of a set of addresses.
@@ -516,6 +536,10 @@ typedef struct {
 // is private to the .c file associated to this
 // header.
 typedef struct {
+
+    // TODO: comment
+    Time recv_timeout;
+    Time creation_timeout;
 
     // TCP listener sockets. The first is intended
     // for plaintext, while the second is for TLS.
@@ -565,6 +589,9 @@ int socket_manager_init(SocketManager *sm, Socket *socks,
 // Deinitialize a socket manager
 void socket_manager_free(SocketManager *sm);
 
+void socket_manager_set_creation_timeout(SocketManager *sm, int timeout);
+void socket_manager_set_recv_timeout(SocketManager *sm, int timeout);
+
 // Configure the socket manager to listen on
 // the specified interface for TCP connections.
 // Incoming connections will be automatically
@@ -606,6 +633,7 @@ typedef struct {
     void **ptrs;
     struct pollfd *polled;
     int num_polled;
+    int timeout;
 } EventRegister;
 
 // Resets the event register with the list of descriptors

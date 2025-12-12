@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include <windows.h>
+#include <bcrypt.h>
 #else
 #include <errno.h>
 #include <sys/random.h>

@@ -7,7 +7,12 @@
 #define is_digit is_digit__http
 #define to_lower to_lower__http
 #define parse_path parse_path__http
+#define Time Time__http
+#define get_current_time get_current_time__http
 #include "src/lib/chttp.c"
+#undef INVALID_TIME
+#undef Time
+#undef get_current_time
 #undef parse_path
 #undef to_lower
 #undef is_digit

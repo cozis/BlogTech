@@ -4,10 +4,10 @@
 [X] Add a crash logger
 [X] Make blogtech compile to windows with HTTPS disabled
 [X] Fix the file_open mode flags on Windows
+[X] Test the crash logger
+[X] Make sure CHTTP has request timeouts
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] Add serving of files from multiple virtual hosts
-[ ] Make sure CHTTP has request timeouts
-[ ] Test the crash logger
 [ ] Make the signature comparison constant-time
 [ ] Handle SIGTERM for graceful shutdowns
 [ ] Mention installing clang into the quick start guide for windows
