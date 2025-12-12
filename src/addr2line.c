@@ -70,7 +70,7 @@ parse_output_line(char *src, int len, int *pcur, Addr2LineItem *item)
         cur++;
 
         if (cur < len && is_digit(src[cur])) {
-            int line = src[cur] - '0';
+            line = src[cur] - '0';
             cur++;
 
             while (cur < len && is_digit(src[cur])) {
