@@ -28,7 +28,7 @@
 #define ASSERT(X) { if (!(X)) __builtin_trap(); }
 #endif
 
-#define STATIC_ASSERT _Static_assert
+#define STATIC_ASSERT(X) _Static_assert((X), "")
 
 /////////////////////////////////////////////////////////////////////////
 // INTEGER TYPES

@@ -1,6 +1,6 @@
 #include "crash_reader.h"
 
-int crash_reader_init(CrashReader *reader, string crash_file)
+int crash_reader_init(CrashReader *reader, string crash_file, string debug_info_file)
 {
     string data;
     int ret = file_read_all(crash_file, &data);
@@ -13,6 +13,7 @@ int crash_reader_init(CrashReader *reader, string crash_file)
     reader->src = data.ptr;
     reader->len = data.len;
     reader->cur = 0;
+    reader->debug_info_file = debug_info_file;
     return 0;
 }
 
@@ -21,10 +22,8 @@ void crash_reader_free(CrashReader *reader)
     if (reader->len > 0)
         free(reader->src);
 
-#ifndef _WIN32
     if (reader->cur > 0)
         addr2line_free_result(&reader->a2lres);
-#endif
 }
 
 b8 crash_reader_next(CrashReader *reader, CrashInfo *crash)
@@ -32,10 +31,8 @@ b8 crash_reader_next(CrashReader *reader, CrashInfo *crash)
     if (reader->cur == reader->len)
         return false;
 
-#ifndef _WIN32
     if (reader->cur > 0)
         addr2line_free_result(&reader->a2lres);
-#endif
     //////////////////////////////////////////////
     // Read header
 
@@ -81,14 +78,11 @@ b8 crash_reader_next(CrashReader *reader, CrashInfo *crash)
     crash->process_id = header.process_id;
     crash->timestamp = header.timestamp;
 
-#ifdef _WIN32
-    // TODO
-    crash->num_frames = 0;
-#else
-    Addr2LineResult a2lres;
-    int ret = addr2line(S("blogtech"), frames, num_frames, &reader->a2lres);
+    int ret = addr2line(reader->debug_info_file, frames, num_frames, &reader->a2lres);
     if (ret < 0) {
-        ASSERT(0);
+        // Symbol resolution failed, return frames without symbol info
+        crash->num_frames = 0;
+        return true;
     }
 
     if (reader->a2lres.count > CRASH_FRAME_LIMIT)
@@ -100,7 +94,6 @@ b8 crash_reader_next(CrashReader *reader, CrashInfo *crash)
         crash->frames[i].line = reader->a2lres.items[i].line;
     }
     crash->num_frames = reader->a2lres.count;
-#endif
 
     return true;
 }

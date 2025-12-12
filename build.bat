@@ -1,1 +1,1 @@
-gcc unity.c -o blogtech -ggdb -funwind-tables -lws2_32 -lbcrypt
+clang-cl unity.c /Fe:blogtech.exe /Zi /link ws2_32.lib bcrypt.lib dbghelp.lib

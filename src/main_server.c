@@ -296,8 +296,14 @@ int main_server(int argc, char **argv)
     // PROCESS CRASHES
     ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef _WIN32
+    string debug_info_file = S("blogtech.exe");
+#else
+    string debug_info_file = S("blogtech");
+#endif
+
     CrashReader crash_reader;
-    int ret = crash_reader_init(&crash_reader, S("crash.bin"));
+    int ret = crash_reader_init(&crash_reader, S("crash.bin"), debug_info_file);
     if (ret < 0)
         return -1;
 

@@ -1,4 +1,3 @@
-#ifndef _WIN32
 #ifndef ADDR2LINE_INCLUDED
 #define ADDR2LINE_INCLUDED
 
@@ -22,4 +21,3 @@ int addr2line(string executable, u64 *ptrs, int num_ptrs,
 void addr2line_free_result(Addr2LineResult *result);
 
 #endif // ADDR2LINE_INCLUDED
-#endif // !_WIN32

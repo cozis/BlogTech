@@ -9,9 +9,8 @@ typedef struct {
     char *src;
     int   len;
     int   cur;
-#ifndef _WIN32
+    string debug_info_file;
     Addr2LineResult a2lres;
-#endif
 } CrashReader;
 
 typedef struct {
@@ -28,7 +27,7 @@ typedef struct {
     CrashFrame frames[CRASH_FRAME_LIMIT];
 } CrashInfo;
 
-int  crash_reader_init(CrashReader *reader, string crash_file);
+int  crash_reader_init(CrashReader *reader, string crash_file, string debug_info_file);
 void crash_reader_free(CrashReader *reader);
 b8   crash_reader_next(CrashReader *reader, CrashInfo *crash);
 

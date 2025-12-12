@@ -6,3 +6,5 @@ pebble
 *.pwd
 *.log
 *.bin
+*.ilk
+*.pdb
