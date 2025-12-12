@@ -4,6 +4,7 @@
 #include "acme.h"
 #include "config_reader.h"
 #include "crash_logger.h"
+#include "crash_reader.h"
 #include "process_request.h"
 #include "lib/http.h"
 #include "lib/logger.h"
@@ -291,6 +292,76 @@ static int pick_timeout(int *arr, int num)
 
 int main_server(int argc, char **argv)
 {
+    ///////////////////////////////////////////////////////////////////////////////
+    // PROCESS CRASHES
+    ///////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+    string debug_info_file = S("blogtech.exe");
+#else
+    string debug_info_file = S("blogtech");
+#endif
+
+    CrashReader crash_reader;
+    int ret = crash_reader_init(&crash_reader, S("crash.bin"), debug_info_file);
+    if (ret < 0)
+        return -1;
+
+    for (CrashInfo crash; crash_reader_next(&crash_reader, &crash); ) {
+
+        char buf[1<<12];
+        StringBuilder sb;
+        sb_init(&sb, buf, SIZEOF(buf));
+
+        sb_write_str(&sb, S("Crash type: "));
+        sb_write_str(&sb, crash.type);
+        sb_write_str(&sb, S("\n"));
+
+        sb_write_str(&sb, S("Process ID: "));
+        sb_write_u32(&sb, crash.process_id);
+        sb_write_str(&sb, S("\n"));
+
+        sb_write_str(&sb, S("Timestamp: "));
+        sb_write_u64(&sb, crash.timestamp);
+        sb_write_str(&sb, S("\n"));
+
+        sb_write_str(&sb, S("Stack trace:\n"));
+        for (int i = 0; i < crash.num_frames; i++) {
+            if (crash.frames[i].line > -1) {
+                sb_write_fmt(&sb,
+                    S("  #{} {} (in {}:{})\n"),
+                    V(i, crash.frames[i].func, crash.frames[i].file, crash.frames[i].line)
+                );
+            } else {
+                sb_write_fmt(&sb,
+                    S("  #{} {} (in {})\n"),
+                    V(i, crash.frames[i].func, crash.frames[i].file)
+                );
+            }
+        }
+
+        sb_write_str(&sb, S("---------------------------------\n"));
+
+        if (sb.status != 0 || sb.len >= SIZEOF(buf)) {
+            ASSERT(0);
+        }
+
+        FileHandle fd;
+        ret = file_open(S("crash.log"), FS_OPEN_LOG, &fd);
+        if (ret < 0) {
+            ASSERT(0);
+        }
+
+        if (file_write_lp(fd, sb.dst, sb.len) < 0) {
+            ASSERT(0);
+        }
+
+        file_close(fd);
+    }
+
+    crash_reader_free(&crash_reader);
+    file_delete(S("crash.bin"));
+
     if (crash_logger_init() < 0)
         return -1;
 
@@ -299,7 +370,7 @@ int main_server(int argc, char **argv)
     ///////////////////////////////////////////////////////////////////////////////
 
     ConfigReader config_reader;
-    int ret = config_reader_init(&config_reader, argc, argv);
+    ret = config_reader_init(&config_reader, argc, argv);
     if (ret < 0) {
         crash_logger_free();
         return -1;

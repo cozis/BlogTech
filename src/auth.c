@@ -269,7 +269,7 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     }
     string expected_signature = { expected_signature_buf, ret };
 
-    if (!streq(signature, expected_signature)) {
+    if (!streq(signature, expected_signature)) { // TODO: This should be constant-time
         log(auth->logger, S("Request marked as not authenticated because its signature is invalid\n"), V());
         return 1;
     }

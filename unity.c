@@ -16,7 +16,9 @@
 #include "src/lib/jws.c"
 #include "src/lib/logger.c"
 #include "src/lib/random.c"
+#define  hex_char_to_int hex_char_to_int__enc
 #include "src/lib/encode.c"
+#undef hex_char_to_int
 #include "src/lib/string_builder.c"
 #include "src/lib/time.c"
 #include "src/lib/variadic.c"
@@ -25,7 +27,11 @@
 #define is_digit is_digit__cfgrdr
 #include "src/config_reader.c"
 #undef is_digit
+#include "src/addr2line.c"
+#include "src/crash_reader.c"
+#define  hex_char_to_int hex_char_to_int__cl
 #include "src/crash_logger.c"
+#undef hex_char_to_int
 #include "src/process_request.c"
 #include "src/request_signature.c"
 #include "src/main_client.c"

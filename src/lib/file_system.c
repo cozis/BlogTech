@@ -133,6 +133,31 @@ int file_write(FileHandle fd, char *src, int len)
 #endif
 }
 
+int file_read_lp(FileHandle fd, char *dst, int max)
+{
+    int copied = 0;
+    while (copied < max) {
+        int ret = file_read(fd, dst + copied, max - copied);
+        if (ret < 0)
+            return ret;
+        if (ret == 0)
+            break;
+        copied += ret;
+    }
+    return copied;
+}
+
+int file_write_lp(FileHandle fd, char *src, int len)
+{
+    for (int copied = 0; copied < len; ) {
+        int ret = file_write(fd, src + copied, len - copied);
+        if (ret < 0)
+            return ret;
+        copied += ret;
+    }
+    return 0;
+}
+
 int file_size(FileHandle fd, u64 *len)
 {
 #ifdef _WIN32

@@ -8,3 +8,5 @@
 [ ] Add serving of files from multiple virtual hosts
 [ ] Make sure CHTTP has request timeouts
 [ ] Test the crash logger
+[ ] Make the signature comparison constant-time
+[ ] Handle SIGTERM for graceful shutdowns

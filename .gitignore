@@ -5,3 +5,6 @@ pebble
 *.pem
 *.pwd
 *.log
+*.bin
+*.ilk
+*.pdb
