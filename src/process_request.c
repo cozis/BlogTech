@@ -74,6 +74,7 @@ process_request_get(string document_root, CHTTP_Request *request,
             ret = file_read(fd, dst + copied, len - copied);
             if (ret <= 0) {
                 file_close(fd);
+                chttp_response_builder_body_ack(builder, 0);
                 chttp_response_builder_status(builder, 500);
                 chttp_response_builder_send(builder);
                 return;
