@@ -10,3 +10,4 @@
 [ ] Test the crash logger
 [ ] Make the signature comparison constant-time
 [ ] Handle SIGTERM for graceful shutdowns
+[ ] Mention installing clang into the quick start guide for windows
