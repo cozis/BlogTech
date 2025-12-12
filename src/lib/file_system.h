@@ -50,6 +50,24 @@ int file_read(FileHandle fd, char *dst, int max);
 // Signal-safe
 int file_write(FileHandle fd, char *src, int len);
 
+// Reads up to "max" bytes into "dst" from the specified
+// file. Returns the number of bytes read on success or
+// a negative error code on failure
+//
+// Notes:
+//   - It's Signal-safe
+//   - Reduces partial reads by calling read() multiple times
+int file_read_lp(FileHandle fd, char *dst, int max);
+
+// Writes all "len" bytes in "src" to the specified file.
+// On success returns 0, else a negative error code.
+//
+// Notes:
+//   - It's Signal-safe
+//   - The difference with file_write is that it doesn't
+//     allow partial writes
+int file_write_lp(FileHandle fd, char *src, int len);
+
 int file_size(FileHandle fd, u64 *len);
 
 int file_exists(string path);

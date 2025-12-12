@@ -15,6 +15,8 @@ typedef u64 UnixTime;
 Time get_current_time(void);
 
 // Number of seconds since 1 Jan, 1970 UTC
+//
+// Signal-safe
 UnixTime get_current_unix_time(void);
 
 #endif // TIME_INCLUDED

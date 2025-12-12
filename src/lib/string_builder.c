@@ -137,10 +137,12 @@ void sb_write_arg(StringBuilder *b, Arg arg)
     case ARG_TYPE_PS64:
     case ARG_TYPE_PB8:
     case ARG_TYPE_PSTR:
-        sb_write_str(b, S("0x"));
-        sb_push_mod(b, ENCODING_HEXL);
-            sb_write_str(b, (string) { (char*) &arg.value_pu8, sizeof(arg.value_pu8) });
-        sb_pop_mod(b);
+        {
+            sb_write_str(b, S("0x"));
+            sb_push_mod(b, ENCODING_HEXL);
+                sb_write_str(b, (string) { (char*) &arg.value_pu8, sizeof(arg.value_pu8) });
+            sb_pop_mod(b);
+        }
         break;
     }
 }

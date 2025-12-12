@@ -1,77 +1,266 @@
+#include "crash_logger.h"
+
 #ifdef _WIN32
-#include <windows.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h> // GetCurrentProcessId
 #else
-#define _GNU_SOURCE
 #include <signal.h>
-#include <stdlib.h>
-#include <unwind.h> // GCC/Clang unwind API
+#include <unwind.h>
 #endif
 
-#include "lib/basic.h"
-#include "lib/file_system.h"
-#include "lib/string_builder.h"
+///////////////////////////////////////////////////////////////////////////////
+// CROSS-PLATFORM
+///////////////////////////////////////////////////////////////////////////////
 
-#define MAX_FRAMES 32
+// Signal-safe
+u32 current_process_id(void)
+{
+#ifdef _WIN32
+    return GetCurrentProcessId();
+#else
+    return getpid();
+#endif
+}
 
-// Requires the flag -funwind-tables
-
-static void handler(void **stack, int depth)
+static void handler(int sig, u64 *stack, int depth)
 {
     FileHandle fd;
-    int ret = file_open_zt("crash.log", FS_OPEN_WRITE, &fd);
+    int ret = file_open_zt("crash.bin", FS_OPEN_LOG, &fd);
     if (ret < 0)
         return;
 
-    // TODO: note on why this is static
-    static char buf[1<<12];
+    if (depth > U8_MAX)
+        depth = U8_MAX;
 
-    StringBuilder sb;
-    sb_init(&sb, buf, sizeof(buf));
-    for (int i = 0; i < depth; i++)
-        sb_write_fmt(&sb, S("Frame {}: {}\n"), V(i, (u8*) stack[i]));
-    if (sb.status < 0 || sb.len > SIZEOF(buf))
+    u8 type;
+    switch (sig) {
+        case SIGSEGV: type = CRASH_TYPE_SEGV; break;
+        case SIGBUS : type = CRASH_TYPE_BUS;  break;
+        case SIGILL : type = CRASH_TYPE_ILL;  break;
+        case SIGFPE : type = CRASH_TYPE_FPE;  break;
+        case SIGTRAP: type = CRASH_TYPE_TRAP; break;
+        case SIGSYS : type = CRASH_TYPE_SYS;  break;
+        case SIGABRT: type = CRASH_TYPE_ABRT; break;
+        default: type = CRASH_TYPE_OTH; break;
+    }
+
+    UnixTime timestamp = get_current_unix_time();
+    if (timestamp == INVALID_UNIX_TIME)
         return;
-    int len = sb.len;
 
-    for (int copied = 0; copied < len; ) {
-        int ret = file_write(fd, buf + copied, len - copied);
+    CrashHeader header;
+    header.version = CRASH_LOGGER_VERSION;
+    header.type = type;
+    header.frames = (u8) depth;
+    header.process_id = current_process_id();
+    header.timestamp = timestamp;
+
+    ret = file_write_lp(fd, (char*) &header, SIZEOF(header));
+    if (ret < 0)
+        return;
+
+    for (int i = 0; i < depth; i++) {
+        ret = file_write_lp(fd, (char*) &stack[i], SIZEOF(stack[i]));
         if (ret < 0)
             return;
-        copied = ret;
     }
 
     file_close(fd);
 }
+///////////////////////////////////////////////////////////////////////////////
+// LINUX
+///////////////////////////////////////////////////////////////////////////////
+#ifndef _WIN32
 
-#ifdef _WIN32
+#define MAP_LIMIT 128
 
-static LONG WINAPI
-handler_windows(EXCEPTION_POINTERS *pep)
+typedef struct {
+    u64 beg;
+    u64 end;
+    u64 off;
+} Map;
+
+typedef struct {
+    int count;
+    Map items[MAP_LIMIT];
+} Maps;
+
+static Maps  maps___;
+static char *stack___;
+
+static u64 addr_to_offset(u64 addr)
 {
-    // TODO: note on why this is static
-    static void *stack[MAX_FRAMES];
-    WORD frames = RtlCaptureStackBackTrace(0, MAX_FRAMES, stack, NULL);
-    handler(stack, frames);
-    return EXCEPTION_EXECUTE_HANDLER;
+    Maps *maps = &maps___;
+    for (int i = 0; i < maps->count; i++) {
+        Map map = maps->items[i];
+        if (map.beg <= addr && addr < map.end)
+            return addr - map.beg + map.off;
+    }
+    return U64_MAX;
 }
 
-int crash_logger_init(void)
+static b8 is_hex(char c)
 {
-    SetUnhandledExceptionFilter(handler_windows); // TODO: can this function fail?
+    return (c >= 'A' && c <= 'F')
+        || (c >= 'a' && c <= 'f')
+        || (c >= '0' && c <= '9');
+}
+
+static int hex_char_to_int(char c)
+{
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= '0' && c <= '9') return c - '0';
+    return -1;
+}
+
+static int parse_map_addr(char *src, int len, int *pcur, u64 *out)
+{
+    int cur = *pcur;
+
+    if (cur == len)
+        return -1;
+    int n = hex_char_to_int(src[cur]);
+    if (n < 0)
+        return -1;
+    cur++;
+
+    u64 buf = n;
+    while (cur < len) {
+
+        int n = hex_char_to_int(src[cur]);
+        if (n < 0)
+            break;
+        cur++;
+
+        if (buf > (U64_MAX - n) / 16)
+            return -1;
+        buf = buf * 16 + n;
+    }
+
+    *out = buf;
+    *pcur = cur;
     return 0;
 }
 
-void crash_logger_free(void)
+static int parse_maps(char *src, int len, Maps *out)
 {
-    // Nothing to be done
+    out->count = 0;
+
+    int cur = 0;
+    while (cur < len) {
+
+        // An entry uses the following format:
+        //   640425aab000-640425aad000 r--p 00000000 08:30 6164                       /usr/bin/cat
+
+        u64 beg;
+        int ret = parse_map_addr(src, len, &cur, &beg);
+        if (ret < 0)
+            return -1;
+
+        if (cur == len || src[cur] != '-')
+            return -1;
+        cur++;
+
+        u64 end;
+        ret = parse_map_addr(src, len, &cur, &end);
+        if (ret < 0)
+            return -1;
+
+        if (cur == len || src[cur] != ' ')
+            return -1;
+        cur++;
+
+        if (len - cur < 4
+            || (src[cur+0] != '-' && src[cur+0] != 'r')
+            || (src[cur+1] != '-' && src[cur+1] != 'w')
+            || (src[cur+2] != '-' && src[cur+2] != 'x')
+            || (src[cur+3] != 'p' && src[cur+3] != 's'))
+            return -1;
+        cur += 4;
+
+        if (cur == len || src[cur] != ' ')
+            return -1;
+        cur++;
+
+        u64 off;
+        ret = parse_map_addr(src, len, &cur, &off);
+        if (ret < 0)
+            return -1;
+
+        // The rest of the line doesn't interest us, so
+        // we skip until the end of the line or file.
+        while (cur < len && src[cur] != '\n')
+            cur++;
+
+        if (cur < len) {
+            assert(src[cur] == '\n');
+            cur++;
+        }
+
+        if (out->count == MAP_LIMIT)
+            return -1;
+        out->items[out->count++] = (Map) { beg, end, off };
+    }
+
+    return 0;
 }
 
-#else
+static int load_maps(Maps *out)
+{
+    // Note that we can't use file_read_all here since
+    // virtual files have a size of 0.
+    int fd = open("/proc/self/maps", O_RDONLY);
+    if (fd < 0)
+        return -1;
+
+    int   len = 0;
+    int   cap = 1<<12;
+    char *buf = malloc(cap);
+    if (buf == NULL) {
+        close(fd);
+        return -1;
+    }
+
+    for (;;) {
+
+        if (len == cap) {
+            cap *= 2;
+            buf = realloc(buf, cap);
+            if (buf == NULL) {
+                close(fd);
+                return -1;
+            }
+        }
+
+        int ret = read(fd, buf + len, cap - len);
+        if (ret < 0) {
+            free(buf);
+            close(fd);
+            return -1;
+        }
+        if (ret == 0)
+            break;
+
+        len += ret;
+    }
+
+    int ret = parse_maps(buf, len, out);
+    if (ret < 0) {
+        free(buf);
+        close(fd);
+        return ret;
+    }
+
+    free(buf);
+    close(fd);
+    return 0;
+}
 
 typedef struct {
     int count;
     int capacity;
-    void **stack;
+    u64 *stack;
 } UnwindBacktraceContext;
 
 static _Unwind_Reason_Code
@@ -80,40 +269,52 @@ unwind_callback(struct _Unwind_Context *ctx, void *arg)
     UnwindBacktraceContext *ubctx = (UnwindBacktraceContext*) arg;
     if (ubctx->count == ubctx->capacity)
         return _URC_END_OF_STACK;
-    ubctx->stack[ubctx->count++] = (void*) _Unwind_GetIP(ctx);
+
+    int is_before;
+    u64 ip = _Unwind_GetIPInfo(ctx, &is_before);
+    if (!is_before)
+        ip--;
+
+    ubctx->stack[ubctx->count++] = ip;
     return _URC_NO_REASON;
 }
 
 static void handler_linux(int sig, siginfo_t *info, void *ucontext)
 {
-    void *stack[MAX_FRAMES];
+    static u64 stack[CRASH_FRAME_LIMIT]; // TODO: comment on why this is statuc
     UnwindBacktraceContext context = {
         .stack=stack,
         .count=0,
         .capacity=COUNT(stack),
     };
     _Unwind_Backtrace(unwind_callback, &context);
-    handler(stack, context.count);
+
+    for (int i = 0; i < context.count; i++)
+        stack[i] = addr_to_offset(stack[i]);
+
+    handler(sig, stack, context.count);
     signal(sig, SIG_DFL);
     raise(sig);
 }
 
-static char *stack;
-
 int crash_logger_init(void)
 {
+    int ret = load_maps(&maps___);
+    if (ret < 0)
+        return -1;
+
     // Set up alternate signal stack
     {
-        stack = malloc(SIGSTKSZ);
-        if (stack == NULL)
+        stack___ = malloc(SIGSTKSZ);
+        if (stack___ == NULL)
             return -1;
 
         stack_t ss;
-        ss.ss_sp = stack;
+        ss.ss_sp = stack___;
         ss.ss_size = SIGSTKSZ;
         ss.ss_flags = 0;
         if (sigaltstack(&ss, NULL) < 0) {
-            free(stack);
+            free(stack___);
             return -1;
         }
     }
@@ -148,7 +349,37 @@ int crash_logger_init(void)
 
 void crash_logger_free(void)
 {
-    free(stack);
+    free(stack___);
 }
 
 #endif
+///////////////////////////////////////////////////////////////////////////////
+// WINDOWS
+///////////////////////////////////////////////////////////////////////////////
+#ifdef _WIN32
+
+static LONG WINAPI
+handler_windows(EXCEPTION_POINTERS *pep)
+{
+    // TODO: note on why this is static
+    static void *stack[CRASH_FRAME_LIMIT];
+    WORD frames = RtlCaptureStackBackTrace(0, CRASH_FRAME_LIMIT, stack, NULL);
+    handler(stack, frames);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+int crash_logger_init(void)
+{
+    SetUnhandledExceptionFilter(handler_windows); // TODO: can this function fail?
+    return 0;
+}
+
+void crash_logger_free(void)
+{
+    // Nothing to be done
+}
+
+#endif
+///////////////////////////////////////////////////////////////////////////////
+// END
+///////////////////////////////////////////////////////////////////////////////

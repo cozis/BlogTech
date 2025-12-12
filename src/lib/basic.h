@@ -56,7 +56,7 @@ STATIC_ASSERT(sizeof(s64) == 8);
 
 // TODO: check the following macros
 
-#define U8_MAX (~(u8) 0)
+#define U8_MAX ((u8) ~(u8) 0)
 #define U8_MIN 0
 
 #define U16_MAX ((u16) ~(u16) 0)

@@ -45,6 +45,7 @@ Time get_current_time(void)
 #endif
 }
 
+// Signal-safe
 UnixTime get_current_unix_time(void)
 {
 #ifdef _WIN32
