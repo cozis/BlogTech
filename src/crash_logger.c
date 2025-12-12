@@ -157,64 +157,128 @@ static int parse_map_addr(char *src, int len, int *pcur, u64 *out)
     return 0;
 }
 
+static int parse_map(char *src, int len, int *pcur, Map *map, string *path)
+{
+    int cur = *pcur;
+
+    // An entry uses the following format:
+    //   640425aab000-640425aad000 r--p 00000000 08:30 6164                       /usr/bin/cat
+
+    u64 beg;
+    int ret = parse_map_addr(src, len, &cur, &beg);
+    if (ret < 0)
+        return -1;
+
+    if (cur == len || src[cur] != '-')
+        return -1;
+    cur++;
+
+    u64 end;
+    ret = parse_map_addr(src, len, &cur, &end);
+    if (ret < 0)
+        return -1;
+
+    if (cur == len || src[cur] != ' ')
+        return -1;
+    cur++;
+
+    if (len - cur < 4
+        || (src[cur+0] != '-' && src[cur+0] != 'r')
+        || (src[cur+1] != '-' && src[cur+1] != 'w')
+        || (src[cur+2] != '-' && src[cur+2] != 'x')
+        || (src[cur+3] != 'p' && src[cur+3] != 's'))
+        return -1;
+    cur += 4;
+
+    if (cur == len || src[cur] != ' ')
+        return -1;
+    cur++;
+
+    u64 off;
+    ret = parse_map_addr(src, len, &cur, &off);
+    if (ret < 0)
+        return -1;
+
+    if (cur == len || src[cur] != ' ')
+        return -1;
+    cur++;
+
+    // Skip device
+    if (len - cur < 5
+        || !is_hex(src[cur+0])
+        || !is_hex(src[cur+1])
+        || src[cur+2] != ':'
+        || !is_hex(src[cur+3]) // TODO: Are device numbers hex or plain digits?
+        || !is_hex(src[cur+4]))
+        return -1;
+    cur += 5;
+
+    if (cur == len || src[cur] != ' ')
+        return -1;
+    cur++;
+
+    // Skip inode
+    if (cur == len || !is_digit(src[cur]))
+        return -1;
+    cur++;
+
+    while (cur < len && is_digit(src[cur]))
+        cur++;
+
+    if (cur == len || src[cur] != ' ')
+        return -1;
+    cur++;
+
+    while (cur < len && src[cur] == ' ')
+        cur++;
+
+    int tmp = cur;
+    while (cur < len && src[cur] != '\n')
+        cur++;
+
+    *path = (string) { src + tmp, cur - tmp };
+
+    if (cur < len) {
+        assert(src[cur] == '\n');
+        cur++;
+    }
+
+    map->beg = beg;
+    map->end = end;
+    map->off = off;
+
+    *pcur = cur;
+    return 0;
+}
+
 static int parse_maps(char *src, int len, Maps *out)
 {
     out->count = 0;
 
+    string first_path = EMPTY_STRING;
+
     int cur = 0;
     while (cur < len) {
 
-        // An entry uses the following format:
-        //   640425aab000-640425aad000 r--p 00000000 08:30 6164                       /usr/bin/cat
-
-        u64 beg;
-        int ret = parse_map_addr(src, len, &cur, &beg);
+        Map map;
+        string path;
+        int ret = parse_map(src, len, &cur, &map, &path);
         if (ret < 0)
             return -1;
 
-        if (cur == len || src[cur] != '-')
-            return -1;
-        cur++;
+        if (path.len == 0)
+            continue;
 
-        u64 end;
-        ret = parse_map_addr(src, len, &cur, &end);
-        if (ret < 0)
-            return -1;
-
-        if (cur == len || src[cur] != ' ')
-            return -1;
-        cur++;
-
-        if (len - cur < 4
-            || (src[cur+0] != '-' && src[cur+0] != 'r')
-            || (src[cur+1] != '-' && src[cur+1] != 'w')
-            || (src[cur+2] != '-' && src[cur+2] != 'x')
-            || (src[cur+3] != 'p' && src[cur+3] != 's'))
-            return -1;
-        cur += 4;
-
-        if (cur == len || src[cur] != ' ')
-            return -1;
-        cur++;
-
-        u64 off;
-        ret = parse_map_addr(src, len, &cur, &off);
-        if (ret < 0)
-            return -1;
-
-        // The rest of the line doesn't interest us, so
-        // we skip until the end of the line or file.
-        while (cur < len && src[cur] != '\n')
-            cur++;
-
-        if (cur < len) {
-            assert(src[cur] == '\n');
-            cur++;
+        if (first_path.len == 0)
+            first_path = path;
+        else {
+            if (!streq(first_path, path))
+                continue;
         }
 
         if (out->count == MAP_LIMIT)
             return -1;
-        out->items[out->count++] = (Map) { beg, end, off };
+        out->items[out->count++] = map;
     }
 
     return 0;

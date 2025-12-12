@@ -82,6 +82,9 @@ parse_output_line(char *src, int len, int *pcur, Addr2LineItem *item)
                     return -1;
                 line = line * 10 + n;
             }
+
+            if (line == 0)
+                line = -1;
         }
     }
 
