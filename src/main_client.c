@@ -136,6 +136,9 @@ int main_client(int argc, char **argv)
         return 0;
     }
 
+    if (remote.len > 0 && remote.ptr[remote.len-1] == '/')
+        remote.len--;
+
     string remote_host;
     {
         CHTTP_URL parsed_url;
@@ -174,6 +177,11 @@ int main_client(int argc, char **argv)
         while (u->pending) {
             u++;
             ASSERT(u < uploads + CHTTP_CLIENT_CAPACITY);
+        }
+
+        if (files[i].len > 0 && files[i].ptr[0] == '/') {
+            files[i].ptr++;
+            files[i].len--;
         }
 
         char url_buf[1<<10];
