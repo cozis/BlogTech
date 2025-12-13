@@ -11,6 +11,8 @@ If you are on Linux, you'll need OpenSSL and gcc to be installed on your machine
 sudo apt install libssl-dev gcc
 ```
 
+If you are on Windows, you'll need to install clang.
+
 Now we can build BlogTech:
 
 ```sh

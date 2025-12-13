@@ -6,11 +6,11 @@
 [X] Fix the file_open mode flags on Windows
 [X] Test the crash logger
 [X] Make sure CHTTP has request timeouts
+[X] Mention installing clang into the quick start guide for windows
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] Add serving of files from multiple virtual hosts
 [ ] Make the signature comparison constant-time
 [ ] Handle SIGTERM for graceful shutdowns
-[ ] Mention installing clang into the quick start guide for windows
 [ ] Document the small password rejection policy
 [ ] Handle PUTs to subdirectories
 [ ] If the server crashes it will forget all invalidated nonces
