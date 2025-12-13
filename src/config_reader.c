@@ -324,3 +324,88 @@ void parse_config_value_buffer_size(string name, string value, s32 *out, b8 *bad
     }
     *out = (s32) tmp;
 }
+
+void parse_config_extra_cert(string name, string value,
+    string *extra_domain, string *extra_cert_file,
+    string *extra_cert_key_file, b8 *bad_config)
+{
+    char *src = value.ptr;
+    int   len = value.len;
+    int   cur = 0;
+    int   off;
+
+    // Skip spaces before the first value
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    off = cur;
+
+    // Skip until a space or the separator
+    while (cur < len && src[cur] != ',' && src[cur] != ' ' && src[cur] != '\t')
+        cur++;
+
+    // Skip spaces before the separator
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    if (cur == len) {
+        printf("Config Error: Option '%.*s' is not a valid domain-certificate-key triplet separated by a commas\n", UNPACK(name));
+        *bad_config = true;
+        return;
+    }
+
+    *extra_domain = (string) { src + off, cur - off };
+
+    // Consume separator
+    ASSERT(src[cur] == ',');
+    cur++;
+
+    // Skip spaces after the separator
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    off = cur;
+
+    // Find the second separator
+    while (cur < len && src[cur] != ',' && src[cur] != ' ' && src[cur] != '\t')
+        cur++;
+
+    *extra_cert_file = (string) { src + off, cur - off };
+
+    // Skip spaces before the second separator
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    if (cur == len) {
+        printf("Config Error: Option '%.*s' is not a valid domain-certificate-key triplet separated by a commas\n",
+            UNPACK(name));
+        *bad_config = true;
+        return;
+    }
+
+    ASSERT(src[cur] == ',');
+    cur++;
+
+    // Skip spaces after the separator
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    off = cur;
+
+    // Find the second separator
+    while (cur < len && src[cur] != ',' && src[cur] != ' ' && src[cur] != '\t')
+        cur++;
+
+    *extra_cert_key_file = (string) { src + off, cur - off };
+
+    // Skip spaces after the separator
+    while (cur < len && (src[cur] == ' ' || src[cur] == '\t'))
+        cur++;
+
+    if (cur != len) {
+        printf("Config Error: Option '%.*s' is not a valid domain-certificate-key triplet separated by a commas\n",
+            UNPACK(name));
+        *bad_config = true;
+        return;
+    }
+}

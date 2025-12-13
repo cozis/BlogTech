@@ -36,6 +36,10 @@ typedef struct {
     u16    https_port;
     string cert_file;
     string cert_key_file;
+    int    num_extra_certs;
+    string extra_domains[HTTPS_CERT_LIMIT];
+    string extra_cert_files[HTTPS_CERT_LIMIT];
+    string extra_cert_key_files[HTTPS_CERT_LIMIT];
     b8     acme_enabled;
     string acme_key_file;
     string acme_log_file;
@@ -133,6 +137,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
 
         config->https_addr = EMPTY_STRING;
         config->https_port = 8443;
+        config->num_extra_certs = 0;
 
         b8 have_cert_file     = false;
         b8 have_cert_key_file = false;
@@ -158,6 +163,19 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                 } else {
                     config->cert_key_file = value;
                     have_cert_key_file = true;
+                }
+            } else if (streq(name, S("extra-cert"))) {
+                if (config->num_extra_certs == HTTPS_CERT_LIMIT) {
+                    printf("Config Error: HTTPS certificate limit (%d) reached\n", HTTPS_CERT_LIMIT);
+                } else {
+                    string extra_domain;
+                    string extra_cert_file;
+                    string extra_cert_key_file;
+                    parse_config_extra_cert(name, value, &extra_domain, &extra_cert_file, &extra_cert_key_file, &bad_config);
+                    config->extra_domains[config->num_extra_certs] = extra_domain;
+                    config->extra_cert_files[config->num_extra_certs] = extra_cert_file;
+                    config->extra_cert_key_files[config->num_extra_certs] = extra_cert_key_file;
+                    config->num_extra_certs++;
                 }
             }
         }
@@ -430,27 +448,58 @@ int main_server(int argc, char **argv)
     if (server_config.https_enabled) {
 #ifdef HTTPS_ENABLED
         ret = file_exists(server_config.cert_file);
-        if (ret == 0) {
-            ret = chttp_server_listen_tls(&server,
-                server_config.https_addr,
-                server_config.https_port,
-                server_config.cert_file,
-                server_config.cert_key_file);
-        } else {
-            if (ret == FS_ERROR_NOTFOUND)
-                ret = 0;
-        }
-#else
-        ret = -1;
-#endif
         if (ret < 0) {
-            fprintf(stderr, "Couldn't listen for TLS connections\n");
+            fprintf(stderr, "Couldn't check for the existance of '%.*s'\n",
+                UNPACK(server_config.cert_file));
             chttp_server_free(&server);
             chttp_client_free(&client);
             config_reader_free(&config_reader);
             crash_logger_free();
             return -1;
         }
+
+        if (ret == 0) {
+            ret = chttp_server_listen_tls(&server,
+                server_config.https_addr,
+                server_config.https_port,
+                server_config.cert_file,
+                server_config.cert_key_file);
+            if (ret < 0) {
+                fprintf(stderr, "Couldn't listen for TLS connections\n");
+                chttp_server_free(&server);
+                chttp_client_free(&client);
+                config_reader_free(&config_reader);
+                crash_logger_free();
+                return -1;
+            }
+
+            if (ret == 0) {
+                for (int i = 0; i < server_config.num_extra_certs; i++) {
+                    ret = chttp_server_add_certificate(&server,
+                        server_config.extra_domains[i],
+                        server_config.extra_cert_files[i],
+                        server_config.extra_cert_key_files[i]
+                    );
+                    if (ret < 0) {
+                        fprintf(stderr, "Couldn't add certificate '%.*s'\n",
+                            UNPACK(server_config.extra_cert_files[i]));
+                        chttp_server_free(&server);
+                        chttp_client_free(&client);
+                        config_reader_free(&config_reader);
+                        crash_logger_free();
+                        return -1;
+                    }
+                }
+            }
+        }
+#else
+        fprintf(stderr, "Couldn't listen for TLS connections\n");
+        chttp_server_free(&server);
+        chttp_client_free(&client);
+        config_reader_free(&config_reader);
+        crash_logger_free();
+        return -1;
+#endif
     }
 
 #ifdef HTTPS_ENABLED

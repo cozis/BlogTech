@@ -29,4 +29,8 @@ void parse_config_value_time_ms(string name, string value,
 void parse_config_value_buffer_size(string name, string value,
     s32 *out, b8 *bad_config);
 
+void parse_config_extra_cert(string name, string value,
+    string *extra_domain, string *extra_cert_file,
+    string *extra_cert_key_file, b8 *bad_config);
+
 #endif // CONFIG_READER_INCLUDED

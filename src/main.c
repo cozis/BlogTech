@@ -64,6 +64,8 @@ static void print_usage(FILE *stream, char *name)
         "  --cert-file=<path>          x509 certificate file path\n"
         "  --cert-key-file=<path>      Private key file associate to the certificate\n"
         "                              file\n"
+        "  --extra-cert=<domain>,<cert path>,<key path>\n"
+        "                              Add an extra HTTPS certificate\n"
         "\n"
         "The following flags must be used alongside --acme-enabled:\n"
         "  --acme-key-file=<path>      File containing the ACME account private key\n"
