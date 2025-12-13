@@ -27,10 +27,10 @@ Let's make a password file:
 
 ```sh
 # Linux
-echo "Super secret password (please please don't use it in production)" > admin.pwd
+echo "Super secret password" > admin.pwd
 
 # Windows
-"Super secret password (please please don't use it in production)" | Out-File admin.pwd
+"Super secret password" | Out-File admin.pwd
 ```
 
 We then make a directory for all our web pages and run the server:
@@ -52,10 +52,10 @@ Let's create the first file of our website:
 
 ```sh
 # Linux
-echo "<b>Hello, world!</b>" > index.html
+echo "<b>Hello, world</b>" > index.html
 
 # Windows
-"<b>Hello, world!</b>" | Out-File index.html
+"<b>Hello, world</b>" | Out-File index.html
 ```
 
 Note how we didn't create it into the document root of our server. That's because we are going to upload it there over HTTP! We can do so using blogtech itself running in upload mode:
