@@ -84,6 +84,7 @@ static void print_usage(FILE *stream, char *name)
         "\n"
         "Client Options (compatible with --upload/-u):\n"
         "  --remote=<url>              The URL of the target website for the uploads\n"
+        "  --verbose                   Write extra logs to stderr\n"
     );
 }
 

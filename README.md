@@ -46,7 +46,7 @@ mkdir docroot
 .\blogtech.exe --serve --document-root=docroot --auth-password-file=admin.pwd
 ```
 
-You can visit the website at `http://localhost:8080/` but we haven't added any files yet.
+You can visit the website at `http://127.0.0.1:8080/` but we haven't added any files yet.
 
 Let's create the first file of our website:
 
@@ -62,20 +62,20 @@ Note how we didn't create it into the document root of our server. That's becaus
 
 ```sh
 # Linux
-./blogtech --upload --auth-password-file=admin.pwd --remote=http://localhost:8080 index.html
+./blogtech --upload --auth-password-file=admin.pwd --remote=http://127.0.0.1:8080 index.html
 
 # Windows
-.\blogtech.exe --upload --auth-password-file=admin.pwd --remote=http://localhost:8080 index.html
+.\blogtech.exe --upload --auth-password-file=admin.pwd --remote=http://127.0.0.1:8080 index.html
 ```
 
-You should now find the text "<b>Hello, world!</b>" when visiting `http://localhost:8080/`!
+You should now find the text "<b>Hello, world!</b>" when visiting `http://127.0.0.1:8080/`!
 
 By the way, that's a lot of parameters! Let's move them to a blogtech.conf file:
 
 ```
 document-root      docroot
 auth-password-file admin.pwd
-remote             http://localhost:8080
+remote             http://127.0.0.1:8080
 ```
 
 `blogtech` will automatically use parameters from a `blogtech.conf` file if present in the current directory. If you want ignore it, pass `--no-config`, and if you want a different configuration file pass `--config=<path>`. Also, note that `-s` and `-u` are shorthands for `--serve` and `--upload`, which means we can now do:
@@ -105,7 +105,7 @@ Now start the server in HTTPS mode:
 ./blogtech --serve --https-enabled=yes --cert-file=cert.pem --cert-key-file=key.pem --document-root=docroot
 ```
 
-Done! You should be able to see `index.html` over HTTPS now by visiting `https://localhost/index.html`.
+Done! You should be able to see `index.html` over HTTPS now by visiting `https://127.0.0.1/index.html`.
 
 ## Enabling ACME for automatic certificate generation
 

@@ -76,6 +76,7 @@ int main_client(int argc, char **argv)
     if (ret < 0)
         return -1;
 
+    b8     verbose = false;
     string remote;
     b8     trace_bytes;
     string auth_password_file;
@@ -88,7 +89,9 @@ int main_client(int argc, char **argv)
     b8 bad_config = false;
     string name, value;
     while (config_reader_next(&config_reader, &name, &value)) {
-        if (streq(name, S("remote"))) {
+        if (streq(name, S("verbose"))) {
+            verbose = true;
+        } else if (streq(name, S("remote"))) {
             if (value.len == 0) {
                 printf("Config Error: Invalid remote\n");
                 bad_config = true;
@@ -132,6 +135,7 @@ int main_client(int argc, char **argv)
     }
 
     if (num_files == 0) {
+        if (verbose) printf("Nothing to upload\n");
         config_reader_free(&config_reader);
         return 0;
     }
@@ -149,6 +153,9 @@ int main_client(int argc, char **argv)
         }
         remote_host = parsed_url.authority.host.text; // TODO: will this work for IPv6?
     }
+
+    if (verbose)
+        printf("Target host is [%.*s]\n", UNPACK(remote_host));
 
     string auth_password;
     ret = file_read_all(auth_password_file, &auth_password);
