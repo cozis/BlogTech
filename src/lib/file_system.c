@@ -58,6 +58,14 @@ int file_open_zt(char *path_zt, FileOpenMode mode,
         if (err == ERROR_FILE_NOT_FOUND ||
             err == ERROR_PATH_NOT_FOUND)
             return FS_ERROR_NOTFOUND;
+
+        DWORD attr = GetFileAttributes(path_zt);
+        if (attr == INVALID_FILE_ATTRIBUTES)
+            return FS_ERROR_UNSPECIFIED;
+
+        if (attr & FILE_ATTRIBUTE_DIRECTORY)
+            return FS_ERROR_ISDIR;
+
         return FS_ERROR_UNSPECIFIED;
     }
     *handle = (FileHandle) { (u64) h };
@@ -77,14 +85,32 @@ int file_open_zt(char *path_zt, FileOpenMode mode,
         flags = O_CLOEXEC | O_WRONLY | O_CREAT | O_APPEND;
         break;
     }
-    int ret = openat(AT_FDCWD, path_zt, flags, perm);
-    if (ret < 0) {
+    int fd = openat(AT_FDCWD, path_zt, flags, perm);
+    if (fd < 0) {
         if (errno == ENOENT)
             return FS_ERROR_NOTFOUND;
+        if (errno == EISDIR)
+            return FS_ERROR_ISDIR;
         return FS_ERROR_UNSPECIFIED;
     }
 
-    *handle = (FileHandle) { (u64) ret };
+    // Calling open() with O_RDONLY will allow
+    // opening directories, which we don't want
+    if (mode == FS_OPEN_READ) {
+
+        struct stat buf;
+        if (fstat(fd, &buf) < 0) {
+            close(fd);
+            return FS_ERROR_UNSPECIFIED;
+        }
+
+        if (S_ISDIR(buf.st_mode)) {
+            close(fd);
+            return FS_ERROR_ISDIR;
+        }
+    }
+
+    *handle = (FileHandle) { (u64) fd };
 #endif
     return 0;
 }

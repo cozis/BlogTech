@@ -12,6 +12,7 @@ enum {
     FS_ERROR_BADPATH     = -3,
     FS_ERROR_NOTFOUND    = -4,
     FS_ERROR_OUTOFMEM    = -5,
+    FS_ERROR_ISDIR       = -6,
 };
 
 typedef struct {

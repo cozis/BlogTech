@@ -18,20 +18,8 @@ process_request_get(string document_root, CHTTP_Request *request,
 
     FileHandle fd;
     ret = file_open(file_path, FS_OPEN_READ, &fd);
-    if (ret < 0) {
 
-        if (ret == FS_ERROR_NOTFOUND) {
-            chttp_response_builder_status(builder, 404);
-            chttp_response_builder_send(builder);
-            return;
-        }
-
-        ret = is_dir(file_path);
-        if (ret != 1) {
-            chttp_response_builder_status(builder, 500);
-            chttp_response_builder_send(builder);
-            return;
-        }
+    if (ret == FS_ERROR_ISDIR) {
 
         if (file_path.len > 0 && file_path.ptr[file_path.len-1] == '/')
             file_path.len--;
@@ -57,6 +45,17 @@ process_request_get(string document_root, CHTTP_Request *request,
             return;
         }
     }
+    if (ret < 0) {
+        if (ret == FS_ERROR_NOTFOUND) {
+            chttp_response_builder_status(builder, 404);
+            chttp_response_builder_send(builder);
+        } else {
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
+        }
+        return;
+    }
+
     u64 len;
     ret = file_size(fd, &len);
     if (ret < 0) {
