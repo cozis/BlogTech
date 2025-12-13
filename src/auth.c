@@ -26,17 +26,23 @@ int auth_init(Auth *auth, string password_file, Logger *logger)
         return -1;
     }
 
-    content = trim(content);
+    string trimmed_content = trim(content);
 
-    if (content.len >= sizeof(auth->password_buf)) {
+    if (trimmed_content.len == 0) {
+        log(logger, S("Invalid empty password\n"), V());
+        free(content.ptr);
+        return -1;
+    }
+
+    if (trimmed_content.len >= sizeof(auth->password_buf)) {
         log(logger, S("Password is longer than expected\n"), V());
         free(content.ptr);
         return -1;
     }
 
-    memcpy_(auth->password_buf, content.ptr, content.len);
+    memcpy_(auth->password_buf, trimmed_content.ptr, trimmed_content.len);
     auth->password.ptr = auth->password_buf;
-    auth->password.len = content.len;
+    auth->password.len = trimmed_content.len;
     free(content.ptr);
 
     log(logger, S("Authentication system initialized\n"), V());
@@ -145,12 +151,6 @@ static b8 store_nonce(Auth *auth, char *nonce, UnixTime expire)
 int auth_verify(Auth *auth, CHTTP_Request *request)
 {
     log(auth->logger, S("Verifying request authentication\n"), V());
-
-    // Reject all requests if password is too short
-    if (auth->password.len < MIN_PASSWORD_LEN) {
-        log(auth->logger, S("Request rejected preemptively because the password is too short\n"), V());
-        return 1;
-    }
 
     string path = request->url.path;
     if (path.len > 0 && path.ptr[0] == '/') {
