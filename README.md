@@ -1,6 +1,5 @@
 # BlogTech
-
-BlogTech is a static file server and file upload utiliy for easy website management. It supports authenticated PUT/DELETE requests, automatic HTTPS certificate generation via the built-in ACME client.
+BlogTech is a single-executable toolkit for managing small to medium websites written (mostly) from scratch. It supports HTTP, HTTPS, setups with multiple certificates, authenticated PUT/DELETE requests, an ACME client for the automatic issuance of certificates, and a client to manage files on remote instances.
 
 ## Quick Start
 
