@@ -11,3 +11,7 @@
 [ ] Make the signature comparison constant-time
 [ ] Handle SIGTERM for graceful shutdowns
 [ ] Mention installing clang into the quick start guide for windows
+[ ] Document the small password rejection policy
+[ ] Handle PUTs to subdirectories
+[ ] If the server crashes it will forget all invalidated nonces
+[ ] Add DELETE and GET operations to the client
