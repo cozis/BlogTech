@@ -362,8 +362,10 @@ int main_server(int argc, char **argv)
     crash_reader_free(&crash_reader);
     file_delete(S("crash.bin"));
 
-    if (crash_logger_init() < 0)
+    if (crash_logger_init() < 0) {
+        fprintf(stderr, "Couldn't set up crash logger\n");
         return -1;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////
     // LOAD CONFIGURATION
@@ -372,6 +374,7 @@ int main_server(int argc, char **argv)
     ConfigReader config_reader;
     ret = config_reader_init(&config_reader, argc, argv);
     if (ret < 0) {
+        fprintf(stderr, "Couldn't read configuration\n");
         crash_logger_free();
         return -1;
     }
@@ -379,6 +382,7 @@ int main_server(int argc, char **argv)
     ServerConfig server_config;
     ret = load_server_config(&config_reader, &server_config);
     if (ret != 1) {
+        fprintf(stderr, "Invalid configuration\n");
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
@@ -393,6 +397,7 @@ int main_server(int argc, char **argv)
     CHTTP_Client client;
     ret = chttp_client_init(&client);
     if (ret < 0) {
+        fprintf(stderr, "Couldn't initialize HTTP client\n");
         config_reader_free(&config_reader);
         crash_logger_free();
         return -1;
@@ -401,6 +406,7 @@ int main_server(int argc, char **argv)
     CHTTP_Server server;
     ret = chttp_server_init(&server);
     if (ret < 0) {
+        fprintf(stderr, "Couldn't initialize HTTP server\n");
         chttp_client_free(&client);
         config_reader_free(&config_reader);
         crash_logger_free();
@@ -413,6 +419,7 @@ int main_server(int argc, char **argv)
         server_config.http_addr,
         server_config.http_port);
     if (ret < 0) {
+        fprintf(stderr, "Couldn't listen for TCP connections\n");
         chttp_server_free(&server);
         chttp_client_free(&client);
         config_reader_free(&config_reader);
@@ -437,6 +444,7 @@ int main_server(int argc, char **argv)
         ret = -1;
 #endif
         if (ret < 0) {
+            fprintf(stderr, "Couldn't listen for TLS connections\n");
             chttp_server_free(&server);
             chttp_client_free(&client);
             config_reader_free(&config_reader);
@@ -454,6 +462,7 @@ int main_server(int argc, char **argv)
             server_config.acme_log_buffer,
             server_config.acme_log_timeout,
             server_config.acme_log_file) < 0) {
+            fprintf(stderr, "Couldn't setup the ACME logger\n");
             chttp_server_free(&server);
             chttp_client_free(&client);
             config_reader_free(&config_reader);
@@ -477,6 +486,7 @@ int main_server(int argc, char **argv)
         acme_config.certificate_file = server_config.cert_file;
         acme_config.certificate_key_file = server_config.cert_key_file;
         if (acme_init(&acme, &acme_config) < 0) {
+            fprintf(stderr, "Couldn't setup the ACME client\n");
             logger_free(&acme_logger);
             chttp_server_free(&server);
             chttp_client_free(&client);
@@ -487,6 +497,7 @@ int main_server(int argc, char **argv)
     }
 #else
     if (server_config.acme_enabled) {
+        fprintf(stderr, "ACME is not built-in\n");
         chttp_server_free(&server);
         chttp_client_free(&client);
         config_reader_free(&config_reader);
@@ -500,6 +511,7 @@ int main_server(int argc, char **argv)
         server_config.auth_log_buffer,
         server_config.auth_log_timeout,
         server_config.auth_log_file) < 0) {
+        fprintf(stderr, "Couldn't setup the auth logger\n");
 #ifdef HTTPS_ENABLED
         if (server_config.acme_enabled) {
             acme_free(&acme);
@@ -515,6 +527,7 @@ int main_server(int argc, char **argv)
 
     Auth auth;
     if (auth_init(&auth, server_config.auth_password_file, &auth_logger) < 0) {
+        fprintf(stderr, "Couldn't setup the auth system\n");
         logger_free(&auth_logger);
 #ifdef HTTPS_ENABLED
         if (server_config.acme_enabled) {
@@ -534,6 +547,7 @@ int main_server(int argc, char **argv)
         server_config.request_log_buffer,
         server_config.request_log_timeout,
         server_config.request_log_file) < 0) {
+        fprintf(stderr, "Couldn't setup the request logger\n");
         auth_free(&auth);
         logger_free(&auth_logger);
 #ifdef HTTPS_ENABLED
@@ -548,6 +562,8 @@ int main_server(int argc, char **argv)
         crash_logger_free();
         return -1;
     }
+
+    fprintf(stderr, "Setup complete\n");
 
     ///////////////////////////////////////////////////////////////////////////////
     // MAIN LOOP

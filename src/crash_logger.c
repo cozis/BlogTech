@@ -203,15 +203,12 @@ static int parse_map(char *src, int len, int *pcur, Map *map, string *path)
         return -1;
     cur++;
 
-    // Skip device
-    if (len - cur < 5
-        || !is_hex(src[cur+0])
-        || !is_hex(src[cur+1])
-        || src[cur+2] != ':'
-        || !is_hex(src[cur+3]) // TODO: Are device numbers hex or plain digits?
-        || !is_hex(src[cur+4]))
+    if (cur == len || !is_digit(src[cur]))
         return -1;
-    cur += 5;
+    cur++;
+
+    while (cur < len && (is_digit(src[cur]) || src[cur] == ':'))
+        cur++;
 
     if (cur == len || src[cur] != ' ')
         return -1;
