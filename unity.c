@@ -9,7 +9,11 @@
 #define parse_path parse_path__http
 #define Time Time__http
 #define get_current_time get_current_time__http
+#define is_sub_delim is_sub_delim__http
+#define is_unreserved is_unreserved__http
 #include "src/lib/chttp.c"
+#undef is_unreserved
+#undef is_sub_delim
 #undef INVALID_TIME
 #undef Time
 #undef get_current_time

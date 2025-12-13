@@ -5,6 +5,7 @@
 #include "config_reader.h"
 #include "crash_logger.h"
 #include "crash_reader.h"
+#include "lib/chttp.h"
 #include "process_request.h"
 #include "lib/http.h"
 #include "lib/logger.h"
@@ -22,6 +23,8 @@ typedef struct {
     string document_root;
     string http_addr;
     u16    http_port;
+    int    num_domains;
+    string domains[HTTP_DOMAIN_LIMIT];
     b8     reuse_addr;
     b8     trace_bytes;
     string request_log_file;
@@ -37,7 +40,7 @@ typedef struct {
     string cert_file;
     string cert_key_file;
     int    num_extra_certs;
-    string extra_domains[HTTPS_CERT_LIMIT];
+    string extra_cert_domains[HTTPS_CERT_LIMIT];
     string extra_cert_files[HTTPS_CERT_LIMIT];
     string extra_cert_key_files[HTTPS_CERT_LIMIT];
     b8     acme_enabled;
@@ -54,11 +57,53 @@ typedef struct {
     int    num_acme_domains;
 } ServerConfig;
 
+static b8 is_sub_delim(char c)
+{
+    return c == '!'
+        || c == '$'
+        || c == '&'
+        || c == '\''
+        || c == '('
+        || c == ')'
+        || c == '*'
+        || c == '+'
+        || c == ','
+        || c == ';'
+        || c == '=';
+}
+
+static b8 is_unreserved(char c)
+{
+    return is_alpha(c)
+        || is_digit(c)
+        || c == '-'
+        || c == '.'
+        || c == '_'
+        || c == '~';
+}
+
+static b8 is_reg_name(char c)
+{
+    return is_unreserved(c)
+        || is_sub_delim(c);
+}
+
+static b8 is_valid_domain_name(string s)
+{
+    if (s.len == 0)
+        return false;
+    for (int i = 0; i < s.len; i++)
+        if (!is_reg_name(s.ptr[i]))
+            return false;
+    return true;
+}
+
 static int load_server_config(ConfigReader *reader, ServerConfig *config)
 {
     // Set default values
     config->http_addr = S("127.0.0.1");
     config->http_port = 8080;
+    config->num_domains = 0;
     config->reuse_addr = true;
     config->trace_bytes = false;
     config->auth_password_file = EMPTY_STRING;
@@ -125,6 +170,16 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
             parse_config_value_buffer_size(name, value, &config->request_log_buffer, &bad_config);
         } else if (streq(name, S("request-log-timeout"))) {
             parse_config_value_time_ms(name, value, &config->request_log_timeout, &bad_config);
+        } else if (streq(name, S("domain"))) {
+            if (!is_valid_domain_name(value)) {
+                printf("Config Error: Invalid domain name\n");
+                bad_config = true;
+            } else if (config->num_domains == HTTP_DOMAIN_LIMIT) {
+                printf("Config Error: Domain limit reached\n");
+                bad_config = true;
+            } else {
+                config->domains[config->num_domains++] = value;
+            }
         }
     }
 
@@ -172,7 +227,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                     string extra_cert_file;
                     string extra_cert_key_file;
                     parse_config_extra_cert(name, value, &extra_domain, &extra_cert_file, &extra_cert_key_file, &bad_config);
-                    config->extra_domains[config->num_extra_certs] = extra_domain;
+                    config->extra_cert_domains[config->num_extra_certs] = extra_domain;
                     config->extra_cert_files[config->num_extra_certs] = extra_cert_file;
                     config->extra_cert_key_files[config->num_extra_certs] = extra_cert_key_file;
                     config->num_extra_certs++;
@@ -445,6 +500,34 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
+    {
+        char tmp[PATH_LIMIT];
+
+        // The default domain is served from the default folder
+        // in the document root
+        int ret = create_dir(fmtorempty(S("{}/default"), V(server_config.document_root), tmp, SIZEOF(tmp)));
+        if (ret < 0 && ret != FS_ERROR_EXISTS) {
+            fprintf(stderr, "Couldn't create virtual host folder 'default'\n");
+            chttp_server_free(&server);
+            chttp_client_free(&client);
+            config_reader_free(&config_reader);
+            crash_logger_free();
+            return -1;
+        }
+
+        for (int i = 0; i < server_config.num_domains; i++) {
+            ret = create_dir(fmtorempty(S("{}/{}"), V(server_config.document_root, server_config.domains[i]), tmp, SIZEOF(tmp)));
+            if (ret < 0 && ret != FS_ERROR_EXISTS) {
+                fprintf(stderr, "Couldn't create virtual host folder '%.*s'\n", UNPACK(server_config.domains[i]));
+                chttp_server_free(&server);
+                chttp_client_free(&client);
+                config_reader_free(&config_reader);
+                crash_logger_free();
+                return -1;
+            }
+        }
+    }
+
     if (server_config.https_enabled) {
 #ifdef HTTPS_ENABLED
         ret = file_exists(server_config.cert_file);
@@ -476,7 +559,7 @@ int main_server(int argc, char **argv)
             if (ret == 0) {
                 for (int i = 0; i < server_config.num_extra_certs; i++) {
                     ret = chttp_server_add_certificate(&server,
-                        server_config.extra_domains[i],
+                        server_config.extra_cert_domains[i],
                         server_config.extra_cert_files[i],
                         server_config.extra_cert_key_files[i]
                     );
@@ -698,7 +781,25 @@ int main_server(int argc, char **argv)
                     continue;
             }
 #endif // HTTPS_ENABLED
-            process_request(server_config.document_root, request, builder, &auth);
+
+            string domain_dir = S("default");
+            for (int i = 0; i < server_config.num_domains; i++)
+                if (chttp_match_host(request, server_config.domains[i], server_config.http_port) ||
+                    chttp_match_host(request, server_config.domains[i], server_config.https_port)) {
+                    domain_dir = server_config.domains[i];
+                    break;
+                }
+
+            char virtual_host_document_root_buf[PATH_LIMIT];
+            string virtual_host_document_root = fmtorempty(S("{}/{}"), V(server_config.document_root, domain_dir),
+                virtual_host_document_root_buf, SIZEOF(virtual_host_document_root_buf));
+            if (virtual_host_document_root.len == 0) {
+                chttp_response_builder_status(builder, 500);
+                chttp_response_builder_send(builder);
+                continue;
+            }
+
+            process_request(virtual_host_document_root, request, builder, &auth);
         }
     }
 

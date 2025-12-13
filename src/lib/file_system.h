@@ -13,6 +13,7 @@ enum {
     FS_ERROR_NOTFOUND    = -4,
     FS_ERROR_OUTOFMEM    = -5,
     FS_ERROR_ISDIR       = -6,
+    FS_ERROR_EXISTS      = -7,
 };
 
 typedef struct {
@@ -76,6 +77,8 @@ int file_exists(string path);
 int file_delete(string path);
 
 int is_dir(string path);
+
+int create_dir(string path);
 
 int file_read_all(string path, string *data);
 

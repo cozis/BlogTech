@@ -2,6 +2,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <direct.h> // _mkdir
 #else
 #include <sys/stat.h>
 #endif
@@ -277,6 +278,31 @@ int is_dir(string path)
 
     return 0;
 #endif
+}
+
+int create_dir(string path)
+{
+    char path_zt[PATH_LIMIT];
+    if (path.len >= (int) sizeof(path_zt))
+        return FS_ERROR_PATHTOOLONG;
+    memcpy(path_zt, path.ptr, path.len);
+    path_zt[path.len] = '\0';
+
+#ifdef _WIN32
+    if (_mkdir(path_zt) < 0) {
+        if (errno == EEXIST)
+            return FS_ERROR_EXISTS;
+        return FS_ERROR_UNSPECIFIED;
+    }
+#else
+    if (mkdir(path_zt, 0766)) { // TODO: check permissions
+        if (errno == EEXIST)
+            return FS_ERROR_EXISTS;
+        return FS_ERROR_UNSPECIFIED;
+    }
+#endif
+
+    return 0;
 }
 
 int file_read_all(string path, string *data)

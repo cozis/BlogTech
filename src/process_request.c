@@ -1,10 +1,12 @@
 #include "process_request.h"
+#include "lib/chttp.h"
 #include "lib/file_system.h"
 
-static void
-process_request_get(string document_root, CHTTP_Request *request,
-    CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_get(string document_root,
+    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
 {
+    // TODO: check virtual host
+
     char buf[PATH_LIMIT];
     int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
     if (ret < 0) {
@@ -86,10 +88,11 @@ process_request_get(string document_root, CHTTP_Request *request,
     chttp_response_builder_send(builder);
 }
 
-static void
-process_request_put(string document_root, CHTTP_Request *request,
-    CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_put(string document_root,
+    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
 {
+    // TODO: check virtual host
+
     int ret = auth_verify(auth, request);
     if (ret < 0) {
         chttp_response_builder_status(builder, 500);
@@ -136,10 +139,11 @@ process_request_put(string document_root, CHTTP_Request *request,
     file_close(fd);
 }
 
-static void
-process_request_delete(string document_root, CHTTP_Request *request,
-    CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_delete(string document_root,
+    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
 {
+    // TODO: check virtual host
+
     int ret = auth_verify(auth, request);
     if (ret < 0) {
         chttp_response_builder_status(builder, 500);
