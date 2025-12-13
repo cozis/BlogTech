@@ -109,6 +109,14 @@ Now start the server in HTTPS mode:
 
 Done! You should be able to see `index.html` over HTTPS now by visiting `https://127.0.0.1/index.html`.
 
+If you want to add extra certificates, you can use the `--extra-cert` option to add an arbitrary number of certificates:
+
+```sh
+--extra-cert=example.com,extra_cert.pem,extra_cert_key.pem
+```
+
+(Note how there are no spaces between file names)
+
 ## Enabling ACME for automatic certificate generation
 
 The self-signed certificate won't work in production. As I mentioned, we need a properly signed certificate issued by a certification authority like [Let's Encrypt](https://letsencrypt.org/). BlogTech is able to talk to a CA that implements the ACME protocol to automatically generate a certificate.
