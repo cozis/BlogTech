@@ -8,5 +8,4 @@ pebble
 *.bin
 *.ilk
 *.pdb
-*.conf
 *.html
