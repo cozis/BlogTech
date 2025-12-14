@@ -9,4 +9,4 @@
 [ ] Find good compile-time constants that should be options
 [ ] Add missing option docs
 [ ] Maybe flush buffers on exit?
-[ ] Simplify the Quick Start using --skip-auth-checks
+[ ] Simplify the Quick Start using --skip-auth-check
