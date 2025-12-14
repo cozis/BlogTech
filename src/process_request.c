@@ -2,6 +2,41 @@
 #include "lib/chttp.h"
 #include "lib/file_system.h"
 
+static int translate_path(string path, string root, char *dst, int cap)
+{
+    int num_comps = 0;
+    string comps[PATH_COMP_LIMIT];
+
+    int ret = parse_path(root, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
+    if (ret < 0)
+        return -1;
+    num_comps += ret;
+
+    ret = parse_path(path, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
+    if (ret < 0)
+        return -1;
+    num_comps += ret;
+
+    int len = 0;
+    if (root.len == 0 || root.ptr[0] != '/')
+        len++;
+    for (int i = 0; i < num_comps; i++)
+        len += 1 + comps[i].len;
+    if (len >= cap)
+        return -1;
+
+    int num = 0;
+    if (root.len == 0 || root.ptr[0] != '/')
+        dst[num++] = '.';
+    for (int i = 0; i < num_comps; i++) {
+        dst[num++] = '/';
+        memcpy_(dst + num, comps[i].ptr, comps[i].len);
+        num += comps[i].len;
+    }
+
+    return num;
+}
+
 static void process_request_get(string document_root,
     CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
 {

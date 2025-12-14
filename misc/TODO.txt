@@ -1,4 +1,3 @@
-[X] Handle SIGTERM for graceful shutdowns
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] Handle PUTs to subdirectories
 [ ] If the server crashes it will forget all invalidated nonces

@@ -86,6 +86,4 @@ int file_write_all(string path, string data);
 
 int parse_path(string path, string *comps, int max_comps, int num_comps);
 
-int translate_path(string path, string root, char *dst, int cap);
-
 #endif // FILE_SYSTEM_INCLUDED
