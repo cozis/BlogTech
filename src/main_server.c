@@ -11,8 +11,6 @@
 #include "lib/logger.h"
 #include "lib/file_system.h"
 
-sig_atomic_t running = 0;
-
 typedef struct {
     string document_root;
     string http_addr;
@@ -448,8 +446,6 @@ int main_server(int argc, char **argv)
     // INITIALIZE
     ///////////////////////////////////////////////////////////////////////////////
 
-    running = 1;
-
     CHTTP_Client client;
     ret = chttp_client_init(&client);
     if (ret < 0) {
@@ -680,14 +676,30 @@ int main_server(int argc, char **argv)
 
     EventLoop loop;
     event_loop_init(&loop, &server, &client);
-
-    fprintf(stderr, "Setup complete\n");
+    if (event_loop_install_ctrlc_handler(&loop) < 0) {
+        fprintf(stderr, "Couldn't setup the ctrl+C handler\n");
+        logger_free(&request_logger);
+        auth_free(&auth);
+        logger_free(&auth_logger);
+#ifdef HTTPS_ENABLED
+        if (server_config.acme_enabled) {
+            acme_free(&acme);
+            logger_free(&acme_logger);
+        }
+#endif
+        chttp_server_free(&server);
+        chttp_client_free(&client);
+        config_reader_free(&config_reader);
+        crash_logger_free();
+        return -1;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////
     // MAIN LOOP
     ///////////////////////////////////////////////////////////////////////////////
 
     b8 restart = false;
+    b8 running = true;
     while (running) {
 
         int timeouts[] = {
@@ -702,6 +714,10 @@ int main_server(int argc, char **argv)
         Event event = event_loop_wait(&loop, timeouts, COUNT(timeouts));
         switch (event.type) {
 
+        case EVENT_EXIT:
+            running = false;
+            break;
+
         case EVENT_TIMEOUT:
 #ifdef HTTPS_ENABLED
             if (server_config.acme_enabled) {
@@ -711,10 +727,6 @@ int main_server(int argc, char **argv)
 #endif // HTTPS_ENABLED
             logger_flush_if_timeout(&request_logger);
             logger_flush_if_timeout(&auth_logger);
-            break;
-
-        case EVENT_CTRL_C:
-            running = false;
             break;
 
         case EVENT_HTTP_REQUEST:

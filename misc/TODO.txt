@@ -1,16 +1,5 @@
-[X] Find a way to clean up all snprintf calls
-[X] Add logging to the ACME client
-[X] Add request logging
-[X] Add a crash logger
-[X] Make blogtech compile to windows with HTTPS disabled
-[X] Fix the file_open mode flags on Windows
-[X] Test the crash logger
-[X] Make sure CHTTP has request timeouts
-[X] Mention installing clang into the quick start guide for windows
-[X] Add serving of files from multiple virtual hosts
-[X] Make the signature comparison constant-time
+[X] Handle SIGTERM for graceful shutdowns
 [ ] Clean up the parsing code of auth headers in auth.c
-[ ] Handle SIGTERM for graceful shutdowns
 [ ] Handle PUTs to subdirectories
 [ ] If the server crashes it will forget all invalidated nonces
 [ ] Add DELETE and GET operations to the client

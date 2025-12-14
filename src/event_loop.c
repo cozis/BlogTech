@@ -7,11 +7,57 @@
 #define POLL poll
 #endif
 
+static EventLoop *loop_monitoring_ctrlc___;
+
+#ifdef _WIN32
+static BOOL WINAPI console_handler(DWORD event)
+{
+    switch (event) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        chttp_server_wakeup(loop_monitoring_ctrlc___->server);
+        loop_monitoring_ctrlc___->running = 0;
+        return TRUE;
+    default:
+        break;
+    }
+    return FALSE;
+}
+#else
+static void signal_handler(int sig)
+{
+    loop_monitoring_ctrlc___->running = 0;
+}
+#endif
+
+int event_loop_install_ctrlc_handler(EventLoop *loop)
+{
+    loop_monitoring_ctrlc___ = loop;
+#ifdef _WIN32
+    if (!SetConsoleCtrlHandler(console_handler, TRUE))
+        return -1;
+    return 0;
+#else
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    sigaction(SIGINT, &sa, NULL); // TODO: can sigaction fail?
+    sigaction(SIGTERM, &sa, NULL);
+    return 0;
+#endif
+}
+
 void event_loop_init(EventLoop *loop,
     CHTTP_Server *server, CHTTP_Client *client)
 {
     loop->server = server;
     loop->client = client;
+    loop->running = 1;
 }
 
 void event_loop_free(EventLoop *loop)
@@ -48,6 +94,11 @@ Event event_loop_wait(EventLoop *loop,
     for (;;) {
 
         Event event;
+
+        if (!loop_monitoring_ctrlc___->running) {
+            event.type = EVENT_EXIT;
+            return event;
+        }
 
         if (chttp_client_next_response(loop->client,
             &event.result, &event.user, &event.response)) {
