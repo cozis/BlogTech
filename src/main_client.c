@@ -82,6 +82,7 @@ int main_client(int argc, char **argv)
     string auth_password_file;
     string files[MAX_FILES];
     int    num_files = 0;
+    b8     skip_auth_check = false;
 
     b8 have_remote = false;
     b8 have_auth_password_file = false;
@@ -109,6 +110,8 @@ int main_client(int argc, char **argv)
             }
         } else if (streq(name, S("trace-bytes"))) {
             parse_config_value_yn(name, value, &trace_bytes, &bad_config);
+        } else if (streq(name, S("skip-auth-check"))) {
+            parse_config_value_yn(name, value, &skip_auth_check, &bad_config);
         } else if (streq(name, EMPTY_STRING)) {
             if (num_files == MAX_FILES) {
                 printf("Config Error: File limit of %d reached\n", MAX_FILES);
@@ -124,7 +127,7 @@ int main_client(int argc, char **argv)
         bad_config = true;
     }
 
-    if (!have_auth_password_file) {
+    if (!have_auth_password_file && !skip_auth_check) {
         printf("Config Error: No password file specified. Use option 'auth-password-file'\n");
         bad_config = true;
     }
@@ -157,20 +160,23 @@ int main_client(int argc, char **argv)
     if (verbose)
         printf("Target host is [%.*s]\n", UNPACK(remote_host));
 
-    string auth_password;
-    ret = file_read_all(auth_password_file, &auth_password);
-    if (ret < 0) {
-        printf("Couldn't read password file\n");
-        return -1;
+    string auth_password = EMPTY_STRING;
+    void *auth_password_original = NULL;
+    if (!skip_auth_check) {
+        ret = file_read_all(auth_password_file, &auth_password);
+        if (ret < 0) {
+            printf("Couldn't read password file\n");
+            return -1;
+        }
+        auth_password_original = auth_password.ptr;
+        auth_password = trim(auth_password);
     }
-    void *auth_password_original = auth_password.ptr;
-    auth_password = trim(auth_password);
 
     CHTTP_Client client;
     ret = chttp_client_init(&client);
     if (ret < 0) {
         printf("Couldn't initialize client (%s)\n", chttp_strerror(ret));
-        free(auth_password_original);
+        if (auth_password_original) free(auth_password_original);
         return -1;
     }
 
@@ -205,69 +211,71 @@ int main_client(int argc, char **argv)
             continue;
         }
 
-        char timestamp_buf[32];
-        string timestamp = fmtorempty(
-            S("{}"), V(get_current_unix_time()),
-            timestamp_buf, sizeof(timestamp_buf));
-        if (timestamp.len == 0) {
-            ASSERT(0);
-        }
-
-        u32 expire = 300; // 5 minutes
-
-        char nonce_buf[BASE64_LEN(NONCE_RAW_LEN)];
-        ret = generate_random_bytes(nonce_buf, NONCE_RAW_LEN);
-        if (ret < 0) {
-            ASSERT(0); // TODO
-        }
-        assert(ret == 0);
-
-        ret = encode_inplace(nonce_buf, NONCE_RAW_LEN, 0, sizeof(nonce_buf), ENCODING_B64);
-        if (ret < 0) {
-            ASSERT(0); // TODO
-        }
-        assert(ret == BASE64_LEN(NONCE_RAW_LEN));
-        string nonce = { nonce_buf, ret };
-
-        char signature_buf[64];
-        ret = calculate_request_signature(
-            CHTTP_METHOD_PUT,
-            files[i],
-            remote_host,
-            timestamp,
-            expire,
-            nonce,
-            data,
-            auth_password,
-            signature_buf,
-            sizeof(signature_buf));
-        if (ret < 0) {
-            ASSERT(0); // TODO
-        }
-        string signature = { signature_buf, ret };
-
         CHTTP_RequestBuilder builder = chttp_client_get_builder(&client);
         chttp_request_builder_set_user(builder, u);
         chttp_request_builder_trace(builder, trace_bytes);
         chttp_request_builder_method(builder, CHTTP_METHOD_PUT);
         chttp_request_builder_target(builder, url);
 
-        char header_buf[1<<8];
-        chttp_request_builder_header(builder,
-            fmtorempty(S("X-BlogTech-Nonce: {}"), V(nonce),
-                header_buf, sizeof(header_buf)));
+        if (!skip_auth_check) {
+            char timestamp_buf[32];
+            string timestamp = fmtorempty(
+                S("{}"), V(get_current_unix_time()),
+                timestamp_buf, sizeof(timestamp_buf));
+            if (timestamp.len == 0) {
+                ASSERT(0);
+            }
 
-        chttp_request_builder_header(builder,
-            fmtorempty(S("X-BlogTech-Timestamp: {}"), V(timestamp),
-                header_buf, sizeof(header_buf)));
+            u32 expire = 300; // 5 minutes
 
-        chttp_request_builder_header(builder,
-            fmtorempty(S("X-BlogTech-Expire: {}"), V(expire),
-                header_buf, sizeof(header_buf)));
+            char nonce_buf[BASE64_LEN(NONCE_RAW_LEN)];
+            ret = generate_random_bytes(nonce_buf, NONCE_RAW_LEN);
+            if (ret < 0) {
+                ASSERT(0); // TODO
+            }
+            assert(ret == 0);
 
-        chttp_request_builder_header(builder,
-            fmtorempty(S("X-BlogTech-Signature: {}"), V(signature),
-                header_buf, sizeof(header_buf)));
+            ret = encode_inplace(nonce_buf, NONCE_RAW_LEN, 0, sizeof(nonce_buf), ENCODING_B64);
+            if (ret < 0) {
+                ASSERT(0); // TODO
+            }
+            assert(ret == BASE64_LEN(NONCE_RAW_LEN));
+            string nonce = { nonce_buf, ret };
+
+            char signature_buf[64];
+            ret = calculate_request_signature(
+                CHTTP_METHOD_PUT,
+                files[i],
+                remote_host,
+                timestamp,
+                expire,
+                nonce,
+                data,
+                auth_password,
+                signature_buf,
+                sizeof(signature_buf));
+            if (ret < 0) {
+                ASSERT(0); // TODO
+            }
+            string signature = { signature_buf, ret };
+
+            char header_buf[1<<8];
+            chttp_request_builder_header(builder,
+                fmtorempty(S("X-BlogTech-Nonce: {}"), V(nonce),
+                    header_buf, sizeof(header_buf)));
+
+            chttp_request_builder_header(builder,
+                fmtorempty(S("X-BlogTech-Timestamp: {}"), V(timestamp),
+                    header_buf, sizeof(header_buf)));
+
+            chttp_request_builder_header(builder,
+                fmtorempty(S("X-BlogTech-Expire: {}"), V(expire),
+                    header_buf, sizeof(header_buf)));
+
+            chttp_request_builder_header(builder,
+                fmtorempty(S("X-BlogTech-Signature: {}"), V(signature),
+                    header_buf, sizeof(header_buf)));
+        }
 
         chttp_request_builder_body(builder, data);
 
@@ -303,7 +311,7 @@ int main_client(int argc, char **argv)
     }
 
     chttp_client_free(&client);
-    free(auth_password_original);
+    if (auth_password_original) free(auth_password_original);
     config_reader_free(&config_reader);
     return 0;
 }
