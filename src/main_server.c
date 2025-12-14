@@ -93,6 +93,7 @@ static b8 is_valid_domain_name(string s)
 static int load_server_config(ConfigReader *reader, ServerConfig *config)
 {
     // Set default values
+    config->document_root = EMPTY_STRING;
     config->http_addr = S("127.0.0.1");
     config->http_port = 8080;
     config->num_domains = 0;
@@ -108,8 +109,6 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
     config->request_log_buffer = 1<<10;
     config->request_log_timeout = 10000;
 
-    b8 have_document_root = false;
-
     b8 bad_config = false;
     string name, value;
     while (config_reader_next(reader, &name, &value)) {
@@ -119,7 +118,6 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                 bad_config = true;
             } else {
                 config->document_root = value;
-                have_document_root = true;
             }
         } else if (streq(name, S("reuse-addr"))) {
             parse_config_value_yn(name, value, &config->reuse_addr, &bad_config);
@@ -173,11 +171,6 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                 config->domains[config->num_domains++] = value;
             }
         }
-    }
-
-    if (!have_document_root) {
-        printf("Config Error: You need to specify a web content directory. Use option 'document-root'\n");
-        bad_config = true;
     }
 
     if (config->https_enabled) {
@@ -479,7 +472,8 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
-    {
+    if (server_config.document_root.len > 0) {
+
         char tmp[PATH_LIMIT];
 
         // The default domain is served from the default folder
@@ -743,6 +737,12 @@ int main_server(int argc, char **argv)
                         continue;
                 }
 #endif // HTTPS_ENABLED
+
+                if (server_config.document_root.len == 0) {
+                    chttp_response_builder_status(builder, 500);
+                    chttp_response_builder_send(builder);
+                    continue;
+                }
 
                 string domain_dir = S("default");
                 for (int i = 0; i < server_config.num_domains; i++)
