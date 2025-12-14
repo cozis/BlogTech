@@ -1,5 +1,5 @@
 # BlogTech
-BlogTech is a single-executable toolkit for managing small to medium websites written (mostly) from scratch. It supports HTTP, HTTPS, virtual hosts, setups with multiple certificates, authenticated PUT/DELETE requests, an ACME client for the automatic issuance of certificates, and a client to manage files on remote instances.
+BlogTech is a single-executable toolkit for managing small to medium websites written (mostly) from scratch. It supports multiple virtual hosts, HTTPS, automatic certificate management via ACME protocol, and a client to manage websites remotely.
 
 ## Quick Start
 
