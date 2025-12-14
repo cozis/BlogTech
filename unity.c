@@ -43,6 +43,7 @@
 #undef hex_char_to_int
 #include "src/process_request.c"
 #include "src/request_signature.c"
+#include "src/event_loop.c"
 #include "src/main_client.c"
 #include "src/main_server.c"
 #include "src/main.c"

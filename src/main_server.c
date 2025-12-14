@@ -11,12 +11,6 @@
 #include "lib/logger.h"
 #include "lib/file_system.h"
 
-#ifdef _WIN32
-#define POLL WSAPoll
-#else
-#define POLL poll
-#endif
-
 sig_atomic_t running = 0;
 
 typedef struct {
@@ -352,17 +346,6 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
     return 1;
 }
 
-static int pick_timeout(int *arr, int num)
-{
-    int ret = -1;
-    for (int i = 0; i < num; i++)
-        if (arr[i] > -1) {
-            if (ret == -1 || ret > arr[i])
-                ret = arr[i];
-        }
-    return ret;
-}
-
 int main_server(int argc, char **argv)
 {
     ///////////////////////////////////////////////////////////////////////////////
@@ -695,6 +678,9 @@ int main_server(int argc, char **argv)
         return -1;
     }
 
+    EventLoop loop;
+    event_loop_init(&loop, &server, &client);
+
     fprintf(stderr, "Setup complete\n");
 
     ///////////////////////////////////////////////////////////////////////////////
@@ -704,28 +690,7 @@ int main_server(int argc, char **argv)
     b8 restart = false;
     while (running) {
 
-        void*           ptrs[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
-        struct pollfd polled[CHTTP_CLIENT_POLL_CAPACITY + CHTTP_SERVER_POLL_CAPACITY];
-
-        EventRegister server_reg = {
-            ptrs,
-            polled,
-            0,
-            -1
-        };
-        chttp_server_register_events(&server, &server_reg);
-
-        EventRegister client_reg = {
-            ptrs   + server_reg.num_polled,
-            polled + server_reg.num_polled,
-            0,
-            -1
-        };
-        chttp_client_register_events(&client, &client_reg);
-
         int timeouts[] = {
-            server_reg.timeout,
-            client_reg.timeout,
             logger_next_timeout(&request_logger),
             logger_next_timeout(&auth_logger),
 #ifdef HTTPS_ENABLED
@@ -733,73 +698,70 @@ int main_server(int argc, char **argv)
             server_config.acme_enabled ? logger_next_timeout(&acme_logger) : -1,
 #endif // HTTPS_ENABLED
         };
-        int timeout = pick_timeout(timeouts, COUNT(timeouts));
 
-        POLL(polled, server_reg.num_polled + client_reg.num_polled, timeout);
+        Event event = event_loop_wait(&loop, timeouts, COUNT(timeouts));
+        switch (event.type) {
 
-        // TODO: These should not be called at each iteration but when
-        //       the timeout actually triggered
-        {
+        case EVENT_TIMEOUT:
 #ifdef HTTPS_ENABLED
             if (server_config.acme_enabled) {
                 acme_process_timeout(&acme, &client);
-                logger_flush(&acme_logger);
+                logger_flush_if_timeout(&acme_logger);
             }
 #endif // HTTPS_ENABLED
-            logger_flush(&request_logger);
-            logger_flush(&auth_logger);
-        }
+            logger_flush_if_timeout(&request_logger);
+            logger_flush_if_timeout(&auth_logger);
+            break;
 
-        chttp_client_process_events(&client, client_reg);
-        chttp_server_process_events(&server, server_reg);
+        case EVENT_CTRL_C:
+            running = false;
+            break;
 
-        int result;
-        void *user;
-        CHTTP_Response *response;
-        while (chttp_client_next_response(&client, &result, &user, &response)) {
-            b8 new_certificate = false;
+        case EVENT_HTTP_REQUEST:
+            {
+                CHTTP_Request *request = event.request;
+                CHTTP_ResponseBuilder builder = event.builder;
+
+                string method_str = method_to_str(request->method);
+                log(&request_logger, S("{} {}\n"), V(method_str, request->url.path)); // IMPROVE: add more information to the log
+
 #ifdef HTTPS_ENABLED
-            new_certificate = acme_process_response(&acme, result, response);
-#endif
-            chttp_free_response(response);
-            if (new_certificate) {
+                if (server_config.acme_enabled) {
+                    if (acme_process_request(&acme, request, builder))
+                        continue;
+                }
+#endif // HTTPS_ENABLED
+
+                string domain_dir = S("default");
+                for (int i = 0; i < server_config.num_domains; i++)
+                    if (chttp_match_host(request, server_config.domains[i], server_config.http_port) ||
+                        chttp_match_host(request, server_config.domains[i], server_config.https_port)) {
+                        domain_dir = server_config.domains[i];
+                        break;
+                    }
+
+                char virtual_host_document_root_buf[PATH_LIMIT];
+                string virtual_host_document_root = fmtorempty(S("{}/{}"), V(server_config.document_root, domain_dir),
+                    virtual_host_document_root_buf, SIZEOF(virtual_host_document_root_buf));
+                if (virtual_host_document_root.len == 0) {
+                    chttp_response_builder_status(builder, 500);
+                    chttp_response_builder_send(builder);
+                    continue;
+                }
+
+                process_request(virtual_host_document_root, request, builder, &auth);
+            }
+            break;
+
+        case EVENT_HTTP_RESPONSE:
+#ifdef HTTPS_ENABLED
+            if (acme_process_response(&acme, event.result, event.response)) {
                 running = 0;
                 restart = true;
             }
-        }
-
-        CHTTP_Request *request;
-        CHTTP_ResponseBuilder builder;
-        while (chttp_server_next_request(&server, &request, &builder)) {
-
-            string method_str = method_to_str(request->method);
-            log(&request_logger, S("{} {}\n"), V(method_str, request->url.path)); // IMPROVE: add more information to the log
-
-#ifdef HTTPS_ENABLED
-            if (server_config.acme_enabled) {
-                if (acme_process_request(&acme, request, builder))
-                    continue;
-            }
-#endif // HTTPS_ENABLED
-
-            string domain_dir = S("default");
-            for (int i = 0; i < server_config.num_domains; i++)
-                if (chttp_match_host(request, server_config.domains[i], server_config.http_port) ||
-                    chttp_match_host(request, server_config.domains[i], server_config.https_port)) {
-                    domain_dir = server_config.domains[i];
-                    break;
-                }
-
-            char virtual_host_document_root_buf[PATH_LIMIT];
-            string virtual_host_document_root = fmtorempty(S("{}/{}"), V(server_config.document_root, domain_dir),
-                virtual_host_document_root_buf, SIZEOF(virtual_host_document_root_buf));
-            if (virtual_host_document_root.len == 0) {
-                chttp_response_builder_status(builder, 500);
-                chttp_response_builder_send(builder);
-                continue;
-            }
-
-            process_request(virtual_host_document_root, request, builder, &auth);
+#endif
+            chttp_free_response(event.response);
+            break;
         }
     }
 
@@ -807,6 +769,7 @@ int main_server(int argc, char **argv)
     // CLEANUP
     ///////////////////////////////////////////////////////////////////////////////
 
+    event_loop_free(&loop);
     auth_free(&auth);
     logger_free(&auth_logger);
 #ifdef HTTPS_ENABLED

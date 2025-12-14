@@ -62,6 +62,12 @@ void logger_flush(Logger *l)
     l->last_flush = get_current_time(); // May return the invalid time
 }
 
+void logger_flush_if_timeout(Logger *l)
+{
+    if (logger_next_timeout(l) == 0)
+        logger_flush(l);
+}
+
 void log(Logger *l, string fmt, Args args)
 {
     if (l == NULL)
