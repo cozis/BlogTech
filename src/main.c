@@ -34,6 +34,7 @@ static void print_usage(FILE *stream, char *name)
         "  --serve, -s                 Run BlogTech as an HTTP(S) server\n"
         "  --upload, -u                Upload files to a remote Blogtech server\n"
         "  --auth-password-file=<path> Path to file containing the authentication password\n"
+        "  --skip-auth-check           Skip authentication (for development only)\n"
         "\n"
         "Server options (compatible with --serve/-s):\n"
         "  --document-root=<path>      Root folder of the web content\n"
