@@ -280,6 +280,7 @@ typedef struct {
     Logger *logger;
     b8      error;
     b8      dont_verify_cert;
+    b8      trace_bytes;
     string  url;
 
     JWS_Builder jws_builder;
@@ -290,16 +291,21 @@ typedef struct {
 // NOTE: The url argument must be valid until request_builder_send
 //       is called.
 static void
-request_builder_init(RequestBuilder *builder,
-    ACME_Account account, string nonce,
-    b8 dont_verify_cert, string url,
-    Logger *logger)
+request_builder_init(
+    RequestBuilder* builder,
+    ACME_Account    account,
+    string          nonce,
+    b8              dont_verify_cert,
+    b8              trace_bytes,
+    string          url,
+    Logger*         logger)
 {
     ASSERT(account.key);
 
     builder->logger = logger;
     builder->error = false;
     builder->dont_verify_cert = dont_verify_cert;
+    builder->trace_bytes = trace_bytes;
     builder->url = url;
 
     jws_builder_init(&builder->jws_builder,
@@ -354,7 +360,7 @@ request_builder_send(RequestBuilder *builder, CHTTP_Client *client)
 
     CHTTP_RequestBuilder http_builder = chttp_client_get_builder(client);
     chttp_request_builder_set_user(http_builder, NULL); // TODO: should set pointer to the acme struct?
-    chttp_request_builder_trace(http_builder, true);
+    chttp_request_builder_trace(http_builder, builder->trace_bytes);
     chttp_request_builder_insecure(http_builder, builder->dont_verify_cert);
     chttp_request_builder_method(http_builder, CHTTP_METHOD_POST);
     chttp_request_builder_target(http_builder, builder->url);
@@ -397,6 +403,7 @@ void acme_config_init(ACME_Config *config,
 
     config->directory_url = directory_url;
     config->dont_verify_cert = false;
+    config->trace_bytes = false;
     config->logger = NULL;
 
     config->email = email;
@@ -512,6 +519,7 @@ int acme_init(ACME *acme, ACME_Config *config)
 
     acme->client = config->client;
     acme->dont_verify_cert = config->dont_verify_cert;
+    acme->trace_bytes = config->trace_bytes;
     acme->logger = config->logger;
 
     acme->agree_tos = config->agree_tos;
@@ -543,6 +551,8 @@ int acme_init(ACME *acme, ACME_Config *config)
         if (key == NULL) {
             log(acme->logger, S("Coultn't parse ACME account key in '{}'. Deleting the file and continuing without an account.\n"), V(config->account_key_file));
             file_delete(acme->account_key_file);
+        } else {
+            log(acme->logger, S("ACME account key parsed.\n"), V());
         }
         acme->account.key = key;
         free(account_key.ptr);
@@ -577,6 +587,7 @@ int acme_init(ACME *acme, ACME_Config *config)
             } else {
                 acme->certificate = certificate;
                 acme->certificate_key = certificate_key;
+                log(acme->logger, S("Certificate and certificate key files found.\n"), V());
             }
         }
     }
@@ -700,7 +711,7 @@ static int send_directory_request(ACME *acme, CHTTP_Client *client)
 {
     CHTTP_RequestBuilder builder = chttp_client_get_builder(client);
     chttp_request_builder_set_user(builder, acme);
-    chttp_request_builder_trace(builder, true);
+    chttp_request_builder_trace(builder, acme->trace_bytes);
     chttp_request_builder_insecure(builder, acme->dont_verify_cert);
     chttp_request_builder_method(builder, CHTTP_METHOD_GET);
     chttp_request_builder_target(builder, acme->directory_url);
@@ -727,7 +738,7 @@ static int send_first_nonce_request(ACME *acme, CHTTP_Client *client)
 {
     CHTTP_RequestBuilder builder = chttp_client_get_builder(client);
     chttp_request_builder_set_user(builder, acme);
-    chttp_request_builder_trace(builder, true);
+    chttp_request_builder_trace(builder, acme->trace_bytes);
     chttp_request_builder_insecure(builder, acme->dont_verify_cert);
     chttp_request_builder_method(builder, CHTTP_METHOD_GET);
     chttp_request_builder_target(builder, acme->urls.new_nonce);
@@ -783,8 +794,13 @@ static int send_account_creation_request(ACME *acme, CHTTP_Client *client)
         return -1;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->urls.new_account, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->urls.new_account,
+        acme->logger);
 
     request_builder_write(&builder, S("{\"contact\":[\"mailto:"));
     request_builder_write(&builder, acme->email);
@@ -841,7 +857,13 @@ static int complete_account_creation_request(ACME *acme, CHTTP_Response *respons
         return -1;
     }
 
-    log(acme->logger, S("ACME account was created. The account key was stored in '{}'\n"), V(acme->account_key_file));
+    if (response->status == 201) {
+        log(acme->logger, S("ACME account was created. The account key was stored in '{}'\n"), V(acme->account_key_file));
+    } else {
+        ASSERT(response->status == 200);
+        log(acme->logger, S("Existing ACME account found"), V());
+    }
+
     BIO_free(bio);
     return 0;
 }
@@ -849,8 +871,13 @@ static int complete_account_creation_request(ACME *acme, CHTTP_Response *respons
 static int send_order_creation_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->urls.new_order, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->urls.new_order,
+        acme->logger);
 
     request_builder_write(&builder, S("{\"identifiers\":["));
     for (int i = 0; i < acme->num_domains; i++) {
@@ -951,8 +978,13 @@ static int send_next_challenge_info_request(ACME *acme, CHTTP_Client *client)
     string auth_url = acme->domains[acme->resolved_challenges].authorization_url;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, auth_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        auth_url,
+        acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1037,8 +1069,13 @@ static int send_next_challenge_begin_request(ACME *acme, CHTTP_Client *client)
     string challenge_url = acme->domains[acme->resolved_challenges].challenge_url;
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, challenge_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        challenge_url,
+        acme->logger);
 
     request_builder_write(&builder, S("{}"));
 
@@ -1064,8 +1101,13 @@ static int send_challenge_status_request(ACME *acme,
     ASSERT(acme->resolved_challenges < acme->num_domains);
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->domains[acme->resolved_challenges].challenge_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->domains[acme->resolved_challenges].challenge_url,
+        acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1186,8 +1228,13 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
     string csr = { csr_buf, csr_len };
 
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->finalize_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->finalize_url,
+        acme->logger);
 
     request_builder_write(&builder, S("{\"csr\":\""));
     request_builder_write(&builder, csr);
@@ -1231,8 +1278,13 @@ static int complete_finalize_order_request(ACME *acme, CHTTP_Response *response)
 static int send_certificate_poll_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account,
-        acme->nonce, acme->dont_verify_cert, acme->order_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->order_url,
+        acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1285,8 +1337,13 @@ static int complete_certificate_poll_request(ACME *acme, CHTTP_Response *respons
 static int send_certificate_download_request(ACME *acme, CHTTP_Client *client)
 {
     RequestBuilder builder;
-    request_builder_init(&builder, acme->account, acme->nonce,
-        acme->dont_verify_cert, acme->certificate_url, acme->logger);
+    request_builder_init(&builder,
+        acme->account,
+        acme->nonce,
+        acme->dont_verify_cert,
+        acme->trace_bytes,
+        acme->certificate_url,
+        acme->logger);
 
     request_builder_write(&builder, EMPTY_STRING);
 
@@ -1556,7 +1613,6 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-
             if (send_first_nonce_request(acme, acme->client) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
@@ -1575,27 +1631,15 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
                 break;
             }
 
-            if (account_exists(acme)) {
-                if (certificate_exists(acme)) {
-                    // A certificate exists. Wait for it to expire.
-                    CHANGE_STATE(acme->state, ACME_STATE_WAIT);
-                    acme->state_change_time = current_time;
-                } else {
-                    // No certificate associated to this instance. Create one.
-                    if (send_order_creation_request(acme, acme->client) < 0) {
-                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
-                        break;
-                    }
-                    CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
-                }
-            } else {
-                // No account associated to this instance. Create one.
-                if (send_account_creation_request(acme, acme->client) < 0) {
-                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
-                    break;
-                }
-                CHANGE_STATE(acme->state, ACME_STATE_CREATE_ACCOUNT);
+            // We only store the private key associated to the account
+            // and not the account URL. To get the account URL we need
+            // to follow the same procedure if we already have an account
+            // or not.
+            if (send_account_creation_request(acme, acme->client) < 0) {
+                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                break;
             }
+            CHANGE_STATE(acme->state, ACME_STATE_CREATE_ACCOUNT);
         }
         break;
     case ACME_STATE_CREATE_ACCOUNT:
@@ -1623,13 +1667,27 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
                 break;
             }
 
-            // If no account existed, surely a certificate doesn't
-            // exist either, so create one.
-            if (send_order_creation_request(acme, acme->client) < 0) {
-                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
-                break;
+            // Now we need to decide whether we want to issue a
+            // certificate or not.
+            if (account_exists(acme)) {
+                if (certificate_exists(acme)) {
+
+                    log(acme->logger, S("Account and certificate already exists. Waiting for the certificate to expire.\n"), V());
+
+                    // A certificate exists. Wait for it to expire.
+                    CHANGE_STATE(acme->state, ACME_STATE_WAIT);
+                    acme->state_change_time = current_time;
+                } else {
+
+                    log(acme->logger, S("Issuing a new certificate.\n"), V());
+
+                    if (send_order_creation_request(acme, acme->client) < 0) {
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                        break;
+                    }
+                    CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
+                }
             }
-            CHANGE_STATE(acme->state, ACME_STATE_CREATE_CERT);
         }
         break;
     case ACME_STATE_CREATE_CERT:

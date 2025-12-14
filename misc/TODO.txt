@@ -2,3 +2,5 @@
 [ ] Handle PUTs to subdirectories
 [ ] If the server crashes it will forget all invalidated nonces
 [ ] Add DELETE and GET operations to the client
+[ ] Rename option --auth-password-file to --password-file
+[ ] Add proper user agent to ACME client

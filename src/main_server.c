@@ -45,6 +45,7 @@ typedef struct {
     string acme_email;
     string acme_country;
     string acme_org;
+    b8     acme_insecure; // TODO: document
     string acme_domains[ACME_DOMAIN_LIMIT];
     int    num_acme_domains;
 } ServerConfig;
@@ -243,6 +244,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
         config->acme_log_timeout = 10000;
         config->acme_agree_tos   = false;
         config->acme_url         = S("https://acme-v02.api.letsencrypt.org/directory");
+        config->acme_insecure    = false;
 
         b8 have_acme_email   = false;
         b8 have_acme_country = false;
@@ -313,6 +315,8 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                         bad_config = true;
                     }
                 }
+            } else if (streq(name, S("acme-insecure"))) {
+                parse_config_value_yn(name, value, &config->acme_insecure, &bad_config);
             }
         }
 
@@ -505,13 +509,15 @@ int main_server(int argc, char **argv)
 #ifdef HTTPS_ENABLED
         ret = file_exists(server_config.cert_file);
         if (ret < 0) {
-            fprintf(stderr, "Couldn't check for the existance of '%.*s'\n",
-                UNPACK(server_config.cert_file));
-            chttp_server_free(&server);
-            chttp_client_free(&client);
-            config_reader_free(&config_reader);
-            crash_logger_free();
-            return -1;
+            if (ret != FS_ERROR_NOTFOUND) {
+                fprintf(stderr, "Couldn't check for the existance of '%.*s'\n",
+                    UNPACK(server_config.cert_file));
+                chttp_server_free(&server);
+                chttp_client_free(&client);
+                config_reader_free(&config_reader);
+                crash_logger_free();
+                return -1;
+            }
         }
 
         if (ret == 0) {
@@ -582,14 +588,20 @@ int main_server(int argc, char **argv)
             server_config.acme_country,
             server_config.acme_org,
             server_config.acme_domains[0]);
+
         for (int i = 1; i < server_config.num_acme_domains; i++) {
             acme_config_add_domain(&acme_config,
                 server_config.acme_domains[i]);
         }
-        acme_config.agree_tos = server_config.acme_agree_tos;
-        acme_config.account_key_file = server_config.acme_key_file;
-        acme_config.certificate_file = server_config.cert_file;
+
+        acme_config.logger               = &acme_logger;
+        acme_config.agree_tos            = server_config.acme_agree_tos;
+        acme_config.account_key_file     = server_config.acme_key_file;
+        acme_config.certificate_file     = server_config.cert_file;
         acme_config.certificate_key_file = server_config.cert_key_file;
+        acme_config.dont_verify_cert     = server_config.acme_insecure;
+        acme_config.trace_bytes          = server_config.trace_bytes;
+
         if (acme_init(&acme, &acme_config) < 0) {
             fprintf(stderr, "Couldn't setup the ACME client\n");
             logger_free(&acme_logger);

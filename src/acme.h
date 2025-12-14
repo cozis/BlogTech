@@ -15,10 +15,9 @@ typedef struct {
     /////////////////////////////////////////////
     // General
 
-    string directory_url;
-
-    b8     dont_verify_cert;
-
+    string  directory_url;
+    b8      dont_verify_cert;
+    b8      trace_bytes;
     Logger *logger;
 
     /////////////////////////////////////////////
@@ -153,6 +152,7 @@ typedef struct {
 
     CHTTP_Client *client;
     b8            dont_verify_cert;
+    b8            trace_bytes;
     Logger       *logger;
 
     string account_key_file;

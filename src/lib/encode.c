@@ -280,7 +280,8 @@ static int inplace_b64(char *buf, int len, b8 pad, b8 url)
 {
     u8 *ptr = (u8*) buf;
 
-    int olen = b64_len((char*) ptr, len, pad, url);
+    // Get output length (with padding)
+    int olen = b64_len((char*) ptr, len, true, url);
     if (olen == 0)
         return 0;
     ASSERT(len > 0);
@@ -338,7 +339,8 @@ static int inplace_b64(char *buf, int len, b8 pad, b8 url)
         }
     }
 
-    return olen;
+    ASSERT(b64_len(buf, len, pad, url));
+    return 0;
 }
 
 int encode_len(char *buf, int len1, int len2, Encoding enc)

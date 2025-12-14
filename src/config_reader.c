@@ -9,6 +9,14 @@
 #define DEFAULT_CONFIG_FILE "blogtech.conf"
 #endif
 
+static b8 startswith(string str, string pre)
+{
+    if (str.len < pre.len)
+        return false;
+    str.len = pre.len;
+    return streq(str, pre);
+}
+
 static int read_config_file(int argc, char **argv, string *text)
 {
     b8 no_config = false;
@@ -17,14 +25,12 @@ static int read_config_file(int argc, char **argv, string *text)
 
         string arg = ZT2S(argv[i]);
 
-        if (streq(arg, S("--config"))) {
-            i++;
-            if (i == argc) {
-                fprintf(stderr, "Missing path after --config\n");
-                return -1;
-            }
-            no_config = false;
+        // TODO: this should use the regular argument parser, not do an ad-hoc thing
+        if (startswith(arg, S("--config="))) {
             file = arg;
+            file.ptr += S("--config=").len;
+            file.len -= S("--config=").len;
+            no_config = false;
             break;
         }
 
