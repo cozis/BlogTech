@@ -11,6 +11,7 @@ BlogTech is a toolkit for managing small to medium websites. It supports HTTPS, 
 - [Enabling ACME](#enabling-acme)
 - [Testing the ACME Client](#testing-the-acme-client)
 - [Configuration Files](#configuration-files)
+- [Crash Logger](#crash-logger)
 
 ## Quick Start
 
@@ -309,3 +310,7 @@ If you want to ignore the implicit config file, use the `--no-config` flag:
 ```sh
 ./blogtech --serve --no-config
 ```
+
+## Crash Logger
+
+When BlogTech crashes while in server mode, it will generate `crash.bin`, a binary file with the location of the crash. The next time the server is started, the `crash.bin` file will be translated into `crash.log`, a human-readable stack trace. Note that the translation of addresses to symbol names/line numbers might be a bit wonky.
