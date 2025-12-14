@@ -583,6 +583,8 @@ int decode_len(char *buf, int len, Encoding enc)
         return decode_pct_len(buf, len);
     case ENCODING_B64:
         return decode_b64_len(buf, len);
+    default:
+        break;
     }
     return -1;
 }
@@ -603,6 +605,8 @@ int decode_inplace(char *buf, int len, int cap, Encoding enc)
         break;
     case ENCODING_B64:
         ret = inplace_decode_b64(buf, len);
+        break;
+    default:
         break;
     }
     if (ret < 0)
