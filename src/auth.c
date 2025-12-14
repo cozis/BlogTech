@@ -146,6 +146,15 @@ static b8 store_nonce(Auth *auth, char *nonce, UnixTime expire)
     return true;
 }
 
+static b8 streqct(volatile const char *p1,
+    volatile const char *p2, int n)
+{
+    volatile char c = 0;
+    for (int i = 0; i < n; i++)
+        c |= p1[i] ^ p2[i];
+    return (c == 0);
+}
+
 // Returns 0 if the request is verified, 1 if the request is
 // not verified, and -1 if an error occurred.
 int auth_verify(Auth *auth, CHTTP_Request *request)
@@ -269,7 +278,12 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     }
     string expected_signature = { expected_signature_buf, ret };
 
-    if (!streq(signature, expected_signature)) { // TODO: This should be constant-time
+    if (signature.len != expected_signature.len) {
+        log(auth->logger, S("Request marked as not authenticated because its signature has a wrong length\n"), V());
+        return 1;
+    }
+
+    if (!streqct(signature.ptr, expected_signature.ptr, expected_signature.len)) {
         log(auth->logger, S("Request marked as not authenticated because its signature is invalid\n"), V());
         return 1;
     }
