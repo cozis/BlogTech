@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <direct.h> // _mkdir
 #else
+#include <dirent.h>
 #include <sys/stat.h>
 #endif
 
@@ -280,6 +281,45 @@ int is_dir(string path)
 #endif
 }
 
+int dir_is_empty(string path)
+{
+    char path_zt[PATH_LIMIT];
+    if (path.len >= SIZEOF(path_zt))
+        return FS_ERROR_PATHTOOLONG;
+    memcpy(path_zt, path.ptr, path.len);
+    path_zt[path.len] = '\0';
+
+#ifdef _WIN32
+    WIN32_FIND_DATAA find_data;
+    HANDLE hFind = FindFirstFileA(path_zt, &find_data);
+    if (hFind == INVALID_HANDLE_VALUE)
+        return FS_ERROR_UNSPECIFIED;
+    do {
+        string name = ZT2S(find_data.cFileName);
+        if (streq(name, S(".")) || streq(name, S("..")))
+            continue;
+        FindClose(hFind);
+        return 0;
+    } while (FindNextFileA(hFind, &find_data));
+    FindClose(hFind);
+    return 1;
+#else
+    DIR *dir = opendir(path_zt);
+    if (dir == NULL)
+        return -1;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        string name = ZT2S(entry->d_name); // TODO: is d_name null-terminated?
+        if (streq(name, S(".")) || streq(name, S("..")))
+            continue;
+        closedir(dir);
+        return 0;
+    }
+    closedir(dir);
+    return 1;
+#endif
+}
+
 int create_dir(string path)
 {
     char path_zt[PATH_LIMIT];
@@ -398,4 +438,82 @@ int parse_path(string path, string *comps, int max_comps, int num_comps)
     }
 
     return num_comps;
+}
+
+// Splits the path into an array of subdirectories
+//
+// For instance
+//   dir1/dir2/dir3/file.txt
+// becomes:
+//   dir1
+//   dir1/dir2
+//   dir1/dir2/dir3
+static int parse_parent_subdirs(string path, string *subdirs, int max)
+{
+    // First, split the path into components
+    int ret = parse_path(path, subdirs, max, 0);
+    if (ret < 0)
+        return FS_ERROR_UNSPECIFIED;
+    int num_subdirs = ret;
+
+    // Pop the last component (the file name)
+    if (num_subdirs == 0)
+        return FS_ERROR_UNSPECIFIED;
+    num_subdirs--;
+
+    // Then, translate each subcomponent into
+    // a subdirectory
+    for (int i = 0; i < num_subdirs; i++)
+        subdirs[i] = (string) {
+            path.ptr,
+            subdirs[i].ptr + subdirs[i].len - path.ptr
+        };
+
+    return num_subdirs;
+}
+
+int create_parent_dirs(string path)
+{
+    string subdirs[PATH_COMP_LIMIT];
+
+    int ret = parse_parent_subdirs(path, subdirs, PATH_COMP_LIMIT);
+    if (ret < 0)
+        return ret;
+    int num_subdirs = ret;
+
+    for (int i = 0; i < num_subdirs; i++) {
+        ret = create_dir(subdirs[i]);
+        if (ret < 0 && ret != FS_ERROR_EXISTS)
+            return ret;
+    }
+
+    return 0;
+}
+
+int delete_empty_parent_dirs(string path, int ign)
+{
+    string subdirs[PATH_COMP_LIMIT];
+
+    int ret = parse_parent_subdirs(path, subdirs, PATH_COMP_LIMIT);
+    if (ret < 0)
+        return ret;
+    int num_subdirs = ret;
+
+    for (int i = num_subdirs-1; i >= ign; i--) {
+
+        ret = dir_is_empty(subdirs[i]);
+
+        if (ret < 0)
+            return ret; // Error
+
+        if (ret == 0)
+            break; // Not empty
+
+        // Empty
+        ret = file_delete(subdirs[i]);
+        if (ret < 0)
+            return ret;
+    }
+
+    return 0;
 }

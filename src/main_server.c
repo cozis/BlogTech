@@ -22,6 +22,7 @@ typedef struct {
     string request_log_file;
     s32    request_log_buffer;
     s32    request_log_timeout;
+    bool   skip_auth_check; // TODO: document
     string auth_password_file;
     string auth_log_file;
     s32    auth_log_buffer;
@@ -100,6 +101,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
     config->num_domains = 0;
     config->reuse_addr = true;
     config->trace_bytes = false;
+    config->skip_auth_check = false;
     config->auth_password_file = EMPTY_STRING;
     config->https_enabled = false;
     config->acme_enabled = false;
@@ -132,6 +134,8 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
             parse_config_value_yn(name, value, &config->https_enabled, &bad_config);
         } else if (streq(name, S("acme-enabled"))) {
             parse_config_value_yn(name, value, &config->acme_enabled, &bad_config);
+        } else if (streq(name, S("skip-auth-check"))) {
+            config->skip_auth_check = true;
         } else if (streq(name, S("auth-password-file"))) {
             if (value.len == 0) {
                 printf("Config Error: Invalid password file\n");
@@ -643,7 +647,10 @@ int main_server(int argc, char **argv)
     }
 
     Auth auth;
-    if (auth_init(&auth, server_config.auth_password_file, &auth_logger) < 0) {
+    if (auth_init(&auth,
+        server_config.auth_password_file,
+        server_config.skip_auth_check,
+        &auth_logger) < 0) {
         fprintf(stderr, "Couldn't setup the auth system\n");
         logger_free(&auth_logger);
 #ifdef HTTPS_ENABLED
@@ -756,24 +763,15 @@ int main_server(int argc, char **argv)
                     continue;
                 }
 
-                string domain_dir = S("default");
+                string host_dir = S("default");
                 for (int i = 0; i < server_config.num_domains; i++)
                     if (chttp_match_host(request, server_config.domains[i], server_config.http_port) ||
                         chttp_match_host(request, server_config.domains[i], server_config.https_port)) {
-                        domain_dir = server_config.domains[i];
+                        host_dir = server_config.domains[i];
                         break;
                     }
 
-                char virtual_host_document_root_buf[PATH_LIMIT];
-                string virtual_host_document_root = fmtorempty(S("{}/{}"), V(server_config.document_root, domain_dir),
-                    virtual_host_document_root_buf, SIZEOF(virtual_host_document_root_buf));
-                if (virtual_host_document_root.len == 0) {
-                    chttp_response_builder_status(builder, 500);
-                    chttp_response_builder_send(builder);
-                    continue;
-                }
-
-                process_request(virtual_host_document_root, request, builder, &auth);
+                process_request(server_config.document_root, host_dir, request, builder, &auth);
             }
             break;
 

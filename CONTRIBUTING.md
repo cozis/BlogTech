@@ -45,4 +45,3 @@ You can then start the BlogTech instance by running:
 ```sh
 ./blogtech -s --config=misc/pebble_blogtech.conf
 ```
-

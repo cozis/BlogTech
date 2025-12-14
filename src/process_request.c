@@ -2,23 +2,41 @@
 #include "lib/chttp.h"
 #include "lib/file_system.h"
 
-static int translate_path(string path, string root, char *dst, int cap)
+static int translate_path(
+    string request_path,
+    string document_root,
+    string host_dir,
+    char *dst, int cap)
 {
     int num_comps = 0;
     string comps[PATH_COMP_LIMIT];
 
-    int ret = parse_path(root, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
-    if (ret < 0)
-        return -1;
+    // Parse the document root
+    int ret = parse_path(document_root, comps, PATH_COMP_LIMIT, 0);
+    if (ret < 0) {
+        ASSERT(0);
+    }
     num_comps += ret;
 
-    ret = parse_path(path, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
-    if (ret < 0)
-        return -1;
+    // Append the host directory
+    if (num_comps == PATH_COMP_LIMIT) {
+        ASSERT(0);
+    }
+    comps[num_comps++] = host_dir;
+
+    // Then, parse the request path in the remaining space
+    //
+    // NOTE: It's important that the last argument is 0 here.
+    //       This means that the parsing of the path will not
+    //       be able to move upwards with .. components
+    ret = parse_path(request_path, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
+    if (ret < 0) {
+        ASSERT(0);
+    }
     num_comps += ret;
 
     int len = 0;
-    if (root.len == 0 || root.ptr[0] != '/')
+    if (document_root.len == 0 || document_root.ptr[0] != '/')
         len++;
     for (int i = 0; i < num_comps; i++)
         len += 1 + comps[i].len;
@@ -26,7 +44,7 @@ static int translate_path(string path, string root, char *dst, int cap)
         return -1;
 
     int num = 0;
-    if (root.len == 0 || root.ptr[0] != '/')
+    if (document_root.len == 0 || document_root.ptr[0] != '/')
         dst[num++] = '.';
     for (int i = 0; i < num_comps; i++) {
         dst[num++] = '/';
@@ -37,13 +55,15 @@ static int translate_path(string path, string root, char *dst, int cap)
     return num;
 }
 
-static void process_request_get(string document_root,
-    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_get(
+    string document_root,
+    string host_dir,
+    CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder,
+    Auth *auth)
 {
-    // TODO: check virtual host
-
     char buf[PATH_LIMIT];
-    int ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    int ret = translate_path(request->url.path, document_root, host_dir, buf, (int) sizeof(buf));
     if (ret < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
@@ -123,11 +143,13 @@ static void process_request_get(string document_root,
     chttp_response_builder_send(builder);
 }
 
-static void process_request_put(string document_root,
-    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_put(
+    string document_root,
+    string host_dir,
+    CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder,
+    Auth *auth)
 {
-    // TODO: check virtual host
-
     int ret = auth_verify(auth, request);
     if (ret < 0) {
         chttp_response_builder_status(builder, 500);
@@ -141,13 +163,20 @@ static void process_request_put(string document_root,
     }
 
     char buf[1<<10];
-    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    ret = translate_path(request->url.path, document_root, host_dir, buf, (int) sizeof(buf));
     if (ret < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
         return;
     }
     string file_path = { buf, ret };
+
+    ret = create_parent_dirs(file_path);
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
 
     FileHandle fd;
     ret = file_open(file_path, FS_OPEN_WRITE, &fd);
@@ -174,11 +203,13 @@ static void process_request_put(string document_root,
     file_close(fd);
 }
 
-static void process_request_delete(string document_root,
-    CHTTP_Request *request, CHTTP_ResponseBuilder builder, Auth *auth)
+static void process_request_delete(
+    string document_root,
+    string host_dir,
+    CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder,
+    Auth *auth)
 {
-    // TODO: check virtual host
-
     int ret = auth_verify(auth, request);
     if (ret < 0) {
         chttp_response_builder_status(builder, 500);
@@ -192,7 +223,7 @@ static void process_request_delete(string document_root,
     }
 
     char buf[1<<10];
-    ret = translate_path(request->url.path, document_root, buf, (int) sizeof(buf));
+    ret = translate_path(request->url.path, document_root, host_dir, buf, (int) sizeof(buf));
     if (ret < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
@@ -200,27 +231,46 @@ static void process_request_delete(string document_root,
     }
     string file_path = { buf, ret };
 
+    if (is_dir(file_path)) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+
     if (file_delete(file_path) < 0) {
         chttp_response_builder_status(builder, 500); // TODO: better error code
         chttp_response_builder_send(builder);
-    } else {
-        chttp_response_builder_status(builder, 200); // TODO: better error code
-        chttp_response_builder_send(builder);
+        return;
     }
+
+    int ign = 2; // Ignore the document root and the host dir
+    ret = delete_empty_parent_dirs(file_path, ign);
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500); // TODO: better error code
+        chttp_response_builder_send(builder);
+        return;
+    }
+
+    chttp_response_builder_status(builder, 200); // TODO: better error code
+    chttp_response_builder_send(builder);
 }
 
-void process_request(string document_root, CHTTP_Request *request,
-    CHTTP_ResponseBuilder builder, Auth *auth)
+void process_request(
+    string document_root,
+    string host_dir,
+    CHTTP_Request *request,
+    CHTTP_ResponseBuilder builder,
+    Auth *auth)
 {
     switch (request->method) {
     case CHTTP_METHOD_GET:
-        process_request_get(document_root, request, builder, auth);
+        process_request_get(document_root, host_dir, request, builder, auth);
         break;
     case CHTTP_METHOD_PUT:
-        process_request_put(document_root, request, builder, auth);
+        process_request_put(document_root, host_dir, request, builder, auth);
         break;
     case CHTTP_METHOD_DELETE:
-        process_request_delete(document_root, request, builder, auth);
+        process_request_delete(document_root, host_dir, request, builder, auth);
         break;
     case CHTTP_METHOD_OPTIONS:
         chttp_response_builder_status(builder, 200);

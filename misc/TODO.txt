@@ -1,6 +1,10 @@
 [ ] Clean up the parsing code of auth headers in auth.c
-[ ] Handle PUTs to subdirectories
 [ ] If the server crashes it will forget all invalidated nonces
 [ ] Add DELETE and GET operations to the client
 [ ] Rename option --auth-password-file to --password-file
 [ ] Add proper user agent to ACME client
+[ ] Test the ACME certificate renewal code
+[ ] What happens when a request uses * as a resource path?
+[ ] Consider changing the delete endpoint to return 404
+[ ] Find good compile-time constants that should be options
+[ ] Add missing option docs

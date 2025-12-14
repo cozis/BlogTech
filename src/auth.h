@@ -14,12 +14,13 @@ typedef struct {
 
 typedef struct {
     Logger *logger;
+    b8      skip_auth_check;
     char    password_buf[1<<8];
     string  password;
     AppliedNonce nonces[MAX_NONCES];
 } Auth;
 
-int  auth_init(Auth *auth, string password_file, Logger *logger);
+int  auth_init(Auth *auth, string password_file, b8 skip_auth_check, Logger *logger);
 void auth_free(Auth *auth);
 int  auth_verify(Auth *auth, CHTTP_Request *request);
 

@@ -8,42 +8,49 @@
 #include "lib/encode.h"
 #include "lib/file_system.h"
 
-int auth_init(Auth *auth, string password_file, Logger *logger)
+int auth_init(Auth *auth,
+    string password_file,
+    b8     skip_auth_check,
+    Logger *logger)
 {
     auth->logger = logger;
 
+    auth->skip_auth_check = skip_auth_check;
     auth->password = EMPTY_STRING;
 
     for (int i = 0; i < MAX_NONCES; i++)
         auth->nonces[i].expire = INVALID_UNIX_TIME;
 
-    if (password_file.len == 0)
-        return 0;
+    if (!skip_auth_check) {
 
-    string content;
-    if (file_read_all(password_file, &content) < 0) {
-        log(logger, S("Couldn't read password from '{}'\n"), V(password_file));
-        return -1;
-    }
+        if (password_file.len == 0)
+            return 0;
 
-    string trimmed_content = trim(content);
+        string content;
+        if (file_read_all(password_file, &content) < 0) {
+            log(logger, S("Couldn't read password from '{}'\n"), V(password_file));
+            return -1;
+        }
 
-    if (trimmed_content.len == 0) {
-        log(logger, S("Invalid empty password\n"), V());
+        string trimmed_content = trim(content);
+
+        if (trimmed_content.len == 0) {
+            log(logger, S("Invalid empty password\n"), V());
+            free(content.ptr);
+            return -1;
+        }
+
+        if (trimmed_content.len >= sizeof(auth->password_buf)) {
+            log(logger, S("Password is longer than expected\n"), V());
+            free(content.ptr);
+            return -1;
+        }
+
+        memcpy_(auth->password_buf, trimmed_content.ptr, trimmed_content.len);
+        auth->password.ptr = auth->password_buf;
+        auth->password.len = trimmed_content.len;
         free(content.ptr);
-        return -1;
     }
-
-    if (trimmed_content.len >= sizeof(auth->password_buf)) {
-        log(logger, S("Password is longer than expected\n"), V());
-        free(content.ptr);
-        return -1;
-    }
-
-    memcpy_(auth->password_buf, trimmed_content.ptr, trimmed_content.len);
-    auth->password.ptr = auth->password_buf;
-    auth->password.len = trimmed_content.len;
-    free(content.ptr);
 
     log(logger, S("Authentication system initialized\n"), V());
     return 0;
@@ -159,6 +166,11 @@ static b8 streqct(volatile const char *p1,
 // not verified, and -1 if an error occurred.
 int auth_verify(Auth *auth, CHTTP_Request *request)
 {
+    if (auth->skip_auth_check) {
+        log(auth->logger, S("Skipping request authentication\n"), V());
+        return 0;
+    }
+
     log(auth->logger, S("Verifying request authentication\n"), V());
 
     string path = request->url.path;

@@ -78,6 +78,12 @@ int file_delete(string path);
 
 int is_dir(string path);
 
+// Returns:
+//   1  Directory is empty
+//   0  Directory is full
+//  -1  Error
+int dir_is_empty(string path);
+
 int create_dir(string path);
 
 int file_read_all(string path, string *data);
@@ -85,5 +91,23 @@ int file_read_all(string path, string *data);
 int file_write_all(string path, string data);
 
 int parse_path(string path, string *comps, int max_comps, int num_comps);
+
+// Creates all parent directories to the provided entity.
+// For instance, if path equals /dir1/dir2/file.txt, this
+// function will create the dir1 and dir2 directories.
+int create_parent_dirs(string path);
+
+// Deletes any empty parents for the specified file.
+// Note that the file is assumed to be deleted already,
+// or none of the parents will be considered empty.
+// The "ign" argument tells how many components should
+// be ignored from (from the root). For instance,
+// if dir1/dir2/file.txt was provided with ign=1,
+// the dir1 folder would not be deleted.
+//
+// NOTE: Of course be very careful with this since
+//       it has the potential to delete your entire
+//       drive.
+int delete_empty_parent_dirs(string path, int ign);
 
 #endif // FILE_SYSTEM_INCLUDED
