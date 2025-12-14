@@ -3,6 +3,8 @@ BlogTech is a toolkit for managing small to medium websites. It supports HTTPS, 
 
 ⚠️ BlogTech is still in development! ⚠️
 
+(If you are coming for the old, single-file version of BlogTech refer to the single_file branch.)
+
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Authentication](#authentication)
