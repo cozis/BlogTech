@@ -347,6 +347,14 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
 
 int main_server(int argc, char **argv)
 {
+#ifdef HTTPS_ENABLED
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    if (pthread_sigmask(SIG_BLOCK, &set, NULL) != 0)
+        return -1;
+#endif
+
     ///////////////////////////////////////////////////////////////////////////////
     // PROCESS CRASHES
     ///////////////////////////////////////////////////////////////////////////////
