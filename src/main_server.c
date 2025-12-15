@@ -735,11 +735,15 @@ int main_server(int argc, char **argv)
 #ifdef HTTPS_ENABLED
             if (server_config.acme_enabled) {
                 acme_process_timeout(&acme, &client);
-                logger_flush_if_timeout(&acme_logger);
+                if (logger_flush_if_timeout(&acme_logger) < 0)
+                    abort();
             }
 #endif // HTTPS_ENABLED
-            logger_flush_if_timeout(&request_logger);
-            logger_flush_if_timeout(&auth_logger);
+            if (logger_flush_if_timeout(&request_logger) < 0)
+                abort();
+
+            if (logger_flush_if_timeout(&auth_logger) < 0)
+                abort();
             break;
 
         case EVENT_HTTP_REQUEST:

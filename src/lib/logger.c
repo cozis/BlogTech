@@ -45,7 +45,7 @@ int logger_next_timeout(Logger *l)
     return l->timeout - elapsed;
 }
 
-void logger_flush(Logger *l)
+int logger_flush(Logger *l)
 {
     int num = 0;
     while (num < l->len) {
@@ -53,19 +53,20 @@ void logger_flush(Logger *l)
             l->fd,
             l->buf + num,
             l->len - num);
-        if (ret < 0) {
-            ASSERT(0); // TODO
-        }
+        if (ret < 0)
+            return -1;
         num += ret;
     }
     l->len = 0;
     l->last_flush = get_current_time(); // May return the invalid time
+    return 0;
 }
 
-void logger_flush_if_timeout(Logger *l)
+int logger_flush_if_timeout(Logger *l)
 {
     if (logger_next_timeout(l) == 0)
-        logger_flush(l);
+        return logger_flush(l);
+    return 0;
 }
 
 void log(Logger *l, string fmt, Args args)

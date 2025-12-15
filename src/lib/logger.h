@@ -17,8 +17,8 @@ typedef struct {
 int  logger_init(Logger *l, int cap, int timeout, string path);
 void logger_free(Logger *l);
 int  logger_next_timeout(Logger *l);
-void logger_flush(Logger *l);
-void logger_flush_if_timeout(Logger *l);
+int  logger_flush(Logger *l);
+int  logger_flush_if_timeout(Logger *l);
 
 void log(Logger *l, string fmt, Args args);
 
