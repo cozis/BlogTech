@@ -6,6 +6,7 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 
 #include "lib/jws.h"
 #include "lib/json.h"
