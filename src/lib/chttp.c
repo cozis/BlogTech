@@ -1868,7 +1868,7 @@ int server_secure_context_init(ServerSecureContext *ctx,
     key_buffer[key_file.len] = '\0';
 
     // Load certificate and private key
-    if (SSL_CTX_use_certificate_file(p, cert_buffer, SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_certificate_chain_file(p, cert_buffer) != 1) {
         SSL_CTX_free(p);
         return -1;
     }
@@ -1938,7 +1938,7 @@ int server_secure_context_add_certificate(ServerSecureContext *ctx,
     memcpy(key_buffer, key_file.ptr, key_file.len);
     key_buffer[key_file.len] = '\0';
 
-    if (SSL_CTX_use_certificate_file(p, cert_buffer, SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_certificate_chain_file(p, cert_buffer) != 1) {
         SSL_CTX_free(p);
         return -1;
     }
@@ -2943,6 +2943,10 @@ int socket_manager_translate_events(
                 if (s->num_addr > 1)
                     free(s->addrs);
             }
+#ifdef HTTPS_ENABLED
+            if (s->ssl)
+                SSL_free(s->ssl);
+#endif // HTTPS_ENABLED
             sm->num_used--;
 
         } else if (s->state == SOCKET_STATE_ESTABLISHED_READY) {
