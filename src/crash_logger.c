@@ -203,11 +203,11 @@ static int parse_map(char *src, int len, int *pcur, Map *map, string *path)
         return -1;
     cur++;
 
-    if (cur == len || !is_digit(src[cur]))
+    if (cur == len || !is_hex(src[cur]))
         return -1;
     cur++;
 
-    while (cur < len && (is_digit(src[cur]) || src[cur] == ':'))
+    while (cur < len && (is_hex(src[cur]) || src[cur] == ':'))
         cur++;
 
     if (cur == len || src[cur] != ' ')
