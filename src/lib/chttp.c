@@ -4841,8 +4841,10 @@ void chttp_server_process_events(CHTTP_Server *server,
 
         if (events[i].type == SOCKET_EVENT_DISCONNECT) {
 
-            chttp_server_conn_free(conn); // TODO: what if this was in the ready queue?
-            server->num_conns--;
+            if (conn) {
+                chttp_server_conn_free(conn); // TODO: what if this was in the ready queue?
+                server->num_conns--;
+            }
 
         } else if (events[i].type == SOCKET_EVENT_CREATION_TIMEOUT) {
 
