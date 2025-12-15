@@ -4622,6 +4622,7 @@ static void chttp_server_conn_free(CHTTP_ServerConn *conn)
 {
     byte_queue_free(&conn->output);
     byte_queue_free(&conn->input);
+    conn->state = CHTTP_SERVER_CONN_FREE;
 }
 
 int chttp_server_init(CHTTP_Server *server)
@@ -4865,7 +4866,7 @@ void chttp_server_process_events(CHTTP_Server *server,
                 int j = 0;
                 while (server->conns[j].state != CHTTP_SERVER_CONN_FREE) {
                     j++;
-                    assert(i < CHTTP_SERVER_CAPACITY);
+                    assert(j < CHTTP_SERVER_CAPACITY);
                 }
 
                 conn = &server->conns[j];

@@ -68,8 +68,6 @@ enum {
 };
 
 #include "basic.h"
-
-// String type used throughout cHTTP.
 #define CHTTP_String string
 
 // Compare two strings and return true iff they have
