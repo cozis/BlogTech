@@ -81,7 +81,15 @@ void log(Logger *l, string fmt, Args args)
     if (b.status < 0)
         return;
     if (b.len > l->cap - l->len) {
-        ASSERT(0); // TODO
+        // Not enough memory. Flush and try again.
+        if (logger_flush(l) < 0)
+            return;
+        sb_init(&b,
+            l->buf + l->len,
+            l->cap - l->len);
+        sb_write_fmt(&b, fmt, args);
+        if (b.status < 0 || b.len > l->cap - l->len)
+            return;
     }
     l->len += b.len;
 }

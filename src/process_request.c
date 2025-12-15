@@ -13,15 +13,13 @@ static int translate_path(
 
     // Parse the document root
     int ret = parse_path(document_root, comps, PATH_COMP_LIMIT, 0);
-    if (ret < 0) {
-        ASSERT(0);
-    }
+    if (ret < 0)
+        return -1;
     num_comps += ret;
 
     // Append the host directory
-    if (num_comps == PATH_COMP_LIMIT) {
-        ASSERT(0);
-    }
+    if (num_comps == PATH_COMP_LIMIT)
+        return -1;
     comps[num_comps++] = host_dir;
 
     // Then, parse the request path in the remaining space
@@ -30,9 +28,8 @@ static int translate_path(
     //       This means that the parsing of the path will not
     //       be able to move upwards with .. components
     ret = parse_path(request_path, comps + num_comps, PATH_COMP_LIMIT - num_comps, 0);
-    if (ret < 0) {
-        ASSERT(0);
-    }
+    if (ret < 0)
+        return -1;
     num_comps += ret;
 
     int len = 0;
