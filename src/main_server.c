@@ -796,6 +796,7 @@ int main_server(int argc, char **argv)
     ///////////////////////////////////////////////////////////////////////////////
 
     event_loop_free(&loop);
+    logger_free(&request_logger);
     auth_free(&auth);
     logger_free(&auth_logger);
 #ifdef HTTPS_ENABLED
