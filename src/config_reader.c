@@ -43,10 +43,11 @@ static int read_config_file(int argc, char **argv, string *text)
 
     if (!no_config && file.len == 0) {
         int ret = file_exists(S(DEFAULT_CONFIG_FILE));
-        if (ret < 0) {
+        if (ret == 0) {
+            file = S(DEFAULT_CONFIG_FILE);
+        } else {
             if (ret != FS_ERROR_NOTFOUND)
                 return -1;
-            file = S(DEFAULT_CONFIG_FILE);
         }
     }
 
@@ -148,6 +149,9 @@ static int read_value_from_file(ConfigReader *reader,
             && reader->src[reader->cur] != '\n'
             && reader->src[reader->cur] != '#')
             reader->cur++;
+
+        while (reader->cur > off && (reader->src[reader->cur-1] == ' ' || reader->src[reader->cur-1] == '\t'))
+            reader->cur--;
 
         *value = (string) {
             reader->src + off,
