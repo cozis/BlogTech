@@ -8,3 +8,4 @@
 [ ] Find good compile-time constants that should be options
 [ ] Add missing option docs
 [ ] Log and fail when a config file is explicitly set but failed to load
+[ ] Look for and fix OpenSSL memory leaks
