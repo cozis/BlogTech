@@ -249,6 +249,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
         config->acme_agree_tos   = false;
         config->acme_url         = S("https://acme-v02.api.letsencrypt.org/directory");
         config->acme_insecure    = false;
+        config->num_acme_domains = 0;
 
         b8 have_acme_email   = false;
         b8 have_acme_country = false;

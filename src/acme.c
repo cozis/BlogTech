@@ -272,6 +272,68 @@ static EVP_PKEY *parse_private_key(string str, Logger *logger)
     return pkey;
 }
 
+static int get_chain_expiry(string pem, Time *out)
+{
+    BIO *bio = BIO_new_mem_buf(pem.ptr, pem.len);
+    if (bio == NULL)
+        return -1;
+
+    UnixTime earliest = INVALID_UNIX_TIME;
+    for (X509 *cert; (cert = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL; ) {
+
+        struct tm current_tm;
+        const ASN1_TIME *not_after = X509_get_notAfter(cert);
+        if (!ASN1_TIME_to_tm(not_after, &current_tm)) {
+            X509_free(cert);
+            BIO_free(bio);
+            return -1;
+        }
+
+        time_t tmp = timegm(&current_tm);
+        if (tmp == (time_t) -1) {
+            X509_free(cert);
+            BIO_free(bio);
+            return -1;
+        }
+        UnixTime current = tmp;
+
+        if (earliest == INVALID_UNIX_TIME || current < earliest)
+            earliest = current;
+
+        X509_free(cert);
+    }
+
+    if (earliest == INVALID_UNIX_TIME) {
+        BIO_free(bio);
+        return -1;
+    }
+
+    UnixTime current_unix_time = get_current_unix_time();
+    if (current_unix_time == INVALID_UNIX_TIME) {
+        BIO_free(bio);
+        return -1;
+    }
+
+    Time relative_time = get_current_time();
+    if (relative_time == INVALID_TIME) {
+        BIO_free(bio);
+        return -1;
+    }
+
+    if (earliest > current_unix_time) {
+        Time diff = (earliest - current_unix_time) * 1000;
+        if (relative_time > TIME_MAX - diff) {
+            BIO_free(bio);
+            return -1;
+        }
+        relative_time += diff;
+    }
+
+    *out = relative_time;
+    BIO_free(bio);
+    return 0;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////
 // Request Builder
 //////////////////////////////////////////////////////////////////////////////////////
@@ -313,7 +375,7 @@ request_builder_init(
         account.key, true, builder->jws_buffer,
         (int) sizeof(builder->jws_buffer));
 
-    if (account.url.len == 0) {
+    if (account.url.ptr == NULL) {
         jws_builder_write(&builder->jws_builder, "{\"alg\":\"ES256\",\"jwk\":", -1);
         if (jws_write_jwk(&builder->jws_builder, account.key) < 0) {
             builder->error = true;
@@ -575,6 +637,16 @@ int acme_init(ACME *acme, ACME_Config *config)
             // File not found - continue without certificate
             log(acme->logger, S("Certificate file '{}' not found. Continuing without a certificate.\n"), V(config->certificate_file));
         } else {
+
+            Time certificate_expiry;
+            ret = get_chain_expiry(certificate, &certificate_expiry);
+            if (ret < 0) {
+                log(acme->logger, S("Couldn't determine expiry of certificate file '{}'.\n"), V(config->certificate_file));
+                acme_free(acme);
+                return -1;
+            }
+            log(acme->logger, S("Certificate will expire at {} UNIX time\n"), V(certificate_expiry / 1000));
+
             string certificate_key;
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
             if (ret < 0) {
@@ -588,6 +660,7 @@ int acme_init(ACME *acme, ACME_Config *config)
             } else {
                 acme->certificate = certificate;
                 acme->certificate_key = certificate_key;
+                acme->certificate_expiry = certificate_expiry;
                 log(acme->logger, S("Certificate and certificate key files found.\n"), V());
             }
         }
@@ -791,8 +864,10 @@ static int complete_first_nonce_request(ACME *acme, CHTTP_Response *response)
 
 static int send_account_creation_request(ACME *acme, CHTTP_Client *client)
 {
-    if (generate_account_key(&acme->account, acme->logger) < 0)
-        return -1;
+    if (acme->account.key == NULL) {
+        if (generate_account_key(&acme->account, acme->logger) < 0)
+            return -1;
+    }
 
     RequestBuilder builder;
     request_builder_init(&builder,
@@ -992,9 +1067,11 @@ static int send_next_challenge_info_request(ACME *acme, CHTTP_Client *client)
     return request_builder_send(&builder, acme->client);
 }
 
-static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *response)
+static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *response, b8 *already_resolved)
 {
     ASSERT(acme->resolved_challenges < acme->num_domains);
+
+    *already_resolved = false;
 
     if (response->status != 200) {
         log(acme->logger, S("Challenge info response has status '{}' but 200 was expected\n"), V(response->status));
@@ -1013,6 +1090,17 @@ static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *resp
         string err = ZT2S(error.msg);
         log(acme->logger, S("Challenge info response contains invalid JSON ({})\n"), V(err));
         return -1;
+    }
+
+    JSON *status = json_get_field(json, JSON_STR("status"));
+    if (status == NULL || json_get_type(status) != JSON_TYPE_STRING) {
+        log(acme->logger, S("Challenge info response contains an invalid 'status' field\n"), V());
+        return -1;
+    }
+
+    if (streq(json_get_string(status), S("valid"))) {
+        // We already resolved this challenge
+        *already_resolved = true;
     }
 
     JSON *challenges = json_get_field(json, JSON_STR("challenges"));
@@ -1060,6 +1148,10 @@ static int complete_next_challenge_info_request(ACME *acme, CHTTP_Response *resp
         return -1;
     }
 
+    if (*already_resolved) {
+        ASSERT(acme->resolved_challenges < acme->num_domains);
+        acme->resolved_challenges++;
+    }
     return 0;
 }
 
@@ -1194,6 +1286,8 @@ static int send_finalize_order_request(ACME *acme, CHTTP_Client *client)
 
     char *pem_buf;
     long pem_len = BIO_get_mem_data(bio, &pem_buf);
+    ASSERT(pem_buf != NULL);
+    ASSERT(pem_len > 0);
 
     string certificate_key = { pem_buf, pem_len };
     if (file_write_all(acme->certificate_key_file, certificate_key) < 0) {
@@ -1367,6 +1461,17 @@ static int complete_certificate_download_request(ACME *acme, CHTTP_Response *res
         return -1;
     }
 
+    ASSERT(certificate.ptr != NULL);
+    ASSERT(certificate.len > 0);
+
+    Time certificate_expiry;
+    int ret = get_chain_expiry(certificate, &certificate_expiry);
+    if (ret < 0) {
+        log(acme->logger, S("Couldn't determine expiry of the newly issued certificate.\n"), V());
+        return -1;
+    }
+    log(acme->logger, S("Certificate will expire {} UNIX time\n"), V(certificate_expiry / 1000));
+
     acme->certificate.ptr = malloc(certificate.len); // TODO: allocstr
     if (acme->certificate.ptr == NULL) {
         log(acme->logger, S("String allocation failure\n"), V());
@@ -1374,6 +1479,8 @@ static int complete_certificate_download_request(ACME *acme, CHTTP_Response *res
     }
     memcpy_(acme->certificate.ptr, certificate.ptr, certificate.len);
     acme->certificate.len = certificate.len;
+
+    acme->certificate_expiry = certificate_expiry;
 
     return 0;
 }
@@ -1384,7 +1491,7 @@ static int complete_certificate_download_request(ACME *acme, CHTTP_Response *res
 
 static b8 account_exists(ACME *acme)
 {
-    return acme->account.url.len > 0;
+    return acme->account.url.ptr != NULL;
 }
 
 static b8 certificate_exists(ACME *acme)
@@ -1437,7 +1544,19 @@ static int current_state_timeout(ACME *acme)
     case ACME_STATE_CHALLENGE_3:
         return 1000;
     case ACME_STATE_WAIT:
-        return 86400000; // 24 hours in milliseconds
+        {
+            int timeout;
+            if (acme->certificate_expiry < acme->state_change_time) {
+                timeout = 0;
+            } else {
+                Time diff = acme->certificate_expiry - acme->state_change_time;
+                if (diff > INT_MAX)
+                    timeout = 86400000; // 24 hours in milliseconds
+                else
+                    timeout = diff;
+            }
+            return timeout;
+        }
     case ACME_STATE_CERTIFICATE_POLL_WAIT:
         return 1000;
     default:
@@ -1673,7 +1792,7 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
             if (account_exists(acme)) {
                 if (certificate_exists(acme)) {
 
-                    log(acme->logger, S("Account and certificate already exists. Waiting for the certificate to expire.\n"), V());
+                    log(acme->logger, S("Account and certificate already exists. Waiting for the certificate to expire (in {} seconds).\n"), V((acme->certificate_expiry - current_time) / 1000));
 
                     // A certificate exists. Wait for it to expire.
                     CHANGE_STATE(acme->state, ACME_STATE_WAIT);
@@ -1745,15 +1864,35 @@ b8 acme_process_response(ACME *acme, int result, CHTTP_Response *response)
                 break;
             }
 
-            if (complete_next_challenge_info_request(acme, response) < 0) {
+            b8 already_resolved;
+            if (complete_next_challenge_info_request(acme, response, &already_resolved) < 0) {
                 CHANGE_STATE(acme->state, ACME_STATE_ERROR);
                 break;
             }
-            if (send_next_challenge_begin_request(acme, acme->client) < 0) {
-                CHANGE_STATE(acme->state, ACME_STATE_ERROR);
-                break;
+
+            if (already_resolved) {
+                if (all_challenges_completed(acme)) {
+                    // Finalize the order
+                    if (send_finalize_order_request(acme, acme->client) < 0) {
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                        break;
+                    }
+                    CHANGE_STATE(acme->state, ACME_STATE_FINALIZE);
+                } else {
+                    // Next challenge
+                    if (send_next_challenge_info_request(acme, acme->client) < 0) {
+                        CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                        break;
+                    }
+                    CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_1);
+                }
+            } else {
+                if (send_next_challenge_begin_request(acme, acme->client) < 0) {
+                    CHANGE_STATE(acme->state, ACME_STATE_ERROR);
+                    break;
+                }
+                CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_2);
             }
-            CHANGE_STATE(acme->state, ACME_STATE_CHALLENGE_2);
         }
         break;
     case ACME_STATE_CHALLENGE_2:

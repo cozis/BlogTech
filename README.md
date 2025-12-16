@@ -271,6 +271,28 @@ You can then start the BlogTech instance by running:
 
 You should see al interactions with the ACME server being dumped by BlogTech on stdout and, if all goes well, the `acme_key.pem`, `cert.pem` and `key.pem` generated.
 
+If you want to test certificate renewal, you can change the expirations by modifying these fields in `pebble/test/config/pebble-config.json`:
+
+```
+{
+  "pebble": {
+
+    ... other fields ...
+
+    "profiles": {
+      "default": {
+        "description": "The profile you know and love",
+        "validityPeriod": 7776000 <--- This one
+      },
+      "shortlived": {
+        "description": "A short-lived cert profile, without actual enforcement",
+        "validityPeriod": 518400 <--- And this one
+      }
+    }
+  }
+}
+```
+
 ## Configuration Files
 
 BlogTech allows you to move any number of command-line arguments to a configuration file.

@@ -201,6 +201,7 @@ typedef struct {
 
     string certificate;
     string certificate_key;
+    Time   certificate_expiry;
 
     // Number of challenges that were resolved.
     // When this value equals the domain count,
