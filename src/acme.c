@@ -468,6 +468,7 @@ void acme_config_init(ACME_Config *config,
     config->dont_verify_cert = false;
     config->trace_bytes = false;
     config->logger = NULL;
+    config->force_renewal_period = -1;
 
     config->email = email;
     config->country = country;
@@ -584,6 +585,7 @@ int acme_init(ACME *acme, ACME_Config *config)
     acme->dont_verify_cert = config->dont_verify_cert;
     acme->trace_bytes = config->trace_bytes;
     acme->logger = config->logger;
+    acme->force_renewal_period = config->force_renewal_period;
 
     acme->agree_tos = config->agree_tos;
 
@@ -638,6 +640,13 @@ int acme_init(ACME *acme, ACME_Config *config)
             log(acme->logger, S("Certificate file '{}' not found. Continuing without a certificate.\n"), V(config->certificate_file));
         } else {
 
+            Time current_time = get_current_time();
+            if (current_time == INVALID_TIME) {
+                log(acme->logger, S("Couldn't read the time.\n"), V());
+                acme_free(acme);
+                return -1;
+            }
+
             Time certificate_expiry;
             ret = get_chain_expiry(certificate, &certificate_expiry);
             if (ret < 0) {
@@ -645,7 +654,15 @@ int acme_init(ACME *acme, ACME_Config *config)
                 acme_free(acme);
                 return -1;
             }
-            log(acme->logger, S("Certificate will expire at {} UNIX time\n"), V(certificate_expiry / 1000));
+            log(acme->logger, S("Certificate will expire in {} seconds\n"), V((certificate_expiry - current_time) / 1000));
+
+            if (acme->force_renewal_period > -1) {
+                Time expiry_limit = current_time + acme->force_renewal_period;
+                if (expiry_limit < certificate_expiry) {
+                    certificate_expiry = expiry_limit;
+                    log(acme->logger, S("Forcing certificate renewal in {} seconds\n"), V(acme->force_renewal_period / 1000));
+                }
+            }
 
             string certificate_key;
             ret = file_read_all(acme->certificate_key_file, &certificate_key);
@@ -937,7 +954,7 @@ static int complete_account_creation_request(ACME *acme, CHTTP_Response *respons
         log(acme->logger, S("ACME account was created. The account key was stored in '{}'\n"), V(acme->account_key_file));
     } else {
         ASSERT(response->status == 200);
-        log(acme->logger, S("Existing ACME account found"), V());
+        log(acme->logger, S("Existing ACME account found\n"), V());
     }
 
     BIO_free(bio);
@@ -1464,13 +1481,27 @@ static int complete_certificate_download_request(ACME *acme, CHTTP_Response *res
     ASSERT(certificate.ptr != NULL);
     ASSERT(certificate.len > 0);
 
+    Time current_time = get_current_time();
+    if (current_time == INVALID_TIME) {
+        log(acme->logger, S("Couldn't read the time.\n"), V());
+        return -1;
+    }
+
     Time certificate_expiry;
     int ret = get_chain_expiry(certificate, &certificate_expiry);
     if (ret < 0) {
         log(acme->logger, S("Couldn't determine expiry of the newly issued certificate.\n"), V());
         return -1;
     }
-    log(acme->logger, S("Certificate will expire {} UNIX time\n"), V(certificate_expiry / 1000));
+    log(acme->logger, S("Certificate will expire in {} seconds\n"), V((certificate_expiry - current_time) / 1000));
+
+    if (acme->force_renewal_period > -1) {
+        Time expiry_limit = current_time + acme->force_renewal_period;
+        if (expiry_limit < certificate_expiry) {
+            certificate_expiry = expiry_limit;
+            log(acme->logger, S("Forcing certificate renewal in {} seconds\n"), V(acme->force_renewal_period / 1000));
+        }
+    }
 
     acme->certificate.ptr = malloc(certificate.len); // TODO: allocstr
     if (acme->certificate.ptr == NULL) {
@@ -1611,6 +1642,9 @@ void acme_process_timeout(ACME *acme, CHTTP_Client *client)
         break;
     case ACME_STATE_WAIT:
         {
+            if (acme->certificate_expiry > current_time)
+                break;
+
             // Free previous order data before starting a new certificate order
             reset_order_data(acme);
             if (send_order_creation_request(acme, acme->client) < 0) {

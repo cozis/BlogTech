@@ -47,6 +47,7 @@ typedef struct {
     string acme_country;
     string acme_org;
     b8     acme_insecure; // TODO: document
+    s32    acme_force_renewal_period; // TODO: document
     string acme_domains[ACME_DOMAIN_LIMIT];
     int    num_acme_domains;
 } ServerConfig;
@@ -250,6 +251,7 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
         config->acme_url         = S("https://acme-v02.api.letsencrypt.org/directory");
         config->acme_insecure    = false;
         config->num_acme_domains = 0;
+        config->acme_force_renewal_period = -1;
 
         b8 have_acme_email   = false;
         b8 have_acme_country = false;
@@ -322,6 +324,8 @@ static int load_server_config(ConfigReader *reader, ServerConfig *config)
                 }
             } else if (streq(name, S("acme-insecure"))) {
                 parse_config_value_yn(name, value, &config->acme_insecure, &bad_config);
+            } else if (streq(name, S("acme-force-renewal-period"))) {
+                parse_config_value_time_ms(name, value, &config->acme_force_renewal_period, &bad_config);
             }
         }
 
@@ -614,6 +618,7 @@ int main_server(int argc, char **argv)
         acme_config.certificate_key_file = server_config.cert_key_file;
         acme_config.dont_verify_cert     = server_config.acme_insecure;
         acme_config.trace_bytes          = server_config.trace_bytes;
+        acme_config.force_renewal_period = server_config.acme_force_renewal_period;
 
         if (acme_init(&acme, &acme_config) < 0) {
             fprintf(stderr, "Couldn't setup the ACME client\n");

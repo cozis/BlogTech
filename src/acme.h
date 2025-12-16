@@ -19,6 +19,7 @@ typedef struct {
     b8      dont_verify_cert;
     b8      trace_bytes;
     Logger *logger;
+    int     force_renewal_period;
 
     /////////////////////////////////////////////
     // Information
@@ -154,6 +155,7 @@ typedef struct {
     b8            dont_verify_cert;
     b8            trace_bytes;
     Logger       *logger;
+    int           force_renewal_period;
 
     string account_key_file;
     string certificate_file;

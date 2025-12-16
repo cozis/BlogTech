@@ -293,6 +293,8 @@ If you want to test certificate renewal, you can change the expirations by modif
 }
 ```
 
+You can also instruct BlogTech to renew certificates even though they are not expired using the option `--acme-force-renewal-period=<maximum duration in ms>`.
+
 ## Configuration Files
 
 BlogTech allows you to move any number of command-line arguments to a configuration file.
