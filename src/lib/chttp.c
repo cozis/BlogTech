@@ -1434,7 +1434,8 @@ int chttp_get_param_i(CHTTP_String body, CHTTP_String str)
 bool chttp_match_host(CHTTP_Request *req, CHTTP_String domain, int port)
 {
     int idx = chttp_find_header(req->headers, req->num_headers, CHTTP_STR("Host"));
-    assert(idx != -1); // Requests without the host header are always rejected
+    if (idx < 0)
+        return false;
 
     char tmp[1<<8];
     if (port > -1 && port != 80) {
@@ -3800,7 +3801,7 @@ static void chttp_client_conn_free(CHTTP_ClientConn *conn)
 int chttp_client_init(CHTTP_Client *client)
 {
     client->input_buffer_limit = 1<<20;
-    client->output_buffer_limit = 1<<20;
+    client->output_buffer_limit = 1<<24;
 
     client->cookie_jar.count = 0;
 
@@ -4632,7 +4633,7 @@ static void chttp_server_conn_free(CHTTP_ServerConn *conn)
 int chttp_server_init(CHTTP_Server *server)
 {
     server->input_buffer_limit = 1<<20;
-    server->output_buffer_limit = 1<<20;
+    server->output_buffer_limit = 1<<24;
 
     server->trace_bytes = false;
     server->reuse_addr = false;
@@ -4807,7 +4808,7 @@ chttp_server_conn_process_events(CHTTP_Server *server, CHTTP_ServerConn *conn)
 
     if (conn->state == CHTTP_SERVER_CONN_BUFFERING) {
 
-        int min_recv = 1<<10;
+        int min_recv = 1<<9;
         byte_queue_write_setmincap(&conn->input, min_recv);
 
         // Note that it's extra important that we don't
