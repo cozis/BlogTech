@@ -68,10 +68,10 @@ Now you can use BlogTech in "client mode" to upload the file
 
 ```sh
 # Linux
-./blogtech --upload --remote=http://127.0.0.1:8080 index.html
+./blogtech --put --remote=http://127.0.0.1:8080 index.html
 
 # Windows
-.\blogtech.exe --upload --remote=http://127.0.0.1:8080 index.html
+.\blogtech.exe --put --remote=http://127.0.0.1:8080 index.html
 ```
 
 You should now find the text "<b>Hello, world</b>" when visiting `http://127.0.0.1:8080/`!
@@ -86,8 +86,8 @@ Requests that would modify resources on the server are digitally signed using an
 
 The password is specified using the `--auth-password-file` option:
 ```sh
-./blogtech --serve  --auth-password-file=admin.pwd --document-root=docroot
-./blogtech --upload --auth-password-file=admin.pwd --remote=http://127.0.0.1:8080 index.html
+./blogtech --serve --auth-password-file=admin.pwd --document-root=docroot
+./blogtech   --put --auth-password-file=admin.pwd --remote=http://127.0.0.1:8080 index.html
 
 # (Use .\blogtech.exe if you are Windows)
 ```
@@ -154,9 +154,9 @@ Requests directed to a host will refer to the directory associated to that host.
 
 For instance, the following commands
 ```
-./blogtech --upload --remote=http://websiteA.com file1.html
-./blogtech --upload --remote=http://websiteB.com file2.html
-./blogtech --upload --remote=http://other.com file3.html
+./blogtech --put --remote=http://websiteA.com file1.html
+./blogtech --put --remote=http://websiteB.com file2.html
+./blogtech --put --remote=http://other.com file3.html
 ```
 
 Will store the files as:

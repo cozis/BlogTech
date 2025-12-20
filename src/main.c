@@ -5,11 +5,11 @@
 
 #include "lib/basic.h"
 
-static b8 have_flags(int argc, char **argv, string f1, string f2)
+static b8 have_flag(int argc, char **argv, string f)
 {
     for (int i = 1; i < argc; i++) {
         string arg = ZT2S(argv[i]);
-        if (streq(arg, f1) || streq(arg, f2))
+        if (streq(arg, f))
             return true;
     }
     return false;
@@ -21,7 +21,7 @@ static void print_usage(FILE *stream, char *name)
         "Usage:\n"
         "  %s { --help | -h }\n"
         "  %s { --serve | -s } [ options ]\n"
-        "  %s { --upload | -u } [ options ] file1.txt file2.txt ...\n"
+        "  %s { --get | -g | --put | -p | --delete } [ options ] file1.txt file2.txt ...\n"
         "\n", name, name, name);
     fprintf(stream,
         "General options:\n"
@@ -32,7 +32,9 @@ static void print_usage(FILE *stream, char *name)
         "  --no-config                 The default config file is ignored\n"
         "  --trace-bytes               Dump all I/O to stdout\n"
         "  --serve, -s                 Run BlogTech as an HTTP(S) server\n"
-        "  --upload, -u                Upload files to a remote Blogtech server\n"
+        "  --get, -g                   Download files from a remote BlogTech server\n"
+        "  --put, -p                   Upload files to a remote BlogTech server\n"
+        "  --delete                    Remove files from a remote BlogTech server\n"
         "  --auth-password-file=<path> Path to file containing the authentication password\n"
         "  --skip-auth-check           Skip authentication (for development only)\n"
         "\n"
@@ -85,7 +87,7 @@ static void print_usage(FILE *stream, char *name)
         "  --acme-log-timeout          Interval in milliseconds between flushes of the\n"
         "                              ACME logger\n"
         "\n"
-        "Client Options (compatible with --upload/-u):\n"
+        "Client Options (compatible with --get/-g, --put/-p, --delete):\n"
         "  --remote=<url>              The URL of the target website for the uploads\n"
         "  --verbose                   Write extra logs to stderr\n"
     );
@@ -93,9 +95,15 @@ static void print_usage(FILE *stream, char *name)
 
 int main(int argc, char **argv)
 {
-    if (have_flags(argc, argv, S("--serve"),  S("-s"))) return main_server(argc, argv);
-    if (have_flags(argc, argv, S("--upload"), S("-u"))) return main_client(argc, argv);
-    if (have_flags(argc, argv, S("--help"),   S("-h"))) {
+    if (have_flag(argc, argv, S("--serve")) || have_flag(argc, argv, S("-s")))
+        return main_server(argc, argv);
+
+    if (have_flag(argc, argv, S("--get")) || have_flag(argc, argv, S("-g")) ||
+        have_flag(argc, argv, S("--put")) || have_flag(argc, argv, S("-p")) ||
+        have_flag(argc, argv, S("--delete")))
+        return main_client(argc, argv);
+
+    if (have_flag(argc, argv, S("--help")) || have_flag(argc, argv, S("-h"))) {
         print_usage(stdout, argv[0]);
         return 0;
     }

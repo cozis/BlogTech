@@ -1,4 +1,5 @@
-[ ] Add DELETE and GET operations to the client
+[X] Add DELETE and GET operations to the client
+[X] Remove old client main
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] If the server crashes it will forget all invalidated nonces
 [ ] Rename option --auth-password-file to --password-file
@@ -9,3 +10,4 @@
 [ ] Add missing option docs
 [ ] Log and fail when a config file is explicitly set but failed to load
 [ ] Look for and fix OpenSSL memory leaks
+[ ] Consider renaming --skip-auth-check to --skip-auth
