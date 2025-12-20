@@ -84,7 +84,9 @@ Now you can use BlogTech in "client mode" to upload the file
 
 You should now find the text "<b>Hello, world</b>" when visiting `http://127.0.0.1:8080/`!
 
-Note that even though we ran client and server on the same machine, this would have worked the same if the server was running on a remote machine.
+Even though we ran client and server on the same machine, this would have worked the same if the server was running on a remote machine.
+
+You can also download or delete remote files using the `--get` and `--delete` options!
 
 ## Authentication
 
