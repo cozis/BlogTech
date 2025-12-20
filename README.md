@@ -6,6 +6,7 @@ BlogTech is a toolkit for managing small to medium websites. It supports HTTPS, 
 (If you are coming for the old, single-file version of BlogTech refer to the single_file branch.)
 
 ## Table of Contents
+
 - [Quick Start](#quick-start)
 - [Authentication](#authentication)
 - [Virtual Hosts](#virtual-hosts)
@@ -37,6 +38,13 @@ Once you're done installing, you can build BlogTech by running
 ```
 
 This will create the `blogtech` (Linux) or `blogtech.exe` (Windows) executable.
+
+You can install it on Linux by calling the install script:
+
+```sh
+# Linux
+./install.sh
+```
 
 You can start a BlogTech server by running:
 
