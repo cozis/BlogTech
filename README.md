@@ -5,6 +5,11 @@ BlogTech is a toolkit for managing small to medium websites. It supports HTTPS, 
 
 (If you are coming for the old, single-file version of BlogTech refer to the single_file branch.)
 
+Here are some discussions about BlogTech on the internet:
+- [Hacker News](https://news.ycombinator.com/item?id=41642151)
+- [r/C_Programming](https://www.reddit.com/r/C_Programming/comments/1falo3b/using_my_c_web_server_to_host_a_blog_you_cant/)
+- [r/hacking](https://www.reddit.com/r/hacking/comments/1fcc5hd/im_using_my_custom_c_webserver_to_host_my_blog_no/)
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
