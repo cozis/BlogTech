@@ -1,7 +1,7 @@
 # BlogTech
 BlogTech is a toolkit for managing small to medium websites. It supports HTTPS, virtual hosts, automatic certificate management (via ACME) and a client for remote management of the server.
 
-⚠️ BlogTech is still in development! ⚠️
+⚠️ Note that BlogTech is still in the testing phase. Having said that, I have been serving [https://coz.is/](https://coz.is/) successfully for a couple weeks using version `0.4.x`
 
 (If you are coming for the old, single-file version of BlogTech refer to the single_file branch.)
 
