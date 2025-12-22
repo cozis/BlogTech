@@ -37,15 +37,6 @@ typedef struct {
 
 } Batch;
 
-static string pop_first(string s, char c)
-{
-    if (s.len > 0 && s.ptr[0] == c) {
-        s.ptr++;
-        s.len--;
-    }
-    return s;
-}
-
 static string get_host_from_url(string url)
 {
     CHTTP_URL parsed_url;
@@ -163,7 +154,7 @@ static int batch_add(Batch *batch, CHTTP_Method method, string path)
         return -1;
     Pending *p = &batch->pool[idx];
 
-    path = pop_first(path, '/');
+    pop_first(&path, '/');
 
     p->url  = fmtorempty(S("{}/{}"), V(batch->remote, path), p->url_buf,  sizeof(p->url_buf));
     p->path = fmtorempty(S("{}"),    V(path),                p->path_buf, sizeof(p->path_buf));

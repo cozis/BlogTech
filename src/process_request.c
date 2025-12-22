@@ -52,6 +52,251 @@ static int translate_path(
     return num;
 }
 
+typedef struct {
+    char buf[PATH_LIMIT];
+    int  len;
+    b8   err;
+} PathBuilder;
+
+void pb_init(PathBuilder *pb)
+{
+    pb->len = 0;
+    pb->err = false;
+}
+
+void pb_free(PathBuilder *pb)
+{
+    (void) pb;
+}
+
+b8 pb_valid_comp(string comp)
+{
+    if (comp.len == 0)
+        return false;
+
+    if (streq(comp, S(".")) || streq(comp, S("..")))
+        return false;
+
+    for (int i = 0; i < comp.len; i++) {
+        char c = comp.ptr[i];
+        if (!is_alpha(c) && !is_digit(c) && c != '.' && c != '_') // TODO: placeholder check
+            return false;
+    }
+
+    return true;
+}
+
+void pb_pop(PathBuilder *pb)
+{
+    // Find the last slash
+    int i = pb->len-1;
+    while (i > -1 && pb->buf[i] != '/')
+        i--;
+
+    if (i == -1)
+        i = 0;
+
+    pb->len = i;
+}
+
+string pb_tostr(PathBuilder *pb)
+{
+    if (pb->err)
+        return EMPTY_STRING;
+    return (string) { pb->buf, pb->len };
+}
+
+b8 pop_first(string *s, char c)
+{
+    if (s->len > 0 && s->ptr[0] == c) {
+        s->ptr++;
+        s->len--;
+        return true;
+    }
+
+    return false;
+}
+
+b8 pop_last(string *s, char c)
+{
+    if (s->len > 0 && s->ptr[s->len-1] == c) {
+        s->len--;
+        return true;
+    }
+
+    return false;
+}
+
+void pb_push(PathBuilder *pb, string comp)
+{
+    if (pb->err)
+        return;
+
+    // Remove preceding slash.
+    //
+    // We store the information that a slash was
+    // present since the first slash of the first
+    // component determines the overall absolute-ness
+    // of the path.
+    b8 is_abs = pop_first(&comp, '/');
+
+    // Remove trailing slash
+    pop_last(&comp, '/');
+
+    // Validate the component
+    if (!pb_valid_comp(comp)) {
+        pb->err = true;
+        return;
+    }
+
+    if (is_abs || pb->len > 0) {
+        if (PATH_LIMIT - pb->len < 1) {
+            pb->err = true;
+            return;
+        }
+        pb->buf[pb->len++] = '/';
+    }
+
+    if (PATH_LIMIT - pb->len < comp.len) {
+        pb->err = true;
+        return;
+    }
+
+    memcpy(pb->buf + pb->len, comp.ptr, comp.len);
+    pb->len += comp.len;
+}
+
+void pb_merge(PathBuilder *pb, string path)
+{
+    pop_first(&path, '/');
+    pop_last(&path, '/');
+
+    char *src = path.ptr;
+    int   len = path.len;
+    int   cur = 0;
+    for (;;) {
+        int off = cur;
+        while (cur < len && src[cur] != '/')
+            cur++;
+
+        string comp = { src + off, cur - off };
+
+        pb_push(pb, comp);
+
+        if (cur == len)
+            break;
+        cur++;
+    }
+}
+
+static void build_sitemap_response(string document_root, string host_dir, CHTTP_ResponseBuilder builder)
+{
+    PathBuilder pb;
+    pb_init(&pb);
+
+    chttp_response_builder_status(builder, 200);
+
+    pb_merge(&pb, document_root);
+    pb_push(&pb, host_dir);
+    if (pb.err) {
+        chttp_response_builder_status(builder, 500);
+        chttp_response_builder_send(builder);
+        return;
+    }
+    int host_end = pb.len;
+
+    int depth = 0;
+    DirectoryScanner scanners[SITEMAP_DEPTH_LIMIT];
+    int ret = directory_scanner_init(&scanners[depth++], pb_tostr(&pb));
+    if (ret < 0) {
+        chttp_response_builder_status(builder, 500);
+        chttp_response_builder_send(builder);
+        return;
+    }
+
+    b8 err = false;
+    for (;;) {
+
+        ASSERT(depth > 0);
+
+        string name;
+        ret = directory_scanner_next(&scanners[depth-1], &name);
+
+        if (ret < 0) {
+            // Error
+            err = true;
+            break;
+        }
+
+        if (ret > 0) {
+            // Finished
+            directory_scanner_free(&scanners[--depth]);
+            pb_pop(&pb);
+            if (depth == 0)
+                break;
+            continue;
+        }
+
+        ASSERT(ret == 0);
+
+        // Ignore . and ..
+        if (streq(name, S(".")) || streq(name, S("..")))
+            continue;
+
+        pb_push(&pb, name);
+        if (pb.err) {
+            err = true;
+            break;
+        }
+
+        string full_path = pb_tostr(&pb);
+
+        ret = is_dir(full_path);
+        if (ret < 0) {
+            err = true;
+            break;
+        }
+
+        if (ret == 1) {
+
+            if (depth == SITEMAP_DEPTH_LIMIT) {
+                err = true;
+                break;
+            }
+
+            ret = directory_scanner_init(&scanners[depth++], full_path);
+            if (ret < 0) {
+                err = true;
+                break;
+            }
+
+        } else {
+
+            string rel_path = {
+                full_path.ptr + host_end,
+                full_path.len - host_end
+            };
+            pop_first(&rel_path, '/');
+
+            chttp_response_builder_body(builder, rel_path);
+            chttp_response_builder_body(builder, S("\n"));
+
+            pb_pop(&pb);
+        }
+    }
+
+    if (err) {
+        for (int i = 0; i < depth; i++)
+            directory_scanner_free(&scanners[i]);
+
+        chttp_response_builder_status(builder, 500);
+        chttp_response_builder_send(builder);
+        return;
+    }
+
+    chttp_response_builder_send(builder);
+}
+
 static void process_request_get(
     string document_root,
     string host_dir,
@@ -59,6 +304,22 @@ static void process_request_get(
     CHTTP_ResponseBuilder builder,
     Auth *auth)
 {
+    if (streq(request->url.path, S("/__sitemap__"))) {
+        int ret = auth_verify(auth, request);
+        if (ret < 0) {
+            chttp_response_builder_status(builder, 500);
+            chttp_response_builder_send(builder);
+            return;
+        }
+        if (ret == 1) {
+            chttp_response_builder_status(builder, 401);
+            chttp_response_builder_send(builder);
+            return;
+        }
+        build_sitemap_response(document_root, host_dir, builder);
+        return;
+    }
+
     char buf[PATH_LIMIT];
     int ret = translate_path(request->url.path, document_root, host_dir, buf, (int) sizeof(buf));
     if (ret < 0) {

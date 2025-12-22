@@ -110,4 +110,28 @@ int create_parent_dirs(string path);
 //       drive.
 int delete_empty_parent_dirs(string path, int ign);
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <dirent.h>
+#endif
+
+typedef struct {
+#ifdef _WIN32
+    HANDLE handle;
+    WIN32_FIND_DATA find_data;
+    bool first;
+    bool done;
+#else
+    DIR *d;
+    struct dirent *e;
+    bool done;
+#endif
+} DirectoryScanner;
+
+int  directory_scanner_init(DirectoryScanner *scanner, string path);
+int  directory_scanner_next(DirectoryScanner *scanner, string *name);
+void directory_scanner_free(DirectoryScanner *scanner);
+
 #endif // FILE_SYSTEM_INCLUDED
