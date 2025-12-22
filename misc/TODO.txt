@@ -1,8 +1,3 @@
-[X] Add DELETE and GET operations to the client
-[X] Remove old client main
-[X] Fix use of uninitialized fields auth.c:67
-[ ] Clean up the parsing code of auth headers in auth.c
-[ ] If the server crashes it will forget all invalidated nonces
 [ ] Rename option --auth-password-file to --password-file
 [ ] Add proper user agent to ACME client
 [ ] What happens when a request uses * as a resource path?
