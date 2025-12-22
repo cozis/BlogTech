@@ -90,6 +90,7 @@ static void print_usage(FILE *stream, char *name)
         "Client Options (compatible with --get/-g, --put/-p, --delete):\n"
         "  --remote=<url>              The URL of the target website for the uploads\n"
         "  --verbose                   Write extra logs to stderr\n"
+        "  --no-file                   Write response contents to stdout instead of files\n"
     );
 }
 

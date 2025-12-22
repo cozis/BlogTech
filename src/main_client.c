@@ -29,6 +29,7 @@ typedef struct {
     string password;
     b8     trace_bytes;
     b8     skip_auth_check;
+    b8     no_file;
 
     CHTTP_Client client;
 
@@ -52,6 +53,7 @@ static int batch_init(Batch *batch, string remote, string password)
     batch->password = password;
     batch->trace_bytes = false;
     batch->skip_auth_check = false;
+    batch->no_file = false;
 
     int ret = chttp_client_init(&batch->client);
     if (ret < 0)
@@ -72,6 +74,11 @@ static void batch_free(Batch *batch)
 static void batch_trace(Batch *batch, b8 trace)
 {
     batch->trace_bytes = trace;
+}
+
+static void batch_no_file(Batch *batch, b8 no_file)
+{
+    batch->no_file = no_file;
 }
 
 static void batch_skip_auth(Batch *batch, b8 skip)
@@ -244,13 +251,17 @@ static void batch_wait(Batch *batch)
 
             b8 write_failed = false;
             if (pending->method == CHTTP_METHOD_GET) {
-                int ret = file_write_all(pending->path, response->body);
-                if (ret < 0) {
-                    fprintf(stdout, "%.*s %.*s .. failed\n  Couldn't write file '%.*s'\n",
-                        UNPACK(method_to_str(pending->method)),
-                        UNPACK(pending->url),
-                        UNPACK(pending->path));
-                    write_failed = true;
+                if (batch->no_file)
+                    fprintf(stdout, "%.*s", UNPACK(response->body));
+                else {
+                    int ret = file_write_all(pending->path, response->body);
+                    if (ret < 0) {
+                        fprintf(stdout, "%.*s %.*s .. failed\n  Couldn't write file '%.*s'\n",
+                            UNPACK(method_to_str(pending->method)),
+                            UNPACK(pending->url),
+                            UNPACK(pending->path));
+                        write_failed = true;
+                    }
                 }
             }
 
@@ -297,7 +308,8 @@ int main_client(int argc, char **argv)
     b8     is_delete = false;
     b8     verbose   = false; // TODO: use this flag
     b8     skip_auth_check = false;
-    b8     trace_bytes = false;
+    b8     trace_bytes     = false;
+    b8     no_file   = false;
 
     string remote;
     string auth_password_file;
@@ -339,6 +351,8 @@ int main_client(int argc, char **argv)
             }
         } else if (streq(name, S("trace-bytes"))) {
             parse_config_value_yn(name, value, &trace_bytes, &bad_config);
+        } else if (streq(name, S("no-file"))) {
+            parse_config_value_yn(name, value, &no_file, &bad_config);
         } else if (streq(name, S("skip-auth-check"))) {
             parse_config_value_yn(name, value, &skip_auth_check, &bad_config);
         } else if (streq(name, EMPTY_STRING)) {
@@ -405,6 +419,7 @@ int main_client(int argc, char **argv)
         ASSERT(0);
     }
     batch_trace(&batch, trace_bytes);
+    batch_no_file(&batch, no_file);
     batch_skip_auth(&batch, skip_auth_check);
 
     // Begin as many operations as possible in parallel
