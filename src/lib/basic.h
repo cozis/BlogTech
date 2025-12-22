@@ -118,6 +118,8 @@ b8     streqcase(string s1, string s2);
 string allocstr(string s);
 void   memcpy_(char *dst, char *src, int len);
 string trim(string s);
+b8     pop_first(string *s, char c);
+b8     pop_last(string *s, char c);
 
 /////////////////////////////////////////////////////////////////////////
 // PRIVATE USE FOR MACROS

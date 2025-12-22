@@ -106,27 +106,6 @@ string pb_tostr(PathBuilder *pb)
     return (string) { pb->buf, pb->len };
 }
 
-b8 pop_first(string *s, char c)
-{
-    if (s->len > 0 && s->ptr[0] == c) {
-        s->ptr++;
-        s->len--;
-        return true;
-    }
-
-    return false;
-}
-
-b8 pop_last(string *s, char c)
-{
-    if (s->len > 0 && s->ptr[s->len-1] == c) {
-        s->len--;
-        return true;
-    }
-
-    return false;
-}
-
 void pb_push(PathBuilder *pb, string comp)
 {
     if (pb->err)

@@ -28,29 +28,18 @@
 
 int calculate_request_signature(
     CHTTP_Method method,
-    string path,
-    string host,
-    string date,
-    u32    expire,
-    string nonce,
-    string body,
-    string secret,
-    char *dst,
-    int   cap)
+    string   path,
+    string   host,
+    UnixTime date,
+    u32      expire,
+    Nonce    nonce,
+    string   body,
+    string   secret,
+    char*    dst,
+    int      cap)
 {
-    char body_hash[32];
+    char body_hash[32]; // TODO: this should not be hard-coded
     if (sha256(body.ptr, body.len, body_hash) < 0)
-        return -1;
-
-    // Convert expire and body length to strings
-    char expire_buf[16];
-    string expire_str = fmtorempty(S("{}"), V(expire), expire_buf, sizeof(expire_buf));
-    if (expire_str.len == 0)
-        return -1;
-
-    char body_len_buf[16];
-    string body_len_str = fmtorempty(S("{}"), V(body.len), body_len_buf, sizeof(body_len_buf));
-    if (body_len_str.len == 0)
         return -1;
 
     char pool[1<<12];
@@ -68,13 +57,15 @@ int calculate_request_signature(
             sb_write_str(&b, S("\n"));
             sb_write_str(&b, host);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, date);
+            sb_write_u64(&b, date);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, expire_str);
+            sb_write_u32(&b, expire);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, nonce);
+            sb_push_mod(&b, ENCODING_B64);
+                sb_write_str(&b, (string) { nonce.data, RAW_NONCE_LEN });
+            sb_pop_mod(&b);
             sb_write_str(&b, S("\n"));
-            sb_write_str(&b, body_len_str);
+            sb_write_u64(&b, body.len);
             sb_write_str(&b, S("\n"));
             sb_push_mod(&b, ENCODING_HEXL);
                 sb_write_str(&b, ((string) { body_hash, sizeof(body_hash) }));

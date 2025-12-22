@@ -1,156 +1,187 @@
-#include "lib/http.h"
-
 #include "auth.h"
-#include "lib/basic.h"
-#include "lib/time.h"
-#include "request_signature.h"
 
-#include "lib/encode.h"
 #include "lib/file_system.h"
+#include "lib/string_builder.h"
 
-int auth_init(Auth *auth,
-    string password_file,
-    b8     skip_auth_check,
-    Logger *logger)
+int auth_init(Auth *auth, string password_file, b8 skip_auth_check, Logger *logger)
 {
+    auth->skip = skip_auth_check;
     auth->logger = logger;
 
-    auth->skip_auth_check = skip_auth_check;
-    auth->password = EMPTY_STRING;
+    if (skip_auth_check) {
+        auth->password = EMPTY_STRING;
+    } else {
 
-    for (int i = 0; i < MAX_NONCES; i++)
-        auth->nonces[i].expire = INVALID_UNIX_TIME;
-
-    if (!skip_auth_check) {
-
-        if (password_file.len == 0)
-            return 0;
-
-        string content;
-        if (file_read_all(password_file, &content) < 0) {
-            log(logger, S("Couldn't read password from '{}'\n"), V(password_file));
+        string password;
+        int ret = file_read_all(password_file, &password);
+        if (ret < 0)
             return -1;
-        }
+        void *p = password.ptr;
 
-        string trimmed_content = trim(content);
-
-        if (trimmed_content.len == 0) {
-            log(logger, S("Invalid empty password\n"), V());
-            free(content.ptr);
+        password = trim(password);
+        if (password.len == 0)
             return -1;
-        }
 
-        if (trimmed_content.len >= sizeof(auth->password_buf)) {
-            log(logger, S("Password is longer than expected\n"), V());
-            free(content.ptr);
+        auth->password = fmtorempty(S("{}"), V(password), auth->password_buf, SIZEOF(auth->password));
+
+        free(p);
+
+        if (auth->password.len == 0)
             return -1;
-        }
-
-        memcpy_(auth->password_buf, trimmed_content.ptr, trimmed_content.len);
-        auth->password.ptr = auth->password_buf;
-        auth->password.len = trimmed_content.len;
-        free(content.ptr);
     }
 
-    log(logger, S("Authentication system initialized\n"), V());
+    for (int i = 0; i < INVALID_NONCE_LIMIT; i++)
+        auth->invalid_nonces[i].expire = INVALID_UNIX_TIME;
+
     return 0;
 }
 
 void auth_free(Auth *auth)
 {
+    // Nothing to be done here, really.
+
     (void) auth;
 }
 
-static b8 is_invalidated(Auth *auth, char *nonce)
+static int get_request_host(CHTTP_Request *request, string *host, Logger *logger)
 {
-    for (int i = 0; i < MAX_NONCES; i++)
-        if (!memcmp(nonce, auth->nonces[i].value, RAW_NONCE_LEN))
-            return true;
-    return false;
-}
-
-static u32 parse_expire(string str)
-{
-    u32 value = 0;
-    for (int i = 0; i < str.len; i++) {
-        char c = str.ptr[i];
-        if (c < '0' || c > '9')
-            return 0;
-        u32 prev = value;
-        value = value * 10 + (c - '0');
-        if (value < prev) // overflow
-            return 0;
+    int idx = chttp_find_header(request->headers, request->num_headers, CHTTP_STR("Host"));
+    if (idx < 0) {
+        log(logger, S("Request marked as not authenticated because it's missing the 'Host' header\n"), V());
+        return 1;
     }
-    return value;
-}
+    *host = request->headers[idx].value;
 
-// Parse a timestamp string into a time_t value.
-// The timestamp format is Unix epoch seconds (decimal integer),
-// e.g., "1733788800" for 2024-12-10 00:00:00 UTC.
-static time_t parse_timestamp(string str)
-{
-    time_t value = 0;
-    for (int i = 0; i < str.len; i++) {
-        char c = str.ptr[i];
-        if (c < '0' || c > '9')
-            return 0;
-        time_t prev = value;
-        value = value * 10 + (c - '0');
-        if (value < prev) // overflow
-            return 0;
-    }
-    return value;
-}
-
-static b8 is_expired(string timestamp_str, u32 expire_seconds)
-{
-    time_t timestamp = parse_timestamp(timestamp_str);
-    if (timestamp == 0)
-        return true;
-    UnixTime now = get_current_unix_time();
-    if (now == INVALID_UNIX_TIME) {
-        // TODO
-    }
-    return now > timestamp + (time_t) expire_seconds;
-}
-
-// Remove expired nonces from the table
-static void cleanup_expired_nonces(Auth *auth)
-{
-    UnixTime now = get_current_unix_time();
-    if (now == INVALID_UNIX_TIME) {
-        // TODO
-    }
-    for (int i = 0; i < MAX_NONCES; i++)
-        if (auth->nonces[i].expire != INVALID_UNIX_TIME &&
-            auth->nonces[i].expire < now)
-            auth->nonces[i].expire = INVALID_UNIX_TIME;
-}
-
-static b8 store_nonce(Auth *auth, char *nonce, UnixTime expire)
-{
-    int i = 0;
-    while (i < MAX_NONCES && auth->nonces[i].expire != INVALID_UNIX_TIME)
-        i++;
-
-    if (i == MAX_NONCES) {
-
-        // Try to clean up expired nonces to make room
-        cleanup_expired_nonces(auth);
-
-        // Look again
-        i = 0;
-        while (i < MAX_NONCES && auth->nonces[i].expire != INVALID_UNIX_TIME)
-            i++;
-
-        // No luck
-        if (i == MAX_NONCES)
-            return false;
+    // Remove port from the host
+    //
+    // TODO: verify this loop
+    {
+        int len = host->len;
+        while (len > 0 && is_digit(host->ptr[len-1]))
+            len--;
+        if (len > 0 && host->ptr[len-1] == ':')
+            host->len = len-1;
     }
 
-    memcpy(auth->nonces[i].value, nonce, RAW_NONCE_LEN);
-    auth->nonces[i].expire = expire;
-    return true;
+    return 0;
+}
+
+static int get_request_nonce(CHTTP_Request *request, Nonce *nonce, Logger *logger)
+{
+    int idx = chttp_find_header(request->headers, request->num_headers, CHTTP_STR("X-BlogTech-Nonce"));
+    if (idx < 0) {
+        log(logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Nonce' header\n"), V());
+        return 1;
+    }
+    string nonce_b64 = request->headers[idx].value;
+
+    // Copy the Base64-encoded nonce to a buffer
+    char buf[BASE64_LEN(RAW_NONCE_LEN)];
+    if (nonce_b64.len > sizeof(buf)) {
+        log(logger, S("Request marked as not authenticated because the nonce is too long\n"), V());
+        return 1;
+    }
+    memcpy(buf, nonce_b64.ptr, nonce_b64.len);
+
+    // Decode in-place
+    int ret = decode_inplace(buf, nonce_b64.len, sizeof(buf), ENCODING_B64);
+    if (ret != RAW_NONCE_LEN) {
+        log(logger, S("Request marked as not authenticated because the nonce couldn't be decode from Base64\n"), V());
+        return 1;
+    }
+
+    // Copy out the result
+    memcpy(nonce->data, buf, RAW_NONCE_LEN);
+    return 0;
+}
+
+static int parse_string_as_u64(string str, u64 *num)
+{
+    char *src = str.ptr;
+    int   len = str.len;
+    int   cur = 0;
+
+    if (cur == len || !is_digit(src[cur]))
+        return -1;
+    *num = src[cur] - '0';
+    cur++;
+
+    while (cur < len && is_digit(src[cur])) {
+
+        int d = src[cur] - '0';
+        cur++;
+
+        if (*num > (U64_MAX - d) / 10)
+            return -1;
+
+        *num = *num * 10 + d;
+    }
+
+    if (cur < len)
+        return -1;
+    return 0;
+}
+
+static int parse_string_as_unix_time(string str, UnixTime *time)
+{
+    u64 buf;
+    int ret = parse_string_as_u64(str, &buf);
+    if (ret < 0)
+        return -1;
+    ASSERT(ret == 0);
+
+    if (buf > UNIX_TIME_MAX)
+        return -1;
+    *time = (UnixTime) buf;
+    return 0;
+}
+
+static int get_request_timestamp(CHTTP_Request *request, UnixTime *timestamp, Logger *logger)
+{
+    int idx = chttp_find_header(request->headers, request->num_headers, CHTTP_STR("X-BlogTech-Timestamp"));
+    if (idx < 0) {
+        log(logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Timestamp' header\n"), V());
+        return 1;
+    }
+
+    int ret = parse_string_as_unix_time(request->headers[idx].value, timestamp);
+    if (ret < 0) {
+        log(logger, S("Request marked as not authenticated because the 'X-BlogTech-Timestamp' header doesn't contain a valid timestamp\n"), V());
+        return 1;
+    }
+
+    return 0;
+}
+
+static int get_request_expire(CHTTP_Request *request, u32 *expire, Logger *logger)
+{
+    int idx = chttp_find_header(request->headers, request->num_headers, CHTTP_STR("X-BlogTech-Expire"));
+    if (idx < 0) {
+        log(logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Expire' header\n"), V());
+        return 1;
+    }
+
+    u64 buf;
+    int ret = parse_string_as_u64(request->headers[idx].value, &buf);
+    if (ret < 0 || buf > U32_MAX) {
+        log(logger, S("Request marked as not authenticated because the 'X-BlogTech-Expire' header is not a valid expiration\n"), V());
+        return 1;
+    }
+
+    *expire = (u32) buf;
+    return 0;
+}
+
+static int get_request_signature(CHTTP_Request *request, string *signature, Logger *logger)
+{
+    int idx = chttp_find_header(request->headers, request->num_headers, CHTTP_STR("X-BlogTech-Signature"));
+    if (idx < 0) {
+        log(logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Signature' header\n"), V());
+        return 1;
+    }
+    *signature = request->headers[idx].value;
+
+    return 0;
 }
 
 static b8 streqct(volatile const char *p1,
@@ -162,11 +193,120 @@ static b8 streqct(volatile const char *p1,
     return (c == 0);
 }
 
-// Returns 0 if the request is verified, 1 if the request is
-// not verified, and -1 if an error occurred.
+static int check_signature(
+    string       signature,
+    CHTTP_Method method,
+    string       path,
+    string       host,
+    UnixTime     timestamp,
+    u32          expire,
+    Nonce        nonce,
+    string       body,
+    string       password,
+    Logger*      logger)
+{
+    char buf[128]; // TODO: this shouldn't be hard-coded
+    int ret = calculate_request_signature(
+        method,
+        path,
+        host,
+        timestamp,
+        expire,
+        nonce,
+        body,
+        password,
+        buf,
+        sizeof(buf)
+    );
+    if (ret < 0) {
+        log(logger, S("Request verification failed because it wasn't possible to calculate the signature\n"), V());
+        return -1;
+    }
+    string expected = { buf, ret };
+
+    if (signature.len != expected.len) {
+        log(logger, S("Request marked as not authenticated because its signature has a wrong length\n"), V());
+        return 1;
+    }
+    if (!streqct(signature.ptr, expected.ptr, expected.len)) {
+        log(logger, S("Request marked as not authenticated because its signature is invalid\n"), V());
+        return 1;
+    }
+
+    return 0;
+}
+
+static int check_expiration(UnixTime timestamp, u32 expire, Logger *logger)
+{
+    UnixTime now = get_current_unix_time();
+    if (now == INVALID_UNIX_TIME) {
+        log(logger, S("Couldn't read the time to check for expiration\n"), V());
+        return -1;
+    }
+
+    if (expire > UNIX_TIME_MAX - timestamp) {
+        log(logger, S("Expiration and timestamp would overflow\n"), V());
+        return 1;
+    }
+
+    if (timestamp + expire < now) {
+        log(logger, S("Request expired\n"), V());
+        return 1;
+    }
+
+    return 0;
+}
+
+static int check_nonce(Auth *auth, Nonce nonce)
+{
+    for (int i = 0; i < INVALID_NONCE_LIMIT; i++) {
+
+        // Ignore unused structs
+        if (auth->invalid_nonces[i].expire == INVALID_UNIX_TIME)
+            continue;
+
+        // If the nonce matches, it is invalid. Note
+        // that if the entry in the invalid list is
+        // expired, this won't change the result.
+        if (!memcmp(&nonce, &auth->invalid_nonces[i].value, sizeof(Nonce)))
+            return 1;
+    }
+
+    return 0;
+}
+
+static int invalidate_nonce(Auth *auth, Nonce nonce,
+    UnixTime timestamp, u32 expire)
+{
+    UnixTime now = get_current_unix_time();
+    if (now == INVALID_UNIX_TIME)
+        return -1;
+
+    // Find a slot that is unused or expired
+    int found = -1;
+    for (int i = 0; i < INVALID_NONCE_LIMIT; i++) {
+        UnixTime e = auth->invalid_nonces[i].expire;
+        if (e == INVALID_UNIX_TIME || e < now) {
+            found = i;
+            break;
+        }
+    }
+
+    if (found < 0)
+        return -1;
+
+    if (expire > UNIX_TIME_MAX - timestamp)
+        return -1;
+    UnixTime absolute_expire = timestamp + expire;
+
+    auth->invalid_nonces[found].value = nonce;
+    auth->invalid_nonces[found].expire = absolute_expire;
+    return 0;
+}
+
 int auth_verify(Auth *auth, CHTTP_Request *request)
 {
-    if (auth->skip_auth_check) {
+    if (auth->skip) {
         log(auth->logger, S("Skipping request authentication\n"), V());
         return 0;
     }
@@ -174,139 +314,62 @@ int auth_verify(Auth *auth, CHTTP_Request *request)
     log(auth->logger, S("Verifying request authentication\n"), V());
 
     string path = request->url.path;
-    if (path.len > 0 && path.ptr[0] == '/') {
-        path.ptr++;
-        path.len--;
-    }
+    pop_first(&path, '/');
 
-    int idx = chttp_find_header(
-        request->headers,
-        request->num_headers,
-        CHTTP_STR("Host"));
-    if (idx < 0) {
-        log(auth->logger, S("Request marked as not authenticated because it's missing the 'Host' header\n"), V());
-        return 1;
-    }
-    string host = request->headers[idx].value;
+    string host;
+    int ret = get_request_host(request, &host, auth->logger);
+    if (ret != 0)
+        return ret;
 
-    // Remove port from the host (this is a very bad way to do it)
-    {
-        int semicol = -1;
-        for (int i = 0; i < host.len; i++)
-            if (host.ptr[i] == ':')
-                semicol = i;
-        if (semicol > -1)
-            host.len = semicol;
-    }
+    Nonce nonce;
+    ret = get_request_nonce(request, &nonce, auth->logger);
+    if (ret != 0)
+        return ret;
 
-    idx = chttp_find_header(
-        request->headers,
-        request->num_headers,
-        CHTTP_STR("X-BlogTech-Nonce"));
-    if (idx < 0) {
-        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Nonce' header\n"), V());
-        return 1;
-    }
-    string nonce_str = request->headers[idx].value;
+    UnixTime timestamp;
+    ret = get_request_timestamp(request, &timestamp, auth->logger);
+    if (ret != 0)
+        return ret;
 
-    idx = chttp_find_header(
-        request->headers,
-        request->num_headers,
-        CHTTP_STR("X-BlogTech-Timestamp"));
-    if (idx < 0) {
-        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Timestamp' header\n"), V());
-        return 1;
-    }
-    string timestamp = request->headers[idx].value;
+    u32 expire;
+    ret = get_request_expire(request, &expire, auth->logger);
+    if (ret != 0)
+        return ret;
 
-    idx = chttp_find_header(
-        request->headers,
-        request->num_headers,
-        CHTTP_STR("X-BlogTech-Expire"));
-    if (idx < 0) {
-        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Expire' header\n"), V());
-        return 1;
-    }
-    string expire_str = request->headers[idx].value;
+    string signature;
+    ret = get_request_signature(request, &signature, auth->logger);
+    if (ret != 0)
+        return ret;
 
-    idx = chttp_find_header(
-        request->headers,
-        request->num_headers,
-        CHTTP_STR("X-BlogTech-Signature"));
-    if (idx < 0) {
-        log(auth->logger, S("Request marked as not authenticated because it's missing the 'X-BlogTech-Signature' header\n"), V());
-        return 1;
-    }
-    string signature = request->headers[idx].value;
-
-    // Parse the expire value
-    u32 expire = parse_expire(expire_str);
-    if (expire == 0) {
-        log(auth->logger, S("Request marked as not authenticated because the expiration '{}' is invalid\n"), V(expire_str));
-        return 1;
-    }
-
-    // Parse nonce
-    char nonce[BASE64_LEN(RAW_NONCE_LEN)];
-    if (nonce_str.len > sizeof(nonce)) {
-        log(auth->logger, S("Request marked as not authenticated because the nonce is too long\n"), V());
-        return 1;
-    }
-    memcpy(nonce, nonce_str.ptr, nonce_str.len);
-    int ret = decode_inplace(nonce, nonce_str.len, sizeof(nonce), ENCODING_B64);
-    if (ret != RAW_NONCE_LEN) {
-        log(auth->logger, S("Request marked as not authenticated because the nonce couldn't be decode from Base64\n"), V());
-        return 1;
-    }
-
-    // Check if nonce has already been used
-    if (is_invalidated(auth, nonce)) {
-        log(auth->logger, S("Request marked as not authenticated because the nonce was invalidated\n"), V());
-        return 1;
-    }
-
-    // Check if the request has expired
-    if (is_expired(timestamp, expire)) {
-        log(auth->logger, S("Request marked as not authenticated because it expired\n"), V());
-        return 1;
-    }
-
-    // Verify the signature
-    char expected_signature_buf[128];
-    ret = calculate_request_signature(
+    ret = check_signature(
+        signature,
         request->method,
         path,
         host,
         timestamp,
         expire,
-        nonce_str,
+        nonce,
         request->body,
         auth->password,
-        expected_signature_buf,
-        sizeof(expected_signature_buf));
-    if (ret < 0) {
-        log(auth->logger, S("Request verification failed because it wasn't possible to calculate the signature\n"), V());
+        auth->logger
+    );
+    if (ret != 0)
+        return ret;
+
+    // The signature is valid, but the request may still
+    // be unauthenticated due to the request being expired
+    // or the nonce already used.
+
+    ret = check_expiration(timestamp, expire, auth->logger);
+    if (ret != 0)
+        return ret;
+
+    ret = check_nonce(auth, nonce);
+    if (ret != 0)
+        return ret;
+
+    if (invalidate_nonce(auth, nonce, timestamp, expire) < 0)
         return -1;
-    }
-    string expected_signature = { expected_signature_buf, ret };
 
-    if (signature.len != expected_signature.len) {
-        log(auth->logger, S("Request marked as not authenticated because its signature has a wrong length\n"), V());
-        return 1;
-    }
-
-    if (!streqct(signature.ptr, expected_signature.ptr, expected_signature.len)) {
-        log(auth->logger, S("Request marked as not authenticated because its signature is invalid\n"), V());
-        return 1;
-    }
-
-    // Store the nonce to prevent replay attacks
-    time_t nonce_expire = parse_timestamp(timestamp) + (time_t) expire;
-    if (!store_nonce(auth, nonce, nonce_expire)) {
-        log(auth->logger, S("Request verification failed because the nonce store is full\n"), V());
-        return -1;
-    }
-
-    log(auth->logger, S("Request marked as authenticated\n"), V());
     return 0;
 }

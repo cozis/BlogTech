@@ -68,6 +68,27 @@ string trim(string s)
 	return s;
 }
 
+b8 pop_first(string *s, char c)
+{
+    if (s->len > 0 && s->ptr[0] == c) {
+        s->ptr++;
+        s->len--;
+        return true;
+    }
+
+    return false;
+}
+
+b8 pop_last(string *s, char c)
+{
+    if (s->len > 0 && s->ptr[s->len-1] == c) {
+        s->len--;
+        return true;
+    }
+
+    return false;
+}
+
 int strlen_(char *p)
 {
     ASSERT(p);

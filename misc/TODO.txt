@@ -1,5 +1,6 @@
 [X] Add DELETE and GET operations to the client
 [X] Remove old client main
+[X] Fix use of uninitialized fields auth.c:67
 [ ] Clean up the parsing code of auth headers in auth.c
 [ ] If the server crashes it will forget all invalidated nonces
 [ ] Rename option --auth-password-file to --password-file
@@ -11,4 +12,3 @@
 [ ] Log and fail when a config file is explicitly set but failed to load
 [ ] Look for and fix OpenSSL memory leaks
 [ ] Consider renaming --skip-auth-check to --skip-auth
-[ ] Fix use of uninitialized fields auth.c:67

@@ -108,22 +108,17 @@ static int add_auth_headers(
     string content,
     string password)
 {
-    char timestamp_buf[32];
-    string timestamp = fmtorempty(S("{}"), V(get_current_unix_time()), timestamp_buf, sizeof(timestamp_buf));
+    UnixTime timestamp = get_current_unix_time();
+    if (timestamp == INVALID_UNIX_TIME)
+        return -1;
 
     s32 expire = 300; // 5 minutes
 
-    char nonce_buf[BASE64_LEN(NONCE_RAW_LEN)];
-    int ret = generate_random_bytes(nonce_buf, NONCE_RAW_LEN);
+    Nonce nonce;
+    int ret = generate_random_bytes(nonce.data, RAW_NONCE_LEN);
     if (ret < 0)
         return -1;
     assert(ret == 0);
-
-    ret = encode_inplace(nonce_buf, NONCE_RAW_LEN, 0, sizeof(nonce_buf), ENCODING_B64);
-    if (ret < 0)
-        return -1;
-    assert(ret == BASE64_LEN(NONCE_RAW_LEN));
-    string nonce = { nonce_buf, ret };
 
     char signature_buf[64];
     ret = calculate_request_signature(
@@ -143,7 +138,18 @@ static int add_auth_headers(
     string signature = { signature_buf, ret };
 
     char header_buf[1<<8];
-    chttp_request_builder_header(builder, fmtorempty(S("X-BlogTech-Nonce: {}"),     V(nonce),     header_buf, sizeof(header_buf)));
+
+    StringBuilder sb;
+    sb_init(&sb, header_buf, SIZEOF(header_buf));
+    sb_write_str(&sb, S("X-BlogTech-Nonce: "));
+    sb_push_mod(&sb, ENCODING_B64);
+        sb_write_str(&sb, (string) { nonce.data, RAW_NONCE_LEN });
+    sb_pop_mod(&sb);
+    if (sb.status != 0 || sb.len >= SIZEOF(header_buf))
+        return -1;
+    string header_str = { header_buf, sb.len };
+
+    chttp_request_builder_header(builder, header_str);
     chttp_request_builder_header(builder, fmtorempty(S("X-BlogTech-Timestamp: {}"), V(timestamp), header_buf, sizeof(header_buf)));
     chttp_request_builder_header(builder, fmtorempty(S("X-BlogTech-Expire: {}"),    V(expire),    header_buf, sizeof(header_buf)));
     chttp_request_builder_header(builder, fmtorempty(S("X-BlogTech-Signature: {}"), V(signature), header_buf, sizeof(header_buf)));
