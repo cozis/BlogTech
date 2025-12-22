@@ -11,3 +11,4 @@
 [ ] Log and fail when a config file is explicitly set but failed to load
 [ ] Look for and fix OpenSSL memory leaks
 [ ] Consider renaming --skip-auth-check to --skip-auth
+[ ] Fix use of uninitialized fields auth.c:67
