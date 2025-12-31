@@ -22,7 +22,7 @@ int auth_init(Auth *auth, string password_file, b8 skip_auth_check, Logger *logg
         if (password.len == 0)
             return -1;
 
-        auth->password = fmtorempty(S("{}"), V(password), auth->password_buf, SIZEOF(auth->password));
+        auth->password = fmtorempty(S("{}"), V(password), auth->password_buf, SIZEOF(auth->password_buf));
 
         free(p);
 
