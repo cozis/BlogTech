@@ -20,6 +20,7 @@ Here are some discussions about BlogTech on the internet:
 - [Testing the ACME Client](#testing-the-acme-client)
 - [Configuration Files](#configuration-files)
 - [Crash Logger](#crash-logger)
+- [Setting up BlogTech as a Daemon](#setting-up-blogtech-as-a-daemon)
 
 ## Quick Start
 
@@ -355,3 +356,57 @@ If you want to ignore the implicit config file, use the `--no-config` flag:
 ## Crash Logger
 
 When BlogTech crashes while in server mode, it will generate `crash.bin`, a binary file with the location of the crash. The next time the server is started, the `crash.bin` file will be translated into `crash.log`, a human-readable stack trace. Note that the translation of addresses to symbol names/line numbers might be a bit wonky.
+
+## Setting up BlogTech as a Daemon
+
+You can follow these instructions to install BlogTech as a systemd daemon.
+
+First, download the latest release of the server. Let's say you saved it in `/root/blogtech`.
+
+Then, write the `blogtech.service` service file:
+
+```
+[Unit]
+Description=The BlogTech web server
+
+[Service]
+Type=simple
+ExecStart=/root/blogtech/blogtech -s
+Restart=on-failure
+WorkingDirectory=/root/blogtech/
+
+[Install]
+WantedBy=multi-user.target
+```
+
+This will make sure blogtech is spawned at startup and will restart it when it crashes. Any server options will be automatically be loaded by a `/root/blogtech/blogtech.conf` file.
+
+Copy the service file to `/etc/systemd/system/`:
+```
+sudo cp ./blogtech.service /etc/systemd/system/
+```
+
+Enable and start the service:
+```sh
+systemctl daemon-reload
+systemctl enable blogtech
+systemctl start blogtech
+```
+
+The server should now be running.
+
+In general, you can use the following commands to manage the service:
+
+```sh
+# Start the service
+systemctl start blogtech
+
+# Stop the service
+systemctl stop blogtech
+
+# Restart the service
+systemctl restart blogtech
+
+# Get the systemd logs for the service
+journalctl -u blogtech
+```
